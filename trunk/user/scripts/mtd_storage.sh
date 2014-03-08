@@ -123,6 +123,7 @@ func_fill()
 	script_postw="$dir_storage/post_wan_script.sh"
 	script_vpnsc="$dir_storage/vpns_client_script.sh"
 	script_vpncs="$dir_storage/vpnc_server_script.sh"
+	script_sshaper="$dir_storage/simple_shaper.sh"
 	
 	user_hosts="$dir_dnsmasq/hosts"
 	user_dnsmasq_conf="$dir_dnsmasq/dnsmasq.conf"
@@ -178,6 +179,15 @@ EOF
 ### Called after internal WAN up/down action
 ### \$1 - WAN action (up/down)
 ### \$2 - WAN interface name (e.g. eth3 or ppp0)
+###
+### Uncomment  the last 2 lines to start
+### simple_shaper. Don't forget to disable
+### hardware nat and tune your connection
+### speed variables in the script.
+### For more info please visit
+### http://xserv.compress.to/xnor/linux/rt-nxxu/qos/
+sleep 5
+/etc/storage/simple_shaper.sh on >/dev/null 2>&1 &
 
 EOF
 		chmod 755 "$script_postw"
@@ -414,6 +424,130 @@ EOF
 			chmod 644 "$user_ovpncli_conf"
 		fi
 	fi
+
+       # create simple_shaper script
+        if [ ! -f "$script_sshaper" ] ; then
+                cat > "$script_sshaper" <<EOF
+
+#!/bin/sh
+#
+# Copyright (c) 2013, xnor
+# http://xserv.shell.la/xnor/linux/rt-nxxu/qos
+#
+
+
+UPDEV=eth3
+UPCHAIN=UPSHAPE
+
+# TCP: Guild Wars 2
+PRIO_TCP_PORT=""
+
+# UDP: Half Life, Teamspeak 3 default voice
+PRIO_UDP_PORT=""
+
+QUEUESIZE=127
+UPMTU=1500
+UPMAX=2450
+UPMIN=$(($UPMAX/3))
+UP_C10=$UPMIN
+UP_C11=$UPMIN
+UP_C12=$UPMIN
+
+
+
+IPT=/bin/iptables
+IP=/bin/ip
+TC=/bin/tc
+RMM=/sbin/rmmod
+INM=/sbin/insmod
+KERNL=$(uname -r)
+
+echo "Simple Shaper"
+
+# check arguments
+if [ $# -ne 1 -o '(' "$1" != "on" -a "$1" != "off" ')'  ]
+then
+        echo "Usage: $0 on|off"
+        exit 1;
+fi
+
+echo "UP MAX: $UPMAX, MIN: $UPMIN, MTU: $UPMTU"
+
+# clean up
+echo "cleaning up ... "
+        ###### up
+        ### iptables
+        $IPT -t mangle -D POSTROUTING -o $UPDEV -j $UPCHAIN 2>/dev/null
+        $IPT -t mangle -F $UPCHAIN 2>/dev/null
+        $IPT -t mangle -X $UPCHAIN 2>/dev/null
+
+        ### tc
+        $TC qdisc del dev $UPDEV root 2>/dev/null
+
+        ### modules
+        $RMM xt_length 2>/dev/null
+echo "done."
+
+
+# set up
+if [ "$1" != "on" ]
+then
+        exit 0;
+fi
+echo "setting up ..."
+        ### modules
+        $INM "/lib/modules/$KERNL/kernel/net/netfilter/xt_length.ko"
+
+        ###### up
+        ### device
+        $IP link set $UPDEV txqueuelen $UPMTU up
+
+        ### tc
+        $TC qdisc add dev $UPDEV root handle 1:0 htb default 12 r2q $(($UPMIN*125/1500))
+        $TC class add dev $UPDEV parent 1:0 classid 1:1 htb rate ${UPMAX}kbit ceil ${UPMAX}kbit cburst $(($UPMAX*14))kbit
+
+        $TC class add dev $UPDEV parent 1:1 classid 1:10 htb rate ${UP_C10}kbit ceil ${UPMAX}kbit prio 0
+        $TC class add dev $UPDEV parent 1:1 classid 1:11 htb rate ${UP_C11}kbit ceil ${UPMAX}kbit prio 1
+        $TC class add dev $UPDEV parent 1:1 classid 1:12 htb rate ${UP_C12}kbit ceil ${UPMAX}kbit prio 2
+
+        $TC filter add dev $UPDEV parent 1:0 prio 0 protocol ip handle 10 fw flowid 1:10
+        $TC filter add dev $UPDEV parent 1:0 prio 0 protocol ip handle 11 fw flowid 1:11
+        $TC filter add dev $UPDEV parent 1:0 prio 0 protocol ip handle 12 fw flowid 1:12
+
+        $TC qdisc add dev $UPDEV parent 1:10 handle 10: sfq perturb 10 limit $QUEUESIZE
+        $TC qdisc add dev $UPDEV parent 1:11 handle 11: sfq perturb 10 limit $QUEUESIZE
+        $TC qdisc add dev $UPDEV parent 1:12 handle 12: sfq perturb 10 limit $QUEUESIZE
+
+        ### iptables
+        $IPT -t mangle -N $UPCHAIN
+        ## 10: time critical / high-prio interactive
+        $IPT -t mangle -A $UPCHAIN -p icmp --icmp-type echo-request -m length --length :84 -j MARK --set-mark 10 # small ping requests
+        $IPT -t mangle -A $UPCHAIN -p udp --dport 53 -j MARK --set-mark 10 # UDP DNS
+        $IPT -t mangle -A $UPCHAIN -p tcp -m length --length :40 -j MARK --set-mark 10 # small TCP packets
+        $IPT -t mangle -A $UPCHAIN -m mark --mark 10 -j RETURN
+
+        ## 11: games / interative
+        for PORT in $PRIO_TCP_PORT
+        do
+                $IPT -t mangle -A $UPCHAIN -p tcp --dport $PORT -j MARK --set-mark 11
+        done
+        for PORT in $PRIO_UDP_PORT
+        do
+                $IPT -t mangle -A $UPCHAIN -p udp --dport $PORT -j MARK --set-mark 11
+        done
+        $IPT -t mangle -A $UPCHAIN -m mark --mark 11 -j RETURN
+
+        ## 12: default
+        #$IPT -t mangle -A $UPCHAIN -j MARK --set-mark 12
+        #$IPT -t mangle -A $UPCHAIN -m mark --mark 12 -j RETURN
+
+        ## route traffic through chain
+        $IPT -t mangle -A POSTROUTING -o $UPDEV -j $UPCHAIN
+echo "done."
+
+EOF
+                chmod 755 "$script_sshaper"
+        fi
 }
 
 case "$1" in

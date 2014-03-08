@@ -395,9 +395,9 @@ $(srcdir)/Makefile.in:  $(srcdir)/Makefile.am $(top_srcdir)/build/ltrc.inc $(am_
 	      exit 1;; \
 	  esac; \
 	done; \
-	echo ' cd $(top_srcdir) && $(AUTOMAKE) --gnu src/openvpn/Makefile'; \
+	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign src/openvpn/Makefile'; \
 	$(am__cd) $(top_srcdir) && \
-	  $(AUTOMAKE) --gnu src/openvpn/Makefile
+	  $(AUTOMAKE) --foreign src/openvpn/Makefile
 .PRECIOUS: Makefile
 Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	@case '$?' in \

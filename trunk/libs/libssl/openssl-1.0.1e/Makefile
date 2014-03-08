@@ -11,11 +11,11 @@ SHLIB_VERSION_NUMBER=1.0.0
 SHLIB_VERSION_HISTORY=
 SHLIB_MAJOR=1
 SHLIB_MINOR=0.0
-SHLIB_EXT=
-PLATFORM=dist
-OPTIONS= no-ec_nistp_64_gcc_128 no-gmp no-jpake no-krb5 no-md2 no-rc5 no-rfc3779 no-sctp no-shared no-store no-zlib no-zlib-dynamic static-engine
-CONFIGURE_ARGS=dist
-SHLIB_TARGET=
+SHLIB_EXT=.so.$(SHLIB_MAJOR).$(SHLIB_MINOR)
+PLATFORM=linux-mipsel
+OPTIONS=enable-shared --prefix=/root/rt-n56u/trunk/stage --install_prefix= --openssldir=/etc/ssl -ffunction-sections -fdata-sections -Wl,--gc-sections -I/root/rt-n56u/trunk/stage/include -DOPENSSL_USE_IPV6=1 -DOPENSSL_SMALL_FOOTPRINT -Wl,--gc-sections -L/root/rt-n56u/trunk/stage/lib no-aes192 no-ans1 no-camellia no-capieng no-cast no-cms no-dso no-ec no-ec2m no-ec_nistp_64_gcc_128 no-ecdh no-ecdsa no-engine no-err no-gmp no-gost no-hw no-idea no-jpake no-krb5 no-md2 no-md4 no-mdc2 no-rc2 no-rc5 no-rfc3779 no-ripemd no-rmd160 no-sctp no-seed no-sha0 no-smime no-speed no-srp no-sse2 no-ssl2 no-store no-threads no-ts no-whirlpool no-zlib no-zlib-dynamic no-static-engine
+CONFIGURE_ARGS=linux-mipsel shared --prefix=/root/rt-n56u/trunk/stage --install_prefix= --openssldir=/etc/ssl -ffunction-sections -fdata-sections -Wl,--gc-sections -I/root/rt-n56u/trunk/stage/include -DOPENSSL_USE_IPV6=1 -DOPENSSL_SMALL_FOOTPRINT -Wl,--gc-sections -L/root/rt-n56u/trunk/stage/lib no-speed no-camellia no-capieng no-cms no-gmp no-jpake no-krb5 no-mdc2 no-rfc3779 no-seed no-ec no-ecdh no-ec2m no-ecdsa no-err no-threads no-idea no-rc2 no-rc5 no-sha0 no-engine no-hw no-md2 no-md4 no-sse2 no-dso no-ts no-aes192 no-ripemd no-rmd160 no-smime no-ans1 no-cast no-whirlpool no-sctp no-srp no-jpake no-ssl2
+SHLIB_TARGET=linux-shared
 
 # HERE indicates where this Makefile lives.  This can be used to indicate
 # where sub-Makefiles are expected to be.  Currently has very limited usage,
@@ -26,10 +26,10 @@ HERE=.
 # for, say, /usr/ and yet have everything installed to /tmp/somedir/usr/.
 # Normally it is left empty.
 INSTALL_PREFIX=
-INSTALLTOP=/usr/local/ssl
+INSTALLTOP=/root/rt-n56u/trunk/stage
 
 # Do not edit this manually. Use Configure --openssldir=DIR do change this!
-OPENSSLDIR=/usr/local/ssl
+OPENSSLDIR=/etc/ssl
 
 # NO_IDEA - Define to build without the IDEA algorithm
 # NO_RC4  - Define to build without the RC4 algorithm
@@ -59,16 +59,17 @@ OPENSSLDIR=/usr/local/ssl
 # equal 4.
 # PKCS1_CHECK - pkcs1 tests.
 
-CC= cc
-CFLAG= -O
-DEPFLAG= -DOPENSSL_NO_EC_NISTP_64_GCC_128 -DOPENSSL_NO_GMP -DOPENSSL_NO_JPAKE -DOPENSSL_NO_MD2 -DOPENSSL_NO_RC5 -DOPENSSL_NO_RFC3779 -DOPENSSL_NO_SCTP -DOPENSSL_NO_STORE
+CROSS_COMPILE= /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-
+CC= $(CROSS_COMPILE)gcc -mips32r2 -march=mips32r2
+CFLAG= -fPIC -DOPENSSL_PIC -ffunction-sections -fdata-sections -I/root/rt-n56u/trunk/stage/include -DOPENSSL_USE_IPV6=1 -DOPENSSL_SMALL_FOOTPRINT -DOPENSSL_NO_ERR -DTERMIO -O2 -fomit-frame-pointer -Wall -DSHA1_ASM -DSHA256_ASM -DAES_ASM
+DEPFLAG= -DOPENSSL_NO_AES192 -DOPENSSL_NO_ANS1 -DOPENSSL_NO_CAMELLIA -DOPENSSL_NO_CAPIENG -DOPENSSL_NO_CAST -DOPENSSL_NO_CMS -DOPENSSL_NO_EC -DOPENSSL_NO_EC2M -DOPENSSL_NO_EC_NISTP_64_GCC_128 -DOPENSSL_NO_ECDH -DOPENSSL_NO_ECDSA -DOPENSSL_NO_ENGINE -DOPENSSL_NO_GMP -DOPENSSL_NO_GOST -DOPENSSL_NO_IDEA -DOPENSSL_NO_JPAKE -DOPENSSL_NO_MD2 -DOPENSSL_NO_MD4 -DOPENSSL_NO_MDC2 -DOPENSSL_NO_RC2 -DOPENSSL_NO_RC5 -DOPENSSL_NO_RFC3779 -DOPENSSL_NO_RIPEMD -DOPENSSL_NO_RMD160 -DOPENSSL_NO_SCTP -DOPENSSL_NO_SEED -DOPENSSL_NO_SHA0 -DOPENSSL_NO_SMIME -DOPENSSL_NO_SPEED -DOPENSSL_NO_SRP -DOPENSSL_NO_SSL2 -DOPENSSL_NO_STORE -DOPENSSL_NO_TS -DOPENSSL_NO_WHIRLPOOL
 PEX_LIBS= 
-EX_LIBS= 
+EX_LIBS= -Wl,--gc-sections -Wl,--gc-sections -L/root/rt-n56u/trunk/stage/lib -ldl
 EXE_EXT= 
 ARFLAGS= 
-AR= ar $(ARFLAGS) r
-RANLIB= /usr/bin/ranlib
-NM= nm
+AR= $(CROSS_COMPILE)ar $(ARFLAGS) r
+RANLIB= $(CROSS_COMPILE)ranlib
+NM= $(CROSS_COMPILE)nm
 PERL= /usr/bin/perl
 TAR= tar
 TARFLAGS= --no-recursion --record-size=10240
@@ -89,21 +90,21 @@ PROCESSOR=
 
 # CPUID module collects small commonly used assembler snippets
 CPUID_OBJ= mem_clr.o
-BN_ASM= bn_asm.o
+BN_ASM= bn-mips.o
 DES_ENC= des_enc.o fcrypt_b.o
-AES_ENC= aes_core.o aes_cbc.o
+AES_ENC= aes_cbc.o aes-mips.o
 BF_ENC= bf_enc.o
 CAST_ENC= c_enc.o
 RC4_ENC= rc4_enc.o rc4_skey.o
 RC5_ENC= rc5_enc.o
 MD5_ASM_OBJ= 
-SHA1_ASM_OBJ= 
+SHA1_ASM_OBJ= sha1-mips.o sha256-mips.o
 RMD160_ASM_OBJ= 
 WP_ASM_OBJ= wp_block.o
 CMLL_ENC= camellia.o cmll_misc.o cmll_cbc.o
 MODES_ASM_OBJ= 
 ENGINES_ASM_OBJ= 
-PERLASM_SCHEME= 
+PERLASM_SCHEME= o32
 
 # KRB5 stuff
 KRB5_INCLUDES=
@@ -138,24 +139,24 @@ FIPSCANLIB=
 BASEADDR=0xFB00000
 
 DIRS=   crypto ssl apps
-ENGDIRS= ccgost
+ENGDIRS= 
 SHLIBDIRS= crypto ssl
 
 # dirs in crypto to build
 SDIRS=  \
 	objects \
-	md4 md5 sha mdc2 hmac ripemd whrlpool \
-	des aes rc2 rc4 idea bf cast camellia seed modes \
-	bn ec rsa dsa ecdsa dh ecdh dso engine \
+	md5 sha hmac \
+	des aes rc4 bf modes \
+	bn rsa dsa dh dso \
 	buffer bio stack lhash rand err \
 	evp asn1 pem x509 x509v3 conf txt_db pkcs7 pkcs12 comp ocsp ui krb5 \
-	cms pqueue ts srp cmac
+	pqueue cmac
 # keep in mind that the above list is adjusted by ./Configure
 # according to no-xxx arguments...
 
 # tests to perform.  "alltests" is a special word indicating that all tests
 # should be performed.
-TESTS =
+TESTS = alltests
 
 MAKEFILE= Makefile
 
@@ -169,13 +170,13 @@ SHELL=/bin/sh
 
 TOP=    .
 ONEDIRS=out tmp
-EDIRS=  times bugs util include certs ms shlib mt demos perl sf dep VMS
+EDIRS=  times doc bugs util include certs ms shlib mt demos perl sf dep VMS
 WDIRS=  windows
 LIBS=   libcrypto.a libssl.a
 SHARED_CRYPTO=libcrypto$(SHLIB_EXT)
 SHARED_SSL=libssl$(SHLIB_EXT)
-SHARED_LIBS=
-SHARED_LIBS_LINK_EXTS=
+SHARED_LIBS=$(SHARED_CRYPTO) $(SHARED_SSL)
+SHARED_LIBS_LINK_EXTS=.so.$(SHLIB_MAJOR) .so
 SHARED_LDFLAGS=
 
 GENERAL=        Makefile
@@ -186,7 +187,7 @@ WTARFILE=       $(NAME)-win.tar
 EXHEADER=       e_os2.h
 HEADER=         e_os.h
 
-all: Makefile build_all openssl.pc libssl.pc libcrypto.pc
+all: build_all openssl.pc libssl.pc libcrypto.pc
 
 # as we stick to -e, CLEARENV ensures that local variables in lower
 # Makefiles remain local and variable. $${VAR+VAR} is tribute to Korn
@@ -270,7 +271,7 @@ reflect:
 	@[ -n "$(THIS)" ] && $(CLEARENV) && $(MAKE) $(THIS) -e $(BUILDENV)
 
 sub_all: build_all
-build_all: build_libs build_apps build_tools
+build_all: build_libs build_apps build_tests build_tools
 
 build_libs: build_crypto build_ssl build_engines
 
@@ -397,11 +398,6 @@ openssl.pc: Makefile
 	    echo 'Libs: -L$${libdir} -lssl -lcrypto'; \
 	    echo 'Libs.private: $(EX_LIBS)'; \
 	    echo 'Cflags: -I$${includedir} $(KRB5_INCLUDES)' ) > openssl.pc
-
-Makefile: Makefile.org Configure config
-	@echo "Makefile is older than Makefile.org, Configure or config."
-	@echo "Reconfigure the source tree (via './config' or 'perl Configure'), please."
-	@false
 
 libclean:
 	rm -f *.map *.so *.so.* *.dylib *.dll engines/*.so engines/*.dll engines/*.dylib *.a engines/*.a */lib */*/lib
