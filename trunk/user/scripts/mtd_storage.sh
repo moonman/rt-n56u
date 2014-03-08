@@ -186,8 +186,8 @@ EOF
 ### speed variables in the script.
 ### For more info please visit
 ### http://xserv.compress.to/xnor/linux/rt-nxxu/qos/
-sleep 5
-/etc/storage/simple_shaper.sh on >/dev/null 2>&1 &
+#sleep 5
+#/etc/storage/simple_shaper.sh on >/dev/null 2>&1 &
 
 EOF
 		chmod 755 "$script_postw"
@@ -427,7 +427,7 @@ EOF
 
        # create simple_shaper script
         if [ ! -f "$script_sshaper" ] ; then
-                cat > "$script_sshaper" <<EOF
+                cat > "$script_sshaper" << 'EOF'
 
 #!/bin/sh
 #
