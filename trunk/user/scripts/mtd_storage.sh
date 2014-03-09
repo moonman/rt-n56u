@@ -427,21 +427,19 @@ EOF
        # create simple_shaper script
         if [ ! -f "$script_sshaper" ] ; then
                 cat > "$script_sshaper" << 'EOF'
-
 #!/bin/sh
 #
 # Copyright (c) 2013, xnor
 # http://xserv.shell.la/xnor/linux/rt-nxxu/qos
 #
 
-
-UPDEV=eth3
-UPCHAIN=UPSHAPE
-
-# TCP: Guild Wars 2
+############ CONFIGURATION ############
+### TCP: Guild Wars 2
+# PRIO_TCP_PORT="6112 "
 PRIO_TCP_PORT=""
 
-# UDP: Half Life, Teamspeak 3 default voice
+### UDP: Half Life, Teamspeak 3 default voice
+# PRIO_UDP_PORT="27000:27015 9987"
 PRIO_UDP_PORT=""
 
 QUEUESIZE=127
@@ -452,8 +450,10 @@ UP_C10=$UPMIN
 UP_C11=$UPMIN
 UP_C12=$UPMIN
 
+########## END CONFIGURATION ##########
 
-
+UPDEV=`nvram get wan_ifname`
+UPCHAIN=UPSHAPE
 IPT=/bin/iptables
 IP=/bin/ip
 TC=/bin/tc
