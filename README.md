@@ -8,7 +8,7 @@ Upstream: http://code.google.com/p/rt-n56u/
 ========
 
 Modifications:  
-1. Added BFQ I/O scheduler 
+1. Added BFQ I/O scheduler  
 2. Added simple_shaper.sh script for QOS into the firmware  
 Upstream URL: http://xserv.compress.to/xnor/linux/rt-nxxu/  
   
