@@ -34,7 +34,7 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-build_triplet = i686-pc-linux-gnu
+build_triplet = x86_64-pc-linux-gnu
 host_triplet = mipsel-unknown-linux-gnu
 subdir = contrib
 DIST_COMMON = README $(srcdir)/Makefile.am $(srcdir)/Makefile.in
@@ -61,20 +61,20 @@ ETAGS = etags
 CTAGS = ctags
 DIST_SUBDIRS = $(SUBDIRS)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
-ACLOCAL = ${SHELL} /opt/n56u-kwive/user/firefly/mt-daapd-svn/missing --run aclocal-1.9 -I m4 
+ACLOCAL = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run aclocal-1.9 -I m4 
 AMDEP_FALSE = #
 AMDEP_TRUE = 
-AMTAR = ${SHELL} /opt/n56u-kwive/user/firefly/mt-daapd-svn/missing --run tar
-AR = /opt/toolchain-454/toolchain-3.0.x/bin/mipsel-linux-uclibc-ar
-AUTOCONF = ${SHELL} /opt/n56u-kwive/user/firefly/mt-daapd-svn/missing --run autoconf
-AUTOHEADER = ${SHELL} /opt/n56u-kwive/user/firefly/mt-daapd-svn/missing --run autoheader
-AUTOMAKE = ${SHELL} /opt/n56u-kwive/user/firefly/mt-daapd-svn/missing --run automake-1.9
+AMTAR = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run tar
+AR = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ar
+AUTOCONF = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run autoconf
+AUTOHEADER = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run autoheader
+AUTOMAKE = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run automake-1.9
 AVAHI_CFLAGS = 
 AVAHI_LIBS = 
 AWK = gawk
-CC = /opt/toolchain-454/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2
+CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2
 CCDEPMODE = depmode=gcc3
-CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/opt/n56u-kwive/stage/include -Wall -Wno-trigraphs -Wno-pointer-sign -Wno-strict-aliasing
+CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -DBOARD_N14U -DBOARD_RAM_SIZE=64
 COND_FFMPEG_FALSE = #
 COND_FFMPEG_TRUE = 
 COND_FLAC_FALSE = #
@@ -103,12 +103,12 @@ COND_SSL_FALSE =
 COND_SSL_TRUE = #
 COND_UPNP_FALSE = 
 COND_UPNP_TRUE = #
-CPP = /opt/toolchain-454/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -E
-CPPFLAGS =  -g -Wall -DFLAC -DHAVE_SQL -DHOST='"mipsel-unknown-linux-gnu"' -DNOT_HAVE_SA_LEN -DUSES_NETLINK -DHAVE_LINUX -I/opt/n56u-kwive/stage/include -I/opt/n56u-kwive/stage/include -I/opt/n56u-kwive/stage/include
-CXX = /opt/toolchain-454/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2
-CXXCPP = /opt/toolchain-454/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2 -E
+CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -E
+CPPFLAGS =  -g -Wall -DFLAC -DHAVE_SQL -DHOST='"mipsel-unknown-linux-gnu"' -DNOT_HAVE_SA_LEN -DUSES_NETLINK -DHAVE_LINUX -I/root/rt-n56u/trunk/stage/include -I/root/rt-n56u/trunk/stage/include -I/root/rt-n56u/trunk/stage/include
+CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2
+CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2 -E
 CXXDEPMODE = depmode=gcc3
-CXXFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/opt/n56u-kwive/stage/include -Wall -Wno-trigraphs -Wno-pointer-sign -Wno-strict-aliasing 
+CXXFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include  -Wall -Wno-trigraphs -Wno-strict-aliasing
 CYGPATH_W = echo
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
@@ -124,7 +124,7 @@ INSTALL_DATA = ${INSTALL} -m 644
 INSTALL_PROGRAM = ${INSTALL}
 INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = ${SHELL} $(install_sh) -c -s
-LDFLAGS = -L/opt/n56u-kwive/stage/lib -Wl,--export-dynamic -L/opt/n56u-kwive/stage/lib -R/opt/n56u-kwive/stage/lib -L/opt/n56u-kwive/stage/lib -R/opt/n56u-kwive/stage/lib -L/opt/n56u-kwive/stage/lib -R/opt/n56u-kwive/stage/lib -liconv
+LDFLAGS = -L/root/rt-n56u/trunk/stage/lib -Wl,--export-dynamic -L/root/rt-n56u/trunk/stage/lib -R/root/rt-n56u/trunk/stage/lib -L/root/rt-n56u/trunk/stage/lib -R/root/rt-n56u/trunk/stage/lib -L/root/rt-n56u/trunk/stage/lib -R/root/rt-n56u/trunk/stage/lib -liconv
 LIBICONV = -liconv
 LIBOBJS = 
 LIBS = -ldl -lFLAC  -lpthread -lid3tag -lz -lsqlite3 -lFLAC -lavcodec -lavformat -lavutil
@@ -132,7 +132,7 @@ LIBTOOL = $(SHELL) $(top_builddir)/libtool
 LN_S = ln -s
 LTLIBICONV = -liconv
 LTLIBOBJS = 
-MAKEINFO = ${SHELL} /opt/n56u-kwive/user/firefly/mt-daapd-svn/missing --run makeinfo
+MAKEINFO = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run makeinfo
 OBJEXT = o
 PACKAGE = mt-daapd
 PACKAGE_BUGREPORT = 
@@ -142,10 +142,10 @@ PACKAGE_TARNAME =
 PACKAGE_VERSION = 
 PATH_SEPARATOR = :
 PKG_CONFIG = /usr/bin/pkg-config
-RANLIB = /opt/toolchain-454/toolchain-3.0.x/bin/mipsel-linux-uclibc-ranlib
+RANLIB = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ranlib
 SET_MAKE = 
 SHELL = /bin/bash
-STRIP = /opt/toolchain-454/toolchain-3.0.x/bin/mipsel-linux-uclibc-strip
+STRIP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-strip
 TAGLIB_CONFIG = 
 VERSION = svn-1696
 V_NETLIBS = 
@@ -166,9 +166,9 @@ am__quote =
 am__tar = ${AMTAR} chof - "$$tardir"
 am__untar = ${AMTAR} xf -
 bindir = ${exec_prefix}/bin
-build = i686-pc-linux-gnu
-build_alias = i686-pc-linux-gnu
-build_cpu = i686
+build = x86_64-pc-linux-gnu
+build_alias = x86_64-pc-linux-gnu
+build_cpu = x86_64
 build_os = linux-gnu
 build_vendor = pc
 datadir = ${prefix}/share
@@ -180,7 +180,7 @@ host_os = linux-gnu
 host_vendor = unknown
 includedir = ${prefix}/include
 infodir = ${prefix}/info
-install_sh = /opt/n56u-kwive/user/firefly/mt-daapd-svn/install-sh
+install_sh = /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localstatedir = ${prefix}/var
