@@ -184,8 +184,11 @@ EOF
 ### simple_shaper. Don't forget to disable
 ### hardware nat and tune your connection
 ### speed variables in the script.
+### Do not change UPDEV as it is automatically set.
+###
 ### For more info please visit
 ### http://xserv.compress.to/xnor/linux/rt-nxxu/qos/
+####################################################
 #sleep 5 && /etc/storage/simple_shaper.sh on >/dev/null 2>&1 &
 
 EOF
