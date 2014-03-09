@@ -22,8 +22,8 @@ http://code.google.com/p/rt-n56u/wiki/HowToMakeFirmware
 ========  
   
 I use ArchLinux installation with debian sid chroot.  
-1. Install "debootstrap" from aur and create a chroot.  
-  
+
+Install "debootstrap" from aur and create a chroot.    
 Place this script in <chrootdir>/bin and make it executable  
 
 ```
