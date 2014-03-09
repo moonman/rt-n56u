@@ -7,10 +7,10 @@ Upstream: http://code.google.com/p/rt-n56u/
 
 ========
 
-Modifications: 
+Modifications:  
 1. Added BFQ I/O scheduler (N56U 3.4 kernel only)  
 2. Added simple_shaper.sh script for QOS into the firmware  
-  2.1. Upstream URL: http://xserv.compress.to/xnor/linux/rt-nxxu/  
+	2.1. Upstream URL: http://xserv.compress.to/xnor/linux/rt-nxxu/  
   
 =========
   
