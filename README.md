@@ -12,6 +12,10 @@ Modifications:
 2. Added simple_shaper.sh script for QOS into the firmware  
 Upstream URL: http://xserv.compress.to/xnor/linux/rt-nxxu/  
   
+Kudos to ```xnor``` for an excellent script. I merely added it to the builds  
+with tiny modifications for easier integration. You can ping xnor in the  
+oficial support thread: http://www.smallnetbuilder.com/forums/showthread.php?t=14300  
+  
 =========
   
 To build:  
