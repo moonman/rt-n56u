@@ -29,6 +29,14 @@ func_disable_kernel_param()
 	fi
 }
 
+func_set_kernel_param_to_value()
+{
+	cfg_file="$ROOTDIR/$CONFIG_LINUXDIR/.config"
+	if [ -n "`grep \^$1 $cfg_file`" ] ; then
+                sed -i "s/$1.*/$1=\"$2\"/" $cfg_file
+        fi
+}
+
 func_disable_busybox_param()
 {
 	cfg_file="$ROOTDIR/user/busybox/busybox-${busybox_id}/.config"
@@ -268,6 +276,13 @@ fi
 if [ "$CONFIG_FIRMWARE_INCLUDE_NFSD" != "y" -a "$CONFIG_FIRMWARE_INCLUDE_NFSC" != "y" -a "$CONFIG_FIRMWARE_INCLUDE_CIFS" != "y" ] ; then
 	func_disable_kernel_param "CONFIG_NETWORK_FILESYSTEMS"
 fi
+############################## BFQ ####################################
+if [ "$CONFIG_FIRMWARE_ENABLE_BFQ" != "y" ] ; then
+        func_set_kernel_param_to_value "CONFIG_DEFAULT_IOSCHED" "noop"
+        func_disable_kernel_param "CONFIG_DEFAULT_BFQ"
+        func_disable_kernel_param "CONFIG_IOSCHED_BFQ"
+fi
+#######################################################################
 echo --------------------------MAKE-DEP--------------------------------
 make dep
 echo --------------------------MAKE-ALL--------------------------------
