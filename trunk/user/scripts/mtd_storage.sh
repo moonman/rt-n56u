@@ -428,7 +428,7 @@ EOF
 	fi
 
        # create simple_shaper script
-        if [ ! -f "$script_sshaper" ] && [ ! -f "/lib/modules/$(uname -r)/kernel/net/sched/sch_htb.ko" ] ; then
+        if [ ! -f "$script_sshaper" ] && [ -f "/lib/modules/$(uname -r)/kernel/net/sched/sch_htb.ko" ] ; then
                 cat > "$script_sshaper" << 'EOF'
 #!/bin/sh
 #
