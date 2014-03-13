@@ -461,7 +461,7 @@ void stop_networkmap(void);
 void restart_networkmap(void);
 int start_dns_dhcpd(void);
 void stop_dns_dhcpd(void);
-int try_start_dns_dhcpd(void);
+int is_dns_dhcpd_run(void);
 int ddns_updated_main(int argc, char *argv[]);
 int update_ddns(void);
 int start_ddns(void);
@@ -564,7 +564,8 @@ void safe_remove_usb_modem(void);
 void unload_modem_modules(void);
 void reload_modem_modules(int modem_type, int reload);
 int  launch_modem_ras_pppd(int unit);
-int  perform_usb_modeswitch(char *vid, char *pid);
+int  launch_usb_modeswitch(int vid, int pid, int inquire);
+int  zerocd_main(int argc, char **argv);
 
 /* usb_devices.c */
 void detach_swap_partition(char *part_name);

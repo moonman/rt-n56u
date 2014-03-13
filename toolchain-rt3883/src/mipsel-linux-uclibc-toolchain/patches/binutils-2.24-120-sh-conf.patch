@@ -1,26 +1,19 @@
-r10231 | lethal | 2005-05-02 09:58:00 -0400 (Mon, 02 May 2005) | 13 lines
-
-Likewise, binutils has no idea about any of these new targets either, so we 
-fix that up too.. now we're able to actually build a real toolchain for 
-sh2a_nofpu- and other more ineptly named toolchains (and yes, there are more 
-inept targets than that one, really. Go look, I promise).
-
---- a/configure
-+++ b/configure
-@@ -1495,7 +1495,7 @@
+--- a/configure	2013-11-08 16:13:48.000000000 +0600
++++ b/configure	2014-02-09 01:43:01.000000000 +0600
+@@ -3792,7 +3792,7 @@
+     ;;
    mips*-*-*)
-     noconfigdirs="$noconfigdirs gprof"
      ;;
 -  sh-*-* | sh64-*-*)
 +  sh*-*-* | sh64-*-*)
      case "${target}" in
        sh*-*-elf)
           ;;
---- a/configure.ac
-+++ b/configure.ac
-@@ -712,7 +712,7 @@
+--- a/configure.ac	2013-12-02 15:32:22.000000000 +0600
++++ b/configure.ac	2014-02-09 01:43:29.000000000 +0600
+@@ -1128,7 +1128,7 @@
+     ;;
    mips*-*-*)
-     noconfigdirs="$noconfigdirs gprof"
      ;;
 -  sh-*-* | sh64-*-*)
 +  sh*-*-* | sh64-*-*)

@@ -1,21 +1,20 @@
-diff -Nura binutils-2.21.orig/ld/emultempl/elf32.em binutils-2.21/ld/emultempl/elf32.em
---- binutils-2.21.orig/ld/emultempl/elf32.em	2010-10-29 09:10:36.000000000 -0300
-+++ binutils-2.21/ld/emultempl/elf32.em	2010-12-10 09:26:56.746102724 -0300
-@@ -1270,6 +1270,8 @@
+--- a/ld/emultempl/elf32.em	2013-11-26 17:37:33.000000000 +0600
++++ b/ld/emultempl/elf32.em	2014-02-09 01:49:36.000000000 +0600
+@@ -1267,6 +1267,8 @@
  	      && command_line.rpath == NULL)
  	    {
  	      lib_path = (const char *) getenv ("LD_RUN_PATH");
-+	      if ((lib_path) && (strlen (lib_path) == 0))
-+	      	lib_path = NULL;
++              if ((lib_path) && (strlen (lib_path) == 0))
++		lib_path = NULL;
  	      if (gld${EMULATION_NAME}_search_needed (lib_path, &n,
  						      force))
  		break;
-@@ -1497,6 +1499,8 @@
+@@ -1518,6 +1520,8 @@
    rpath = command_line.rpath;
    if (rpath == NULL)
      rpath = (const char *) getenv ("LD_RUN_PATH");
 +  if ((rpath) && (strlen (rpath) == 0))
-+  	rpath = NULL;
++    rpath = NULL;
  
    for (abfd = link_info.input_bfds; abfd; abfd = abfd->link_next)
      if (bfd_get_flavour (abfd) == bfd_target_elf_flavour)
