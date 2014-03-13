@@ -141,8 +141,7 @@ index cc0b626..98f530e 100644
  static int pref_bias_clear_store __cpuinitdata;
  static int pref_bias_copy_load __cpuinitdata;
  static int pref_bias_copy_store __cpuinitdata;
-@@ -282,10 +244,15 @@ static inline void __cpuinit build_clear_pref(u32 **buf, 
-int off)
+@@ -282,10 +244,15 @@ static inline void __cpuinit build_clear_pref(u32 **buf, int off)
                 }
  }
  
