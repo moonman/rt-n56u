@@ -329,7 +329,7 @@ void __cpuinit build_clear_page(void)
 	uasm_resolve_relocs(relocs, labels);
 
 	pr_debug("Synthesized clear page handler (%u instructions).\n",
-		 (u32)(buf - &__clear_page_start));
+		(u32)(buf - &__clear_page_start));
 
 	pr_debug("\t.set push\n");
 	pr_debug("\t.set noreorder\n");
@@ -569,7 +569,6 @@ void __cpuinit build_copy_page(void)
 
 	pr_debug("Synthesized copy page handler (%u instructions).\n",
 		 (u32)(buf - &__copy_page_start));
-
 	pr_debug("\t.set push\n");
 	pr_debug("\t.set noreorder\n");
 	for (i = 0; i < (buf - &__copy_page_start); i++)

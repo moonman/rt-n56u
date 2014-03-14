@@ -58,21 +58,21 @@ ACLOCAL_AMFLAGS = -I m4
 AMDEP_FALSE = #
 AMDEP_TRUE = 
 AMTAR = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run tar
-AR = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-ar
+AR = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ar
 AS = gas
 AUTOCONF = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run autoconf
 AUTOHEADER = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run autoheader
 AUTOMAKE = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run automake-1.7
 AWK = gawk
-CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2
+CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2
 CCAS = $(CC)
 CCASFLAGS = $(CFLAGS)
 CCDEPMODE = depmode=gcc3
 CFLAGS = -O3 -funroll-loops -finline-functions -Wall -W -Winline -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -ffunction-sections -fdata-sections
-CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -E
+CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -E
 CPPFLAGS = -DFLaC__INLINE=__inline__ -DNDEBUG -I$(top_builddir) -I$(srcdir)/include -I$(top_srcdir)/include -I/root/rt-n56u/trunk/stage/include
-CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2
-CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2 -E
+CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2
+CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2 -E
 CXXDEPMODE = depmode=gcc3
 CXXFLAGS = -Wall -Wno-trigraphs -Wno-strict-aliasing -Wall -Wno-trigraphs -Wno-strict-aliasing
 CYGPATH_W = echo
@@ -162,10 +162,10 @@ PACKAGE_STRING =
 PACKAGE_TARNAME = 
 PACKAGE_VERSION = 
 PATH_SEPARATOR = :
-RANLIB = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-ranlib
+RANLIB = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ranlib
 SET_MAKE = 
 SHELL = /bin/bash
-STRIP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-strip
+STRIP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-strip
 VERSION = 1.2.1
 XMMS_CFLAGS = 
 XMMS_CONFIG = 

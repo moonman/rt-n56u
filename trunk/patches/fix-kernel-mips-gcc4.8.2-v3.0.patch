@@ -1,0 +1,225 @@
+diff -ruN linux-3.0.x/arch/mips/kernel/mips_ksyms.c b/arch/mips/kernel/mips_ksyms.c
+--- linux-3.0.x/arch/mips/kernel/mips_ksyms.c	2014-03-12 21:31:07.306361530 -0600
++++ b/arch/mips/kernel/mips_ksyms.c	2014-03-13 23:09:38.070770718 -0600
+@@ -5,7 +5,7 @@
+  * License.  See the file "COPYING" in the main directory of this archive
+  * for more details.
+  *
+- * Copyright (C) 1996, 97, 98, 99, 2000, 01, 03, 04, 05 by Ralf Baechle
++ * Copyright (C) 1996, 97, 98, 99, 2000, 01, 03, 04, 05, 12 by Ralf Baechle
+  * Copyright (C) 1999, 2000, 01 Silicon Graphics, Inc.
+  */
+ #include <linux/interrupt.h>
+@@ -35,6 +35,12 @@
+ EXPORT_SYMBOL(kernel_thread);
+ 
+ /*
++ * Functions that operate on entire pages.  Mostly used by memory management.
++ */
++EXPORT_SYMBOL(clear_page);
++EXPORT_SYMBOL(copy_page);
++
++/*
+  * Userspace access stuff.
+  */
+ EXPORT_SYMBOL(__copy_user);
+diff -ruN linux-3.0.x/arch/mips/mm/Makefile b/arch/mips/mm/Makefile
+--- linux-3.0.x/arch/mips/mm/Makefile	2014-03-12 21:31:07.321361530 -0600
++++ b/arch/mips/mm/Makefile	2014-03-13 23:12:22.140764599 -0600
+@@ -3,8 +3,8 @@
+ #
+ 
+ obj-y				+= cache.o dma-default.o extable.o fault.o \
+-				   init.o mmap.o tlbex.o tlbex-fault.o uasm.o \
+-				   page.o
++				   init.o mmap.o tlbex.o tlbex-fault.o page-funcs.o \
++ 				   uasm.o page.o
+ 
+ obj-$(CONFIG_32BIT)		+= ioremap.o pgtable-32.o
+ obj-$(CONFIG_64BIT)		+= pgtable-64.o
+diff -ruN linux-3.0.x/arch/mips/mm/page.c b/arch/mips/mm/page.c
+--- linux-3.0.x/arch/mips/mm/page.c	2014-03-12 21:31:07.322361530 -0600
++++ b/arch/mips/mm/page.c	2014-03-13 23:20:04.060747371 -0600
+@@ -6,6 +6,7 @@
+  * Copyright (C) 2003, 04, 05 Ralf Baechle (ralf@linux-mips.org)
+  * Copyright (C) 2007  Maciej W. Rozycki
+  * Copyright (C) 2008  Thiemo Seufer
++ * Copyright (C) 2012  MIPS Technologies, Inc.
+  */
+ #include <linux/init.h>
+ #include <linux/kernel.h>
+@@ -72,45 +73,6 @@
+ #define cpu_is_r4600_v1_x()	((read_c0_prid() & 0xfffffff0) == 0x00002010)
+ #define cpu_is_r4600_v2_x()	((read_c0_prid() & 0xfffffff0) == 0x00002020)
+ 
+-/*
+- * Maximum sizes:
+- *
+- * R4000 128 bytes S-cache:		0x058 bytes
+- * R4600 v1.7:				0x05c bytes
+- * R4600 v2.0:				0x060 bytes
+- * With prefetching, 16 word strides	0x120 bytes
+- */
+-
+-static u32 clear_page_array[0x120 / 4];
+-
+-#ifdef CONFIG_SIBYTE_DMA_PAGEOPS
+-void clear_page_cpu(void *page) __attribute__((alias("clear_page_array")));
+-#else
+-void clear_page(void *page) __attribute__((alias("clear_page_array")));
+-#endif
+-
+-EXPORT_SYMBOL(clear_page);
+-
+-/*
+- * Maximum sizes:
+- *
+- * R4000 128 bytes S-cache:		0x11c bytes
+- * R4600 v1.7:				0x080 bytes
+- * R4600 v2.0:				0x07c bytes
+- * With prefetching, 16 word strides	0x540 bytes
+- */
+-static u32 copy_page_array[0x540 / 4];
+-
+-#ifdef CONFIG_SIBYTE_DMA_PAGEOPS
+-void
+-copy_page_cpu(void *to, void *from) __attribute__((alias("copy_page_array")));
+-#else
+-void copy_page(void *to, void *from) __attribute__((alias("copy_page_array")));
+-#endif
+-
+-EXPORT_SYMBOL(copy_page);
+-
+-
+ static int pref_bias_clear_store __cpuinitdata;
+ static int pref_bias_copy_load __cpuinitdata;
+ static int pref_bias_copy_store __cpuinitdata;
+@@ -283,10 +245,15 @@
+ 		}
+ }
+ 
++extern u32 __clear_page_start;
++extern u32 __clear_page_end;
++extern u32 __copy_page_start;
++extern u32 __copy_page_end;
++
+ void __cpuinit build_clear_page(void)
+ {
+ 	int off;
+-	u32 *buf = (u32 *)&clear_page_array;
++	u32 *buf = &__clear_page_start;
+ 	struct uasm_label *l = labels;
+ 	struct uasm_reloc *r = relocs;
+ 	int i;
+@@ -357,17 +324,17 @@
+ 	uasm_i_jr(&buf, RA);
+ 	uasm_i_nop(&buf);
+ 
+-	BUG_ON(buf > clear_page_array + ARRAY_SIZE(clear_page_array));
++	BUG_ON(buf > &__clear_page_end);
+ 
+ 	uasm_resolve_relocs(relocs, labels);
+ 
+ 	pr_debug("Synthesized clear page handler (%u instructions).\n",
+-		 (u32)(buf - clear_page_array));
++		(u32)(buf - &__clear_page_start));
+ 
+ 	pr_debug("\t.set push\n");
+ 	pr_debug("\t.set noreorder\n");
+-	for (i = 0; i < (buf - clear_page_array); i++)
+-		pr_debug("\t.word 0x%08x\n", clear_page_array[i]);
++	for (i = 0; i < (buf - &__clear_page_start); i++)
++		pr_debug("\t.word 0x%08x\n", (&__clear_page_start)[i]);
+ 	pr_debug("\t.set pop\n");
+ }
+ 
+@@ -428,7 +395,7 @@
+ void __cpuinit build_copy_page(void)
+ {
+ 	int off;
+-	u32 *buf = (u32 *)&copy_page_array;
++	u32 *buf = &__copy_page_start;
+ 	struct uasm_label *l = labels;
+ 	struct uasm_reloc *r = relocs;
+ 	int i;
+@@ -596,21 +563,22 @@
+ 	uasm_i_jr(&buf, RA);
+ 	uasm_i_nop(&buf);
+ 
+-	BUG_ON(buf > copy_page_array + ARRAY_SIZE(copy_page_array));
++	BUG_ON(buf > &__copy_page_end);
+ 
+ 	uasm_resolve_relocs(relocs, labels);
+ 
+ 	pr_debug("Synthesized copy page handler (%u instructions).\n",
+-		 (u32)(buf - copy_page_array));
+-
++		 (u32)(buf - &__copy_page_start));
+ 	pr_debug("\t.set push\n");
+ 	pr_debug("\t.set noreorder\n");
+-	for (i = 0; i < (buf - copy_page_array); i++)
+-		pr_debug("\t.word 0x%08x\n", copy_page_array[i]);
++	for (i = 0; i < (buf - &__copy_page_start); i++)
++		pr_debug("\t.word 0x%08x\n", (&__copy_page_start)[i]);
+ 	pr_debug("\t.set pop\n");
+ }
+ 
+ #ifdef CONFIG_SIBYTE_DMA_PAGEOPS
++extern void clear_page_cpu(void *page);
++extern void copy_page_cpu(void *to, void *from);
+ 
+ /*
+  * Pad descriptors to cacheline, since each is exclusively owned by a
+diff -ruN linux-3.0.x/arch/mips/mm/page-funcs.S b/arch/mips/mm/page-funcs.S
+--- linux-3.0.x/arch/mips/mm/page-funcs.S	1969-12-31 17:00:00.000000000 -0700
++++ b/arch/mips/mm/page-funcs.S	2014-03-13 23:23:25.210739871 -0600
+@@ -0,0 +1,49 @@
++/*
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License.  See the file "COPYING" in the main directory of this archive
++ * for more details.
++ *
++ * Micro-assembler generated clear_page/copy_page functions.
++ *
++ * Copyright (C) 2012  MIPS Technologies, Inc.
++ */
++#include <asm/asm.h>
++#include <asm/regdef.h>
++
++/*
++ * Maximum sizes:
++ *
++ * R4000 128 bytes S-cache:            0x058 bytes
++ * R4600 v1.7:                         0x05c bytes
++ * R4600 v2.0:                         0x060 bytes
++ * With prefetching, 16 word strides   0x120 bytes
++ */
++EXPORT(__clear_page_start)
++#ifdef CONFIG_SIBYTE_DMA_PAGEOPS
++LEAF(clear_page_cpu)
++#else
++LEAF(clear_page)
++#endif
++1:     j       1b              /* Dummy, will be replaced. */
++       .space 288
++END(clear_page)
++EXPORT(__clear_page_end)
++
++/*
++ * Maximum sizes:
++ *
++ * R4000 128 bytes S-cache:            0x11c bytes
++ * R4600 v1.7:                         0x080 bytes
++ * R4600 v2.0:                         0x07c bytes
++ * With prefetching, 16 word strides   0x540 bytes
++ */
++EXPORT(__copy_page_start)
++#ifdef CONFIG_SIBYTE_DMA_PAGEOPS
++LEAF(copy_page_cpu)
++#else
++LEAF(copy_page)
++#endif
++1:     j       1b              /* Dummy, will be replaced. */
++       .space 1344
++END(copy_page)
++EXPORT(__copy_page_end)
