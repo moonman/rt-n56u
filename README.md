@@ -16,7 +16,8 @@ Kudos to ```xnor``` for an excellent script. I merely added it to the builds
 with tiny modifications for easier integration. You can ping xnor in the  
 oficial support thread: http://www.smallnetbuilder.com/forums/showthread.php?t=14300  
 3. simple_shaper doesn't need WAN interface to be set, as it is detected automagically now.  
-4. Added patch for newer systems with texinfo >= 5 to bootstrap cross-gcc
+4. Added patch for newer systems with texinfo >= 5 to bootstrap cross-gcc 4.4.7  
+5. Added gcc 4.7.3. All images are compiled with this now. TODO: get 4.8.2 to work  
   
 =========
   
