@@ -1,0 +1,43 @@
+#!/bin/bash
+
+CLEAR_TOOLCHAIN="NO"
+BUILD_TOOLCHAIN="NO"
+
+################################################
+
+if [ $BUILD_TOOLCHAIN = "YES" ]
+then
+  cd ../toolchain-rt3883
+
+  if [ $CLEAR_TOOLCHAIN = "YES" ]
+  then
+     ./clean_toolchain_3.0.x
+     ./clean_toolchain_3.4.x
+  fi
+
+  ./clean_sources
+  ./build_toolchain
+
+  ./clean_sources
+  ./build_toolchain_3.4.x
+   ./clean_sources
+fi
+
+cd ../trunk
+./clear_tree
+cp ./configs/n56u_qos.config ./.config
+./build_firmware
+cp ./images/RT-N* ../images/
+./clear_tree
+
+cp ./configs/n65u_qos.config ./.config
+./build_firmware
+cp ./images/RT-N* ../images/
+./clear_tree
+
+cp ./configs/n14u_qos_full.config ./.config
+./build_firmware
+cp ./images/RT-N* ../images/
+./clear_tree
+
+cp ./configs/n56u_qos.config ./.config
