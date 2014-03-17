@@ -115,7 +115,7 @@ mkdir -p $ROOTDIR/images
 echo --------------------------COPY-CONFIG-----------------------------
 ######################### FOR-ALL-DEVICES #############################
 ln -sf vendors/Ralink/$CONFIG_PRODUCT/config.arch config.arch
-#cp -f "$kernel_cf" "$ROOTDIR/$CONFIG_LINUXDIR/.config"
+cp -f "$kernel_cf" "$ROOTDIR/$CONFIG_LINUXDIR/.config"
 cp -f "$uclibc_cf" "$ROOTDIR/libc/uClibc-${uclibc_id}/.config"
 cp -f "$busybox_cf" "$ROOTDIR/user/busybox/busybox-${busybox_id}/.config"
 ############################# WI-FI ###################################
