@@ -16,7 +16,7 @@
 # To install in $HOME instead of /usr/local, use:
 #    make install prefix=$HOME
 
-CC=/root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2
+CC=/root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2
 
 CFLAGS=-Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -ffunction-sections -fdata-sections  -D_LARGEFILE64_SOURCE=1
 #CFLAGS=-O -DMAX_WBITS=14 -DMAX_MEM_LEVEL=7
@@ -27,8 +27,8 @@ CFLAGS=-Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/inclu
 SFLAGS=-Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -ffunction-sections -fdata-sections  -fPIC -D_LARGEFILE64_SOURCE=1
 LDFLAGS=-L/root/rt-n56u/trunk/stage/lib -Wl,--gc-sections 
 TEST_LDFLAGS=-L. libz.a
-LDSHARED=/root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -shared -Wl,-soname,libz.so.1,--version-script,zlib.map
-CPP=/root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -E
+LDSHARED=/root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -shared -Wl,-soname,libz.so.1,--version-script,zlib.map
+CPP=/root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -E
 
 STATICLIB=libz.a
 SHAREDLIB=libz.so
@@ -36,9 +36,9 @@ SHAREDLIBV=libz.so.1.2.6
 SHAREDLIBM=libz.so.1
 LIBS=$(STATICLIB) $(SHAREDLIBV)
 
-AR=/root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ar
+AR=/root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-ar
 ARFLAGS=rc
-RANLIB=/root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ranlib
+RANLIB=/root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-ranlib
 LDCONFIG=ldconfig
 LDSHAREDLIBC=-lc
 TAR=tar

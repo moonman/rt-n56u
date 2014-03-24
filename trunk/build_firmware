@@ -232,6 +232,7 @@ if [ "$CONFIG_FIRMWARE_INCLUDE_QOS" != "y" ] ; then
 	func_disable_kernel_param "CONFIG_NETFILTER_XT_TARGET_CLASSIFY"
 	func_disable_kernel_param "CONFIG_NETFILTER_XT_TARGET_IMQ"
 	func_disable_kernel_param "CONFIG_IMQ"
+	func_disable_kernel_param "CONFIG_NETFILTER_XT_MATCH_LAYER7"
 fi
 ############################# IMQ #####################################
 if [ "$CONFIG_FIRMWARE_INCLUDE_IMQ" != "y" ] ; then
