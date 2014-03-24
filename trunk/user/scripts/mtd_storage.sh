@@ -185,7 +185,7 @@ EOF
 ### hardware nat and configure for your
 ### connection in /etc/storage/qos.conf.
 ####################################################
-#sleep 5 && /sbin/qos.sh on >/dev/null 2>&1 &
+#sleep 5 && /sbin/qos.sh >/dev/null 2>&1 &
 
 EOF
 		chmod 755 "$script_postw"
