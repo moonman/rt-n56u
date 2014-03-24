@@ -9,17 +9,24 @@ Upstream: http://code.google.com/p/rt-n56u/
 
 Modifications:  
 1. Added BFQ I/O scheduler  
-2. Added simple_shaper.sh script for QOS into the firmware  
-Upstream URL: http://xserv.compress.to/xnor/linux/rt-nxxu/  
+2. Added OpenWRT QOS script for QOS into the firmware   
+3. Added patch for newer systems with texinfo >= 5 to bootstrap cross-gcc 4.4.7  
+4. Added gcc 4.7.3. All images are compiled with this now. TODO: get 4.8.2 to work  
   
-Kudos to ```xnor``` for an excellent script. I merely added it to the builds  
-with tiny modifications for easier integration. You can ping xnor in the  
-oficial support thread: http://www.smallnetbuilder.com/forums/showthread.php?t=14300  
-3. simple_shaper doesn't need WAN interface to be set, as it is detected automagically now.  
-4. Added patch for newer systems with texinfo >= 5 to bootstrap cross-gcc 4.4.7  
-5. Added gcc 4.7.3. All images are compiled with this now. TODO: get 4.8.2 to work  
-  
-=========
+=========  
+
+How-To:
+
+0. If coming not from stock f/w, reset internal storage after flashing:  
+Advanced Settings -> Administration -> Settings ->  
+Router Internal Storage (/etc/storage) -> Reset  
+1. Disable HW Nat:  
+Advanced Settings - WAN - Hardware offload NAT/Routing IPv4 in the Router configuration  
+2. SSH into the router and modify /etc/storage/qos.conf for your connection  
+3. Advanced Settings -> Administration -> Tweaks -> Run after WAN up/down Events  
+Uncomment the last line  
+
+=========  
   
 To build:  
 1. Follow the steps outlined here:  
