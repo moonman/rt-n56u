@@ -123,7 +123,7 @@ func_fill()
 	script_postw="$dir_storage/post_wan_script.sh"
 	script_vpnsc="$dir_storage/vpns_client_script.sh"
 	script_vpncs="$dir_storage/vpnc_server_script.sh"
-	script_sshaper="$dir_storage/simple_shaper.sh"
+	config_qos="$dir_storage/qos.conf"
 	
 	user_hosts="$dir_dnsmasq/hosts"
 	user_dnsmasq_conf="$dir_dnsmasq/dnsmasq.conf"
@@ -181,15 +181,11 @@ EOF
 ### \$2 - WAN interface name (e.g. eth3 or ppp0)
 ###
 ### Uncomment the last line to start
-### simple_shaper. Don't forget to disable
-### hardware nat and tune your connection
-### speed variables in the script.
-### Do not change UPDEV as it is automatically set.
-###
-### For more info please visit
-### http://xserv.compress.to/xnor/linux/rt-nxxu/qos/
+### qos. Don't forget to disable
+### hardware nat and configure for your
+### connection in /etc/storage/qos.conf.
 ####################################################
-#sleep 5 && /etc/storage/simple_shaper.sh on >/dev/null 2>&1 &
+#sleep 5 && /sbin/qos.sh on >/dev/null 2>&1 &
 
 EOF
 		chmod 755 "$script_postw"
@@ -427,128 +423,127 @@ EOF
 		fi
 	fi
 
-       # create simple_shaper script
-        if [ ! -f "$script_sshaper" ] && [ -f "/lib/modules/$(uname -r)/kernel/net/sched/sch_htb.ko" ] ; then
-                cat > "$script_sshaper" << 'EOF'
-#!/bin/sh
-#
-# Copyright (c) 2013, xnor
-# http://xserv.shell.la/xnor/linux/rt-nxxu/qos
-#
+       # create qos config file
+        if [ ! -f "$config_qos" ] && [ -f "/lib/modules/$(uname -r)/kernel/net/sched/sch_htb.ko" ] ; then
+                cat > "$config_qos" << 'EOF'
 
-############ CONFIGURATION ############
-### TCP: Guild Wars 2
-# PRIO_TCP_PORT="6112 "
-PRIO_TCP_PORT=""
+################################################################################
+##
+## User configuration of the QoS script
+##
+## At a minimum, set the DOWNLOAD and UPLOAD variables below. Setting these
+## slightly slower than the actual line speeds is critical to good QoS
+## performance. With download and upload speeds set too high, the traffic queues
+## in the modem (upload) and on the ISP side (download) will quickly fill up. As
+## these queues can be very long --on the order of several seconds-- filling
+## them will prohibit any meaningful traffic shaping.
+##
+## The default configuration, with the proper upload and download speeds set,
+## should be adequate for most situations to separate out low-priority peer-to
+## -peer traffic (eMule, Bittorrent, etc.) from interactive traffic such as web
+## browsing and SSH sessions.
+##
+## The configuration can be refined by modifying the settings below. As an
+## example, consider including support for VoIP. This may be accomplished by
+## adding the IP address of a VoIP adapter to the IP_EXPR variable (e.g.
+## IP_EXPR="192.168.1.10"). Doing so will elevate the status of traffic to and
+## from the VoIP box to 'express'.
+##
+## In general, the configuration of the QoS script requires the setting of
+## several variables. Most variables expect a space separated list of elements
+## (ports, IP addresses, protocols). Adding an element to a list will, based on
+## the variable name, either promote a certain connection to 'express' (highest
+## priority) or 'priority' status, or demote it to 'bulk' status. The default
+## status for all traffic is 'normal'. An example of setting a configuration
+## variable to classify traffic is the statement
+##
+## TCP_PRIO="80 443"
+##
+## Including this line in the configuration will ensure that all TCP traffic to
+## the listed ports (in this particular case for the http and https protocols)
+## will be treated as 'priority' traffic.
+##
+## Another example (from the default configuration) is:
+##
+## TCP_BULK="1024: 21"
+##
+## which adds port 21 (the port used for ftp) and all ports 1024 and up to the
+## list of destination ports for 'bulk' traffic. The result is that ftp
+## downloads get a low priority, as does traffic to non-reserved ports (mostly
+## peer-to-peer protocols). The notation '1024:' indicates a port range, in this
+## case including all ports 1024 and higher. Another example of a port range is
+## ':10' which means all ports from 0 to 10. A range from 10 to 20 is denoted as
+## '10:20'.
+##
+## It is important to note that some variables take precedence over others. This
+## becomes significant in cases where the same traffic is identified by
+## different rules. An example is adding a UDP game port above 1024 to the
+## express list. In the default configuration, all high ports (1024:) are
+## included in the UDP_BULK variable. Without knowing the order of the rules, it
+## is not possible to determine what the status of traffic to the game port will
+## be. It turns out, the traffic will be classified as priority, since UDP_EXPR
+## takes precedence over UDP_BULK.
+##
+## The order of the variables is (lowest precedence first):
+## L7_BULK, L7_PRIO, L7_EXPR, TCP_BULK, UDP_BULK, TCP_PRIO,
+## UDP_PRIO, TCP_EXPR, UDP_EXPR,  TOS_BULK, TOS_PRIO, TOS_EXPR,
+## DSCP_BULK, DSCP_PRIO, DSCP_EXPR, IP_BULK, IP_PRIO, IP_EXPR
+##
+################################################################################
 
-### UDP: Half Life, Teamspeak 3 default voice
-# PRIO_UDP_PORT="27000:27015 9987"
-PRIO_UDP_PORT=""
+# Download speed in kilobits per second
+# Set 5% - 10% lower than *measured* line speed (set to zero to disable)
+DOWNLOAD=5000
 
-QUEUESIZE=127
-UPMTU=1500
-UPMAX=2450
-UPMIN=$(($UPMAX/3))
-UP_C10=$UPMIN
-UP_C11=$UPMIN
-UP_C12=$UPMIN
+# Upload speed in kilobits per second
+# Set 5% - 10% lower than *measured* line speed (set to zero to disable)
+UPLOAD=700
 
-########## END CONFIGURATION ##########
+# Bulk, prio and express Layer 7 protocol matches
+#L7_BULK="bittorrent edonkey gnutella"
+#L7_PRIO=""
+#L7_EXPR=""
 
-UPDEV=`nvram get wan_ifname`
-UPCHAIN=UPSHAPE
-IPT=/bin/iptables
-IP=/bin/ip
-TC=/bin/tc
-RMM=/sbin/rmmod
-INM=/sbin/insmod
-KERNL=$(uname -r)
+# Destination ports for classifying 'bulk' traffic
+TCP_BULK="1024: 21"
+UDP_BULK="1024:"
 
-echo "Simple Shaper"
+# Destination ports for classifying 'priority' traffic
+TCP_PRIO="22 23 4040 5800:5810 5900:5910"
+UDP_PRIO=""
 
-# check arguments
-if [ $# -ne 1 -o '(' "$1" != "on" -a "$1" != "off" ')'  ]
-then
-        echo "Usage: $0 on|off"
-        exit 1;
-fi
+# Destination ports for classifying 'express' traffic
+TCP_EXPR="53"
+UDP_EXPR="53"
 
-echo "UP MAX: $UPMAX, MIN: $UPMIN, MTU: $UPMTU"
+# ToS (Type of Service) matches (egress only)
+#TOS_BULK="0x02"
+#TOS_PRIO=""
+#TOS_EXPR="0x10"
 
-# clean up
-echo "cleaning up ... "
-        ###### up
-        ### iptables
-        $IPT -t mangle -D POSTROUTING -o $UPDEV -j $UPCHAIN 2>/dev/null
-        $IPT -t mangle -F $UPCHAIN 2>/dev/null
-        $IPT -t mangle -X $UPCHAIN 2>/dev/null
+# DSCP (Differentiated Services Code Point) matches (egress only)
+DSCP_BULK=""
+DSCP_PRIO=""
+DSCP_EXPR=""
 
-        ### tc
-        $TC qdisc del dev $UPDEV root 2>/dev/null
+# LAN IP addresses for 'bulk', 'priority' and 'express' traffic
+# IP address can include a port number or range, such as 192.168.1.1:80 or
+# 192.168.1.1:5900:5910. To include all ports, specify the IP address only.
+IP_BULK=""
+IP_PRIO=""
+IP_EXPR="192.168.1.200"
 
-        ### modules
-        $RMM xt_length 2>/dev/null
-echo "done."
+# Define custom QoS interface. Defaults to wan interface automatically.
+#QOS_IF=eth1
 
+# Enable 'small UDP packets get priority' feature.
+# Sets the maximum length for priority UDP packets.
+UDP_LENGTH=256
 
-# set up
-if [ "$1" != "on" ]
-then
-        exit 0;
-fi
-echo "setting up ..."
-        ### modules
-        $INM "/lib/modules/$KERNL/kernel/net/netfilter/xt_length.ko"
-
-        ###### up
-        ### device
-        $IP link set $UPDEV txqueuelen $UPMTU up
-
-        ### tc
-        $TC qdisc add dev $UPDEV root handle 1:0 htb default 12 r2q $(($UPMIN*125/1500))
-        $TC class add dev $UPDEV parent 1:0 classid 1:1 htb rate ${UPMAX}kbit ceil ${UPMAX}kbit cburst $(($UPMAX*14))kbit
-
-        $TC class add dev $UPDEV parent 1:1 classid 1:10 htb rate ${UP_C10}kbit ceil ${UPMAX}kbit prio 0
-        $TC class add dev $UPDEV parent 1:1 classid 1:11 htb rate ${UP_C11}kbit ceil ${UPMAX}kbit prio 1
-        $TC class add dev $UPDEV parent 1:1 classid 1:12 htb rate ${UP_C12}kbit ceil ${UPMAX}kbit prio 2
-
-        $TC filter add dev $UPDEV parent 1:0 prio 0 protocol ip handle 10 fw flowid 1:10
-        $TC filter add dev $UPDEV parent 1:0 prio 0 protocol ip handle 11 fw flowid 1:11
-        $TC filter add dev $UPDEV parent 1:0 prio 0 protocol ip handle 12 fw flowid 1:12
-
-        $TC qdisc add dev $UPDEV parent 1:10 handle 10: sfq perturb 10 limit $QUEUESIZE
-        $TC qdisc add dev $UPDEV parent 1:11 handle 11: sfq perturb 10 limit $QUEUESIZE
-        $TC qdisc add dev $UPDEV parent 1:12 handle 12: sfq perturb 10 limit $QUEUESIZE
-
-        ### iptables
-        $IPT -t mangle -N $UPCHAIN
-        ## 10: time critical / high-prio interactive
-        $IPT -t mangle -A $UPCHAIN -p icmp --icmp-type echo-request -m length --length :84 -j MARK --set-mark 10 # small ping requests
-        $IPT -t mangle -A $UPCHAIN -p udp --dport 53 -j MARK --set-mark 10 # UDP DNS
-        $IPT -t mangle -A $UPCHAIN -p tcp -m length --length :40 -j MARK --set-mark 10 # small TCP packets
-        $IPT -t mangle -A $UPCHAIN -m mark --mark 10 -j RETURN
-
-        ## 11: games / interative
-        for PORT in $PRIO_TCP_PORT
-        do
-                $IPT -t mangle -A $UPCHAIN -p tcp --dport $PORT -j MARK --set-mark 11
-        done
-        for PORT in $PRIO_UDP_PORT
-        do
-                $IPT -t mangle -A $UPCHAIN -p udp --dport $PORT -j MARK --set-mark 11
-        done
-        $IPT -t mangle -A $UPCHAIN -m mark --mark 11 -j RETURN
-
-        ## 12: default
-        #$IPT -t mangle -A $UPCHAIN -j MARK --set-mark 12
-        #$IPT -t mangle -A $UPCHAIN -m mark --mark 12 -j RETURN
-
-        ## route traffic through chain
-        $IPT -t mangle -A POSTROUTING -o $UPDEV -j $UPCHAIN
-echo "done."
+# Set to 1 to enable logging of packets to syslog
+DEBUG=0
 
 EOF
-                chmod 755 "$script_sshaper"
         fi
 }
 
