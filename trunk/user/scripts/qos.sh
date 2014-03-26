@@ -10,7 +10,7 @@
 # If no interface defined, use WAN interface
 [ "$QOS_IF" ] || QOS_IF=$(nvram get wan_ifname)
 
-if true; then
+if [ "$QOS_ENABLED" = "YES" ]; then
   # Length of burst buffers in ms (must be larger than kernel jiffy of 10ms)
   DBURST_D=10
   DBURST_U=10
@@ -32,9 +32,6 @@ if true; then
   modprobe xt_dscp >&- 2>&-
   modprobe xt_DSCP >&- 2>&-
   modprobe sch_red >&- 2>&-
-
-  # To enable logging
-  [ "$DEBUG" -eq 1 ] && modprobe xt_LOG.ko >&- 2>&-
 
   iptables -t mangle -F
   iptables -t mangle -X

@@ -179,13 +179,6 @@ EOF
 ### Called after internal WAN up/down action
 ### \$1 - WAN action (up/down)
 ### \$2 - WAN interface name (e.g. eth3 or ppp0)
-###
-### Uncomment the last line to start
-### qos. Don't forget to disable
-### hardware nat and configure for your
-### connection in /etc/storage/qos.conf.
-####################################################
-#sleep 5 && /sbin/qos.sh >/dev/null 2>&1 &
 
 EOF
 		chmod 755 "$script_postw"
@@ -426,7 +419,6 @@ EOF
        # create qos config file
         if [ ! -f "$config_qos" ] && [ -f "/lib/modules/$(uname -r)/kernel/net/sched/sch_htb.ko" ] ; then
                 cat > "$config_qos" << 'EOF'
-
 ################################################################################
 ##
 ## User configuration of the QoS script
@@ -490,6 +482,10 @@ EOF
 ## DSCP_BULK, DSCP_PRIO, DSCP_EXPR, IP_BULK, IP_PRIO, IP_EXPR
 ##
 ################################################################################
+
+# Enable or disable qos script
+# Set this to YES to enable QOS
+QOS_ENABLED="NO"
 
 # Download speed in kilobits per second
 # Set 5% - 10% lower than *measured* line speed (set to zero to disable)

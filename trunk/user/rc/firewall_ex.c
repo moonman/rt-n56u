@@ -1906,6 +1906,7 @@ start_firewall_ex(char *wan_if, char *wan_ip)
 	char *lan_if, *lan_ip;
 	char *opt_iptables_script = "/opt/bin/update_iptables.sh";
 	char *int_iptables_script = SCRIPT_POST_FIREWALL;
+	char *qos_script = "/sbin/qos.sh";
 	
 	if (get_ap_mode())
 		return -1;
@@ -1987,8 +1988,14 @@ start_firewall_ex(char *wan_if, char *wan_ip)
 	fput_int("/proc/sys/net/ipv4/tcp_rfc1337", 1);
 	fput_int("/proc/sys/net/ipv4/tcp_syncookies", nvram_get_int("fw_syn_cook"));
 
+
+        if (check_if_file_exist(qos_script))
+                doSystem("%s", qos_script);
+
+
 	if (check_if_file_exist(int_iptables_script))
 		doSystem("%s", int_iptables_script);
+
 
 	if (check_if_file_exist(opt_iptables_script))
 		doSystem("%s update", opt_iptables_script);
