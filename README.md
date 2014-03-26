@@ -25,6 +25,8 @@ Advanced Settings -> WAN -> Hardware offload NAT/Routing IPv4 -> Disable
 2. SSH into the router and modify /etc/storage/qos.conf for your connection  
 3. Advanced Settings -> Administration -> Tweaks -> Run after WAN up/down Events  
 Uncomment the last line  
+OR  
+if on build >= *3.8-080-moonman-3 change QOS_ENABLED variable in qos.conf to YES
 
 =========  
   
