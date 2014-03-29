@@ -2439,6 +2439,11 @@ static int firmware_caps_hook(int eid, webs_t wp, int argc, char_t **argv)
 #else
 	int has_usb3 = 0;
 #endif
+#if defined(EAP_PEAP)
+	int has_peap = 1;
+#else
+	int has_peap = 0;
+#endif
 #if defined(SUPPORT_HTTPS)
 	int has_https = 1;
 #else
@@ -2502,6 +2507,7 @@ static int firmware_caps_hook(int eid, webs_t wp, int argc, char_t **argv)
 	websWrite(wp,
 		"function support_ipv6() { return %d;}\n"
 		"function support_ipv6_ppe() { return %d;}\n"
+		"function support_peap() { return %d;}\n"
 		"function support_https() { return %d;}\n"
 		"function support_min_vlan() { return %d;}\n"
 		"function support_pcie_usb3() { return %d;}\n"
@@ -2517,6 +2523,7 @@ static int firmware_caps_hook(int eid, webs_t wp, int argc, char_t **argv)
 		"function support_2g_stream_rx() { return %d;}\n",
 		has_ipv6,
 		has_ipv6_ppe,
+		has_peap,
 		has_https,
 		min_vlan_ext,
 		has_usb3,
@@ -3957,7 +3964,8 @@ check_nvram_header(char *buf, long *filelen)
 static int
 check_image_header(char *buf, long *filelen)
 {
-	char pid_ralink[20], pid_asus[8];
+	int pid_asus_len;
+	char pid_asus[16];
 	image_header_t *hdr = (image_header_t *)buf;
 
 	/* check header magic */
@@ -3966,10 +3974,12 @@ check_image_header(char *buf, long *filelen)
 		return -1;
 	}
 
-	strncpy(pid_ralink, buf+32, 16);
-	strncpy(pid_asus, buf+36, 7);
-	pid_ralink[16] = 0;
-	pid_asus[7] = 0;
+	pid_asus_len = strlen(BOARD_PID);
+	if (pid_asus_len > 12)
+		pid_asus_len = 12;
+
+	strncpy(pid_asus, buf+36, pid_asus_len);
+	pid_asus[pid_asus_len] = 0;
 
 	if (strcmp(pid_asus, BOARD_PID) != 0) {
 		httpd_log("%s: Incorrect image ProductID: %s! Expected is %s.", "Firmware update", pid_asus, BOARD_PID);

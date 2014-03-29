@@ -39,10 +39,14 @@ get_wireless_mac(int is_5ghz)
 {
 	char macaddr[18];
 	unsigned char buffer[ETHER_ADDR_LEN];
-#if (BOARD_5G_IN_SOC) || (!BOARD_HAS_5G_RADIO)
+#if BOARD_5G_IN_SOC
 	int i_offset = (is_5ghz) ? OFFSET_MAC_ADDR_WSOC : OFFSET_MAC_ADDR_INIC;
 #elif BOARD_2G_IN_SOC
+#if BOARD_HAS_5G_RADIO
 	int i_offset = (is_5ghz) ? OFFSET_MAC_ADDR_INIC : OFFSET_MAC_ADDR_WSOC;
+#else
+	int i_offset = OFFSET_MAC_ADDR_WSOC;
+#endif
 #endif
 	memset(buffer, 0, sizeof(buffer));
 	memset(macaddr, 0, sizeof(macaddr));
@@ -52,7 +56,11 @@ get_wireless_mac(int is_5ghz)
 	}
 
 	ether_etoa(buffer, macaddr);
+#if BOARD_HAS_5G_RADIO
 	printf("%s EEPROM MAC address: %s\n", (is_5ghz) ? "5GHz" : "2.4GHz", macaddr);
+#else
+	printf("%s EEPROM MAC address: %s\n", "2.4GHz", macaddr);
+#endif
 
 	return 0;
 }
@@ -61,10 +69,14 @@ int
 set_wireless_mac(int is_5ghz, const char *mac)
 {
 	unsigned char ea[ETHER_ADDR_LEN];
-#if (BOARD_5G_IN_SOC) || (!BOARD_HAS_5G_RADIO)
+#if BOARD_5G_IN_SOC
 	int i_offset = (is_5ghz) ? OFFSET_MAC_ADDR_WSOC : OFFSET_MAC_ADDR_INIC;
 #elif BOARD_2G_IN_SOC
+#if BOARD_HAS_5G_RADIO
 	int i_offset = (is_5ghz) ? OFFSET_MAC_ADDR_INIC : OFFSET_MAC_ADDR_WSOC;
+#else
+	int i_offset = OFFSET_MAC_ADDR_WSOC;
+#endif
 #endif
 	if (ether_atoe(mac, ea)) {
 		if (FWrite(ea, i_offset, ETHER_ADDR_LEN) == 0) {
@@ -587,6 +599,15 @@ static int gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 			i_channel_max = 11;
 		else if (i_val == 5) // Debug
 			i_channel_max = 14;
+		
+		if (is_soc_ap) {
+			const char *p_single_sku = "/etc/Wireless/RT2860/SingleSKU.dat";
+			unlink(p_single_sku);
+			if (i_val == 0) // USA
+				symlink("/etc_ro/Wireless/SingleSKU_FCC.dat", p_single_sku);
+			else
+				symlink("/etc_ro/Wireless/SingleSKU_CE.dat", p_single_sku);
+		}
 	}
 
 	//CountryRegion for A band
