@@ -527,14 +527,21 @@ DSCP_EXPR=""
 # 192.168.1.1:5900:5910. To include all ports, specify the IP address only.
 IP_BULK=""
 IP_PRIO=""
-IP_EXPR="192.168.1.200"
+IP_EXPR=""
 
 # Define custom QoS interface. Defaults to wan interface automatically.
 #QOS_IF=eth1
 
 # Enable 'small UDP packets get priority' feature.
-# Sets the maximum length for priority UDP packets.
+# Sets the maximum length for priority UDP packets. Set to 0 to disable.
 UDP_LENGTH=256
+
+# Enable 'small TCP packets get priority on certain ports' feature.
+# Sets the maximum length for priority TCP packets. Set to 0 to disable.
+TCP_LENGTH=512
+# Sets the ports with prioritized small packets.
+# Has no effect if TCP_LENGTH=0
+TCP_LENGTH_PORTS="80,443"
 
 # Set to 1 to enable logging of packets to syslog
 DEBUG=0

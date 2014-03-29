@@ -238,6 +238,9 @@ if [ "$QOS_ENABLED" = "YES" ]; then
 
   # Small UDP packets (most likely games) get high priority
   [ "$UDP_LENGTH" -gt 0 ] && iptables -t mangle -A mark_chain -p udp -m length --length :$UDP_LENGTH -j MARK --set-mark 1
+
+  # Small TCP packets get high priority
+  [ "$TCP_LENGTH" -gt 0 ] && iptables -t mangle -A mark_chain -p tcp -m multiport --dports $TCP_LENGTH_PORTS -m length --length :$TCP_LENGTH -j MARK --set-mark 1
   ######################################################################################################
 
   ###################################### INGRESS CHAIN #################################################
