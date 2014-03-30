@@ -477,9 +477,9 @@ EOF
 ## takes precedence over UDP_BULK.
 ##
 ## The order of the variables is (lowest precedence first):
-## L7_BULK, L7_PRIO, L7_EXPR, TCP_BULK, UDP_BULK, TCP_PRIO,
-## UDP_PRIO, TCP_EXPR, UDP_EXPR,  TOS_BULK, TOS_PRIO, TOS_EXPR,
-## DSCP_BULK, DSCP_PRIO, DSCP_EXPR, IP_BULK, IP_PRIO, IP_EXPR
+## TCP_BULK, UDP_BULK, TCP_PRIO, UDP_PRIO, TCP_EXPR, UDP_EXPR,
+## TOS_BULK, TOS_PRIO, TOS_EXPR, DSCP_BULK, DSCP_PRIO, DSCP_EXPR, 
+## IP_BULK, IP_PRIO, IP_EXPR
 ##
 ################################################################################
 
@@ -494,11 +494,6 @@ DOWNLOAD=5000
 # Upload speed in kilobits per second
 # Set 5% - 10% lower than *measured* line speed (set to zero to disable)
 UPLOAD=700
-
-# Bulk, prio and express Layer 7 protocol matches
-#L7_BULK="bittorrent edonkey gnutella"
-#L7_PRIO=""
-#L7_EXPR=""
 
 # Destination ports for classifying 'bulk' traffic
 TCP_BULK="1024: 21"
@@ -530,7 +525,7 @@ IP_PRIO=""
 IP_EXPR=""
 
 # Define custom QoS interface. Defaults to wan interface automatically.
-#QOS_IF=eth1
+#QOS_IF=eth3
 
 # Enable 'small UDP packets get priority' feature.
 # Sets the maximum length for priority UDP packets. Set to 0 to disable.
@@ -539,9 +534,10 @@ UDP_LENGTH=256
 # Enable 'small TCP packets get priority on certain ports' feature.
 # Sets the maximum length for priority TCP packets. Set to 0 to disable.
 TCP_LENGTH=512
+
 # Sets the ports with prioritized small packets.
 # Has no effect if TCP_LENGTH=0
-TCP_LENGTH_PORTS="80,443"
+TCP_LENGTH_PORTS="80 443"
 
 # Set to 1 to enable logging of packets to syslog
 DEBUG=0

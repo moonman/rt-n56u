@@ -28,7 +28,7 @@ if [ "$QOS_ENABLED" = "YES" ]; then
   modprobe imq numdevs=1 >&- 2>&-
   modprobe xt_IMQ >&- 2>&-
   modprobe ipt_ipp2p >&- 2>&-
-  modprobe xt_layer7 >&- 2>&-
+  # modprobe xt_layer7 >&- 2>&-
   modprobe xt_dscp >&- 2>&-
   modprobe xt_DSCP >&- 2>&-
   modprobe sch_red >&- 2>&-
@@ -190,42 +190,6 @@ if [ "$QOS_ENABLED" = "YES" ]; then
     iptables -t mangle -A mark_chain -m mark --mark 0 -p tcp --dport $PORT -j MARK --set-mark 4
   done
 
-#  # Mark expr packets based on ipp2p match
-#  ALL_PROTOS=""
-#  for PROTO in $IPP2P_EXPR; do
-#    ALL_PROTOS="${ALL_PROTOS}--$PROTO "
-#  done
-#  [ "$ALL_PROTOS" ] && iptables -t mangle -A mark_chain -m mark --mark 0 -m ipp2p $ALL_PROTOS -j MARK --set-mark 1
-#
-#  # Mark prio packets based on ipp2p match
-#  ALL_PROTOS=""
-#  for PROTO in $IPP2P_PRIO; do
-#    ALL_PROTOS="${ALL_PROTOS}--$PROTO "
-#  done
-#  [ "$ALL_PROTOS" ] && iptables -t mangle -A mark_chain -m mark --mark 0 -m ipp2p $ALL_PROTOS -j MARK --set-mark 2
-#
-#  # Mark bulk packets based on ipp2p match
-#  ALL_PROTOS=""
-#  for PROTO in $IPP2P_BULK; do
-#    ALL_PROTOS="${ALL_PROTOS}--$PROTO "
-#  done
-#  [ "$ALL_PROTOS" ] && iptables -t mangle -A mark_chain -m mark --mark 0 -m ipp2p $ALL_PROTOS -j MARK --set-mark 4
-
-  # Mark expr packets based on layer7 match
-  for PROTO in $L7_EXPR; do
-    iptables -t mangle -A mark_chain -m mark --mark 0 -m layer7 --l7proto $PROTO -j MARK --set-mark 1
-  done
-
-  # Mark prio packets based on layer7 match
-  for PROTO in $L7_PRIO; do
-    iptables -t mangle -A mark_chain -m mark --mark 0 -m layer7 --l7proto $PROTO -j MARK --set-mark 2
-  done
-
-  # Mark bulk packets based on layer7 match
-  for PROTO in $L7_BULK; do
-    iptables -t mangle -A mark_chain -m mark --mark 0 -m layer7 --l7proto $PROTO -j MARK --set-mark 4
-  done
-
   # Default is normal priority (to make sure every packet on WAN interface gets marked)
   iptables -t mangle -A mark_chain -m mark --mark 0 -j MARK --set-mark 3
 
@@ -240,7 +204,11 @@ if [ "$QOS_ENABLED" = "YES" ]; then
   [ "$UDP_LENGTH" -gt 0 ] && iptables -t mangle -A mark_chain -p udp -m length --length :$UDP_LENGTH -j MARK --set-mark 1
 
   # Small TCP packets get high priority
-  [ "$TCP_LENGTH" -gt 0 ] && iptables -t mangle -A mark_chain -p tcp -m multiport --dports $TCP_LENGTH_PORTS -m length --length :$TCP_LENGTH -j MARK --set-mark 1
+  if [ "$TCP_LENGTH" -gt 0 ]; then
+    for PORT in $TCP_LENGTH_PORTS; do
+      iptables -t mangle -A mark_chain -p tcp --dport $PORT -m length --length :$TCP_LENGTH -j MARK --set-mark 1
+    done
+  fi
   ######################################################################################################
 
   ###################################### INGRESS CHAIN #################################################
