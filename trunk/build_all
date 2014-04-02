@@ -6,19 +6,44 @@ MY_VERSION=7
 CLEAR_TOOLCHAIN="NO"
 BUILD_TOOLCHAIN="NO"
 
-BUILD_FIRMWARE_GEN="YES"
-## Only used if BUILD_FIRMWARE_GEN="YES"##
-BUILD_FIRMWARE_N56U="YES"
-BUILD_FIRMWARE_N65U="YES"
-BUILD_FIRMWARE_N14U="YES"
+BUILD_FIRMWARE="YES"
+## Only used if BUILD_FIRMWARE="YES"##
+BUILD_FIRMWARE_CF=(n56u_qos_k3.0.config \
+		   n56u_qos.config \
+		   n65u_qos.config \
+		   n14u_qos_full.config)
 ################################################
 
-
+# $1 - config file
 change_version()
 {
   sed -i "s/\(CONFIG_FIRMWARE_BUILDS_VER\=\"[0-9]*-moonman-\).*/\1$MY_VERSION\"/" $1
 }
 
+
+# $1 - config file name
+evaluate_path()
+{
+  case "$1" in
+	n56u_qos_k3.0.config)
+		_path="N56U/k3.0"
+		;;
+	n56u_qos.config)
+		_path="N56U/k3.4"
+		;;
+	n65u_qos.config)
+		_path="N65U"
+		;;
+	n14u_qos_full.config)
+		_path="N14U"
+		;;
+	*)
+		echo "Unknown config. Aborting..." && exit 1
+		;;
+  esac
+  echo "$_path"
+
+}
 
 if [ $BUILD_TOOLCHAIN = "YES" ]
 then
@@ -38,56 +63,26 @@ then
    ./clean_sources
 fi
 
-if [ $BUILD_FIRMWARE_GEN = "YES" ]
+if [ $BUILD_FIRMWARE = "YES" ]
 then
 
   cd ../trunk
   ./clear_tree
 
-  if [ $BUILD_FIRMWARE_N56U = "YES" ]
-  then
-    cp ./configs/n56u_qos.config ./.config
+  for fw in $BUILD_FIRMWARE_CF; do
+
+    cp ./configs/$fw ./.config
     #Replace version number to new
     change_version ./.config
 
     ./build_firmware || exit 1
-    cp ./images/RT-N* ../images/N56U/
+    cp ./images/RT-N* ../images/$(evaluate_path $fw)
 
     #if build successful, change version in the reference config too
-    change_version ./configs/n56u_qos.config
+    change_version ./configs/$fw
 
     ./clear_tree
-  fi
-
-  if [ $BUILD_FIRMWARE_N65U = "YES" ]
-  then
-    cp ./configs/n65u_qos.config ./.config
-    #Replace version number to new
-    change_version ./.config
-
-    ./build_firmware || exit 1
-    cp ./images/RT-N* ../images/N65U/
-
-    #if build successful, change version in the reference config too
-    change_version ./configs/n65u_qos.config
-
-    ./clear_tree
-  fi
-
-  if [ $BUILD_FIRMWARE_N14U = "YES" ]
-  then
-    cp ./configs/n14u_qos_full.config ./.config
-    #Replace version number to new
-    change_version ./.config
-
-    ./build_firmware || exit 1
-    cp ./images/RT-N* ../images/N14U/
-
-    #if build successful, change version in the reference config too
-    change_version ./configs/n14u_qos_full.config
-
-    ./clear_tree
-  fi
+  done
 
   cp ./configs/n56u_qos.config ./.config
 fi
