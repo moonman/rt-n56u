@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################## CONFIG ######################
-MY_VERSION=6
+MY_VERSION=7
 
 CLEAR_TOOLCHAIN="NO"
 BUILD_TOOLCHAIN="NO"
