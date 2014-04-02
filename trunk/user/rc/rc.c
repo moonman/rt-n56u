@@ -763,13 +763,13 @@ handle_notifications(void)
 		{
 			restart_dns();
 		}
+#if defined (USE_IPV6)
 		else if (strcmp(entry->d_name, "restart_radvd") == 0)
 		{
-#if defined (USE_IPV6)
 			restart_dhcpd();
 			restart_radvd();
-#endif
 		}
+#endif
 		else if (strcmp(entry->d_name, "restart_dhcpd") == 0)
 		{
 			restart_dhcpd();
@@ -1217,10 +1217,16 @@ main(int argc, char **argv)
 		manual_toggle_radio_rt(0);
 	}
 	else if (!strcmp(base, "radio2_enable")) {
-		manual_forced_radio_rt(1);
+		manual_change_radio_rt(1);
 	}
 	else if (!strcmp(base, "radio2_disable")) {
-		manual_forced_radio_rt(0);
+		manual_change_radio_rt(0);
+	}
+	else if (!strcmp(base, "radio2_guest_enable")) {
+		manual_change_guest_rt(1);
+	}
+	else if (!strcmp(base, "radio2_guest_disable")) {
+		manual_change_guest_rt(0);
 	}
 	else if (!strcmp(base, "radio2_eeprom_mac")) {
 		if (argc > 1 && strlen(argv[1]) == 17)
@@ -1241,10 +1247,16 @@ main(int argc, char **argv)
 		manual_toggle_radio_wl(0);
 	}
 	else if (!strcmp(base, "radio5_enable")) {
-		manual_forced_radio_wl(1);
+		manual_change_radio_wl(1);
 	}
 	else if (!strcmp(base, "radio5_disable")) {
-		manual_forced_radio_wl(0);
+		manual_change_radio_wl(0);
+	}
+	else if (!strcmp(base, "radio5_guest_enable")) {
+		manual_change_guest_wl(1);
+	}
+	else if (!strcmp(base, "radio5_guest_disable")) {
+		manual_change_guest_wl(0);
 	}
 	else if (!strcmp(base, "radio5_eeprom_mac")) {
 		if (argc > 1 && strlen(argv[1]) == 17)
