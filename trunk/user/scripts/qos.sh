@@ -28,7 +28,6 @@ if [ "$QOS_ENABLED" = "YES" ]; then
   modprobe imq numdevs=1 >&- 2>&-
   modprobe xt_IMQ >&- 2>&-
   modprobe ipt_ipp2p >&- 2>&-
-  # modprobe xt_layer7 >&- 2>&-
   modprobe xt_dscp >&- 2>&-
   modprobe xt_DSCP >&- 2>&-
   modprobe sch_red >&- 2>&-
@@ -95,7 +94,7 @@ if [ "$QOS_ENABLED" = "YES" ]; then
     tc class add dev imq0 parent 1:1 classid 1:10 htb rate $(($DOWNLOAD*5/10))kbit ceil ${DOWNLOAD}kbit burst $((BURST_D*1)) cburst $((BURST_D*1)) prio 1 mtu $MTU
     tc class add dev imq0 parent 1:1 classid 1:20 htb rate $(($DOWNLOAD*2/10))kbit ceil ${DOWNLOAD}kbit burst $((BURST_D*1)) cburst $((BURST_D*1)) prio 2 mtu $MTU
     tc class add dev imq0 parent 1:1 classid 1:30 htb rate $(($DOWNLOAD*2/10))kbit ceil ${DOWNLOAD}kbit burst $((BURST_D*1)) cburst $((BURST_D*1)) prio 3 mtu $MTU
-    tc class add dev imq0 parent 1:1 classid 1:40 htb rate $(($DOWNLOAD*1/10))kbit ceil $(($DOWNLOAD*3/4))kbit burst $((BURST_D*1)) cburst $((BURST_D*1)) prio 4 mtu $MTU
+    tc class add dev imq0 parent 1:1 classid 1:40 htb rate $(($DOWNLOAD*1/10))kbit ceil ${DOWNLOAD}kbit burst $((BURST_D*1)) cburst $((BURST_D*1)) prio 4 mtu $MTU
 
     tc qdisc add dev imq0 parent 1:10 red limit $((40*$MTU)) min $((5*$MTU)) max $((20*$MTU)) avpkt $(($MTU*6/10)) burst 16 probability 0.015
     tc qdisc add dev imq0 parent 1:20 red limit $((40*$MTU)) min $((5*$MTU)) max $((20*$MTU)) avpkt $(($MTU*6/10)) burst 16 probability 0.015
