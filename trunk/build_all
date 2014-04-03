@@ -1,17 +1,20 @@
 #!/bin/bash
 
 ################## CONFIG ######################
-MY_VERSION=7
+MY_VERSION=8
 
 CLEAR_TOOLCHAIN="NO"
 BUILD_TOOLCHAIN="NO"
 
 BUILD_FIRMWARE="YES"
 ## Only used if BUILD_FIRMWARE="YES"##
-BUILD_FIRMWARE_CF=(n56u_qos_k3.0.config \
+## Comment out the lines containing configs you don't want to build.
+BUILD_FIRMWARE_CF=(\
+		   n56u_qos_k3.0.config \
 		   n56u_qos.config \
 		   n65u_qos.config \
-		   n14u_qos_full.config)
+		   n14u_qos_full.config \
+		   )
 ################################################
 
 # $1 - config file
@@ -69,8 +72,7 @@ then
   cd ../trunk
   ./clear_tree
 
-  for fw in $BUILD_FIRMWARE_CF; do
-
+  for fw in ${BUILD_FIRMWARE_CF[@]}; do
     cp ./configs/$fw ./.config
     #Replace version number to new
     change_version ./.config
