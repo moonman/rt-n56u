@@ -267,7 +267,7 @@ AMDEP_FALSE = #
 AMDEP_TRUE = 
 AMTAR = ${SHELL} "/root/rt-n56u/trunk/libs/libcurl/curl-7.21.7/missing" --run tar
 AR = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ar
-AS = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-as -mips32r2 -march=mips32r2
+AS = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-as -march=24kec -mtune=24kec
 AUTOCONF = ${SHELL} "/root/rt-n56u/trunk/libs/libcurl/curl-7.21.7/missing" --run autoconf
 AUTOHEADER = ${SHELL} "/root/rt-n56u/trunk/libs/libcurl/curl-7.21.7/missing" --run autoheader
 AUTOMAKE = ${SHELL} "/root/rt-n56u/trunk/libs/libcurl/curl-7.21.7/missing" --run automake-1.9
@@ -276,11 +276,11 @@ BUILD_LIBHOSTNAME_FALSE =
 BUILD_LIBHOSTNAME_TRUE = #
 BUILD_UNITTESTS_FALSE = 
 BUILD_UNITTESTS_TRUE = #
-CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2
+CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec
 CCDEPMODE = depmode=gcc3
-CFLAGS = -Os -fomit-frame-pointer -pipe -DEMBED -isystem /root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -ffunction-sections -fdata-sections -g0 -Wno-system-headers
-CONFIGURE_OPTIONS = " '--prefix=/root/rt-n56u/trunk/stage' '--enable-static' '--disable-shared' '--enable-ipv6' '--disable-gopher' '--disable-ldap' '--disable-rtsp' '--disable-telnet' '--disable-tftp' '--disable-smtp' '--disable-pop3' '--disable-imap' '--disable-dict' '--disable-ares' '--disable-debug' '--disable-curldebug' '--disable-manual' '--disable-verbose' '--without-gnutls' '--without-ca-bundle' '--without-libidn' '--without-libssh2' '--with-random=/dev/urandom' '--with-zlib=/root/rt-n56u/trunk/stage' '--with-ssl=/root/rt-n56u/trunk/stage' '--host=mipsel-linux' '--build=x86_64-pc-linux-gnu' 'build_alias=x86_64-pc-linux-gnu' 'host_alias=mipsel-linux' 'CC=/root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2' 'CFLAGS=-Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -ffunction-sections -fdata-sections' 'LDFLAGS=-L/root/rt-n56u/trunk/stage/lib -Wl,--gc-sections'"
-CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -E
+CFLAGS = -Os -fomit-frame-pointer -pipe -DEMBED -isystem /root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -Wno-unused-but-set-variable -ffunction-sections -fdata-sections -g0 -Wno-system-headers
+CONFIGURE_OPTIONS = " '--prefix=/root/rt-n56u/trunk/stage' '--enable-static' '--disable-shared' '--enable-ipv6' '--disable-gopher' '--disable-ldap' '--disable-rtsp' '--disable-telnet' '--disable-tftp' '--disable-smtp' '--disable-pop3' '--disable-imap' '--disable-dict' '--disable-ares' '--disable-debug' '--disable-curldebug' '--disable-manual' '--disable-verbose' '--without-gnutls' '--without-ca-bundle' '--without-libidn' '--without-libssh2' '--with-random=/dev/urandom' '--with-zlib=/root/rt-n56u/trunk/stage' '--with-ssl=/root/rt-n56u/trunk/stage' '--host=mipsel-linux' '--build=x86_64-pc-linux-gnu' 'build_alias=x86_64-pc-linux-gnu' 'host_alias=mipsel-linux' 'CC=/root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec' 'CFLAGS=-Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -Wno-unused-but-set-variable -ffunction-sections -fdata-sections' 'LDFLAGS=-L/root/rt-n56u/trunk/stage/lib -Wl,--gc-sections'"
+CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec -E
 CPPFLAGS = -DCURL_NO_OLDIES $(STATICCPPFLAGS)
 CROSSCOMPILING_FALSE = #
 CROSSCOMPILING_TRUE = 
