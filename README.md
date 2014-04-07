@@ -11,8 +11,12 @@ Modifications:
 1. Added BFQ I/O scheduler  
 2. Added OpenWRT QOS script for QOS into the firmware   
 3. Added patch for newer systems with texinfo >= 5 to bootstrap cross-gcc 4.4.7  
-4. Added gcc 4.7.3. All images are compiled with this now. TODO: get 4.8.2 to work  
-  
+4. Added gcc 4.7.3. All images are compiled with this now.  
+ TODO: get 4.8.2 to work  
+5. All images are compiled with appropriate compiler optimizations instead of generic mips32r2:  
+ RT-N14U: -march=24kec -mtune=24kec  
+ RT-N56U/RT-N65U: -march=74kc -mtune=74kc  
+
 =========  
 
 How-To:
