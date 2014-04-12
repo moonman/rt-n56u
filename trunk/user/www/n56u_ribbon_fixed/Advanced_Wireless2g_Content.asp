@@ -8,7 +8,7 @@
 <link rel="icon" href="images/favicon.png">
 
 <title>ASUS Wireless Router <#Web_Title#> - 2.4G <#menu5_1_1#></title>
-<link rel="stylesheet" type="text/css" href="/bootstrap/css/bootstrap.css">
+<link rel="stylesheet" type="text/css" href="/bootstrap/css/bootstrap.min.css">
 <link rel="stylesheet" type="text/css" href="/bootstrap/css/main.css">
 <link rel="stylesheet" type="text/css" href="/bootstrap/css/engage.itoggle.css">
 
@@ -558,14 +558,14 @@ function validate_wlphrase(s, v, obj){
                                         <tr id="row_wpa3">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 11);"><#WLANConfig11b_x_Rekey_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="7" size="7" name="rt_wpa_gtk_rekey" class="input"  value="<% nvram_get_x("WLANConfig11b", "rt_wpa_gtk_rekey"); %>">
+                                                <input type="text" maxlength="7" size="7" name="rt_wpa_gtk_rekey" class="input" value="<% nvram_get_x("WLANConfig11b", "rt_wpa_gtk_rekey"); %>" onKeyPress="return is_number(this)">
                                                 &nbsp;<span style="color:#888;">[0..2592000]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 17);"><#WLANConfig11b_TxPower_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="3" size="3" name="rt_TxPower" onblur="return validate_range(this, 0, 100)" class="input" value="<% nvram_get_x("WLANConfig11b", "rt_TxPower"); %>">
+                                                <input type="text" maxlength="3" size="3" name="rt_TxPower" class="input" value="<% nvram_get_x("WLANConfig11b", "rt_TxPower"); %>" onblur="return validate_range(this, 0, 100)" onKeyPress="return is_number(this)">
                                                 &nbsp;<span style="color:#888;">[0..100]</span>
                                             </td>
                                         </tr>

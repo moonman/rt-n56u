@@ -9,14 +9,13 @@
 <title></title>
 <style type="text/css"></style>
 
-<link rel="stylesheet" type="text/css" href="/bootstrap/css/bootstrap.css">
+<link rel="stylesheet" type="text/css" href="/bootstrap/css/bootstrap.min.css">
 <link rel="stylesheet" type="text/css" href="/bootstrap/css/main.css">
 
 <script type="text/javascript" src="/jquery.js"></script>
 <script type="text/javascript" src="/bootstrap/js/bootstrap.min.js"></script>
 <script type="text/javascript" src="/state.js"></script>
 <script type="text/javascript" src="/client_function.js"></script>
-<script type="text/javascript" src="/alttxt.js"></script>
 <script>
 
 <% login_state_hook(); %>
@@ -348,7 +347,6 @@ function networkmap_update(s){
     <tbody>
     </tbody>
 </table>
-<div id="navtxt" class="navtext" style="position:absolute; top:50px; left:-100px; visibility:hidden; font-family:Arial, Verdana"></div>
 <br />
 
 <div id="blockedClients_table"></div>
@@ -367,8 +365,8 @@ function networkmap_update(s){
     <input type="button" id="refresh_list" class="btn btn-info span2" onclick="networkmap_update('networkmap_refresh');" value="<#CTL_refresh#>">
 </center>
 
-<p><div id="alert_block" class="DMhint" style="margin-top:40px; display: none;">
-	<a href="/Advanced_MACFilter_Content.asp" target="_parent"><#menu5_5_3#></a><#macfilter_alert_str1#>
+<p><div id="alert_block" class="alert alert-danger" style="margin-top:40px; display: none;">
+	<a href="/Advanced_MACFilter_Content.asp" target="_parent"><#menu5_5_3#></a> <#macfilter_alert_str1#>
 </div></p>
 
 

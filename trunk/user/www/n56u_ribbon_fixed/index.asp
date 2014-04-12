@@ -18,7 +18,6 @@
 <script type="text/javascript" src="/popup.js"></script>
 <script type="text/javascript" src="/disk_functions.js"></script>
 <script type="text/javascript" src="/client_function.js"></script>
-<script type="text/javascript" src="/alttxt.js"></script>
 <script type="text/javascript" src="/aplist.js"></script>
 <script>
 
@@ -54,8 +53,6 @@ function initial(){
 	}
 	else
 		showMapWANStatus(2);
-
-	load_alttxt_enviroment();
 }
 
 function detect_update_info(){
@@ -570,7 +567,7 @@ $j(document).ready(function(){
 
     <form name="form">
     <input type="hidden" name="current_page" value="index.asp">
-    <input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get_x("LANGUAGE", "preferred_lang"); %>">
+    <input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get_x("", "preferred_lang"); %>">
     <input type="hidden" name="wl_auth_mode" value="<% nvram_get_x("",  "wl_auth_mode"); %>">
     <input type="hidden" name="wl_wpa_mode" value="<% nvram_get_x("",  "wl_wpa_mode"); %>">
     <input type="hidden" name="wl_wep_x" value="<% nvram_get_x("",  "wl_wep_x"); %>">
@@ -708,7 +705,6 @@ $j(document).ready(function(){
         </div>
     </div>
 
-    <div id="navtxt" class="navtext" style="position:absolute; top:50px; left:-100px; visibility:hidden; font-family:Arial, Verdana"></div>
     <div id="footer"></div>
     <script>
     if(flag == "Internet" || flag == "Client")
