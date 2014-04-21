@@ -22,8 +22,7 @@
 #define ETHER_ADDR_LEN		6
 #endif
 
-#define MAX_NUMBER_OF_MAC	32
-#define MAX_NUMBER_OF_MAC_2G	64
+#define MAX_NUMBER_OF_MAC	64
 
 #define MODE_CCK		0
 #define MODE_OFDM		1
@@ -48,6 +47,10 @@ typedef enum _RT_802_11_PHY_MODE {
 	PHY_11BGN_MIXED,    // if check 802.11b.      9
 	PHY_11AGN_MIXED,    // if check 802.11b.      10
 	PHY_11N_5G,         // 11n-only with 5G band  11
+	PHY_11VHT_N_ABG_MIXED = 12, /* 12 -> AC/A/AN/B/G/GN mixed */
+	PHY_11VHT_N_AG_MIXED = 13, /* 13 -> AC/A/AN/G/GN mixed  */
+	PHY_11VHT_N_A_MIXED = 14, /* 14 -> AC/AN/A mixed in 5G band */
+	PHY_11VHT_N_MIXED = 15, /* 15 -> AC/AN mixed in 5G band */
 } RT_802_11_PHY_MODE;
 
 // MIMO Tx parameter, ShortGI, MCS, STBC, etc.  these are fields in TXWI. Don't change this definition!!!
@@ -114,7 +117,7 @@ typedef struct _RT_802_11_MAC_TABLE {
 
 typedef struct _RT_802_11_MAC_TABLE_2G {
     unsigned long	Num;
-    RT_802_11_MAC_ENTRY_2G Entry[MAX_NUMBER_OF_MAC_2G];
+    RT_802_11_MAC_ENTRY_2G Entry[MAX_NUMBER_OF_MAC];
 } RT_802_11_MAC_TABLE_2G, *PRT_802_11_MAC_TABLE_2G;
 
 typedef struct _SITE_SURVEY 
