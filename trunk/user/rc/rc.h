@@ -109,7 +109,6 @@ void stop_auth_kabinet(void);
 /* common_ex.c */
 long uptime(void);
 int rand_seed_by_time(void);
-in_addr_t inet_addr_(const char *cp);
 void restart_all_sysctl(void);
 void convert_asus_values(int skipflag);
 void init_router_mode();
@@ -117,7 +116,6 @@ void update_router_mode();
 char *mac_conv(char *mac_name, int idx, char *buf);
 char *mac_conv2(char *mac_name, int idx, char *buf);
 void get_eeprom_params(void);
-char *trim_r(char *str);
 void char_to_ascii(char *output, char *input);
 unsigned int get_param_int_hex(const char *param);
 int is_module_loaded(char *module_name);
@@ -134,7 +132,6 @@ int  route_add(char *name, int metric, char *dst, char *gateway, char *genmask);
 int  route_del(char *name, int metric, char *dst, char *gateway, char *genmask);
 int  ifconfig(char *ifname, int flags, char *addr, char *netmask);
 int  is_interface_up(const char *ifname);
-int  is_valid_hostname(const char *hname);
 char* sanity_hostname(char *hname);
 char* get_our_hostname(void);
 int  is_same_subnet(char *ip1, char *ip2, char *msk);
@@ -468,6 +465,7 @@ void stop_aria(void);
 void run_aria(void);
 void restart_aria(void);
 #endif
+int start_networkmap(int first_call);
 void stop_networkmap(void);
 void restart_networkmap(void);
 int start_dns_dhcpd(void);
@@ -503,7 +501,6 @@ int check_if_dev_exist(const char *devpath);
 void umount_dev(char *sd_dev);
 void umount_dev_all(char *sd_dev);
 void umount_sddev_all(void);
-int start_networkmap(void);
 void stop_syslogd();
 void stop_klogd();
 int start_syslogd();
@@ -534,7 +531,6 @@ int  ntpc_updated_main(int argc, char *argv[]);
 int  watchdog_main(int argc, char *argv[]);
 int  start_watchdog(void);
 void notify_watchdog_time(void);
-void notify_watchdog_nmap(void);
 void notify_watchdog_wifi(int is_5ghz);
 
 #if defined(USE_RT3352_MII)

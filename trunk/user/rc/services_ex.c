@@ -206,7 +206,7 @@ start_dns_dhcpd(void)
 		
 		/* GATEWAY */
 		gw = nvram_safe_get("dhcp_gateway_x");
-		if ((inet_addr_(gw) == INADDR_ANY))
+		if (!is_valid_ipv4(gw))
 			gw = lan_ipaddr;
 		fprintf(fp, "dhcp-option=%d,%s\n", 3, gw);
 		
@@ -216,15 +216,15 @@ start_dns_dhcpd(void)
 		dns2 = nvram_safe_get("dhcp_dns2_x");
 		dns3 = nvram_safe_get("dhcp_dns3_x");
 		fprintf(fp, "dhcp-option=%d", 6);
-		if ((inet_addr_(dns1) != INADDR_ANY)) {
+		if (is_valid_ipv4(dns1)) {
 			i_dns++;
 			fprintf(fp, ",%s", dns1);
 		}
-		if ((inet_addr_(dns2) != INADDR_ANY) && (strcmp(dns2, dns1))) {
+		if (is_valid_ipv4(dns2) && (strcmp(dns2, dns1))) {
 			i_dns++;
 			fprintf(fp, ",%s", dns2);
 		}
-		if ((inet_addr_(dns3) != INADDR_ANY) && (strcmp(dns3, dns1) && strcmp(dns3, dns2))) {
+		if (is_valid_ipv4(dns3) && (strcmp(dns3, dns1) && strcmp(dns3, dns2))) {
 			i_dns++;
 			fprintf(fp, ",%s", dns3);
 		}
@@ -791,7 +791,7 @@ void manual_ddns_hostname_check(void)
 		NULL
 	};
 
-	if (inet_addr_(nvram_safe_get("wan_ipaddr_t")) == INADDR_ANY) {
+	if (!is_valid_ipv4(nvram_safe_get("wan_ipaddr_t"))) {
 		nvram_set_temp(nvram_key, "connect_fail");
 		return;
 	}
@@ -1882,9 +1882,9 @@ void restart_aria(void)
 }
 #endif
 
-int start_networkmap(void)
+int start_networkmap(int first_call)
 {
-	return eval("/usr/sbin/networkmap");
+	return eval("/usr/sbin/networkmap", (first_call) ? "-w" : "");
 }
 
 void stop_networkmap(void)
@@ -1898,13 +1898,11 @@ void restart_networkmap(void)
 	if (pids("networkmap"))
 		doSystem("killall %s %s", "-SIGUSR1", "networkmap");
 	else
-		start_networkmap();
-
-	notify_watchdog_nmap();
+		start_networkmap(0);
 }
 
 void
-umount_ejected(void)	// umount mount point(s) which was(were) already ejected
+umount_ejected(void)
 {
 	FILE *procpt, *procpt2;
 	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160], ptname[32];
@@ -1951,7 +1949,7 @@ umount_ejected(void)	// umount mount point(s) which was(were) already ejected
 }
 
 void
-umount_dev(char *sd_dev)	// umount sd_dev
+umount_dev(char *sd_dev)
 {
 	FILE *procpt;
 	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160];
@@ -1984,7 +1982,7 @@ umount_dev(char *sd_dev)	// umount sd_dev
 }
 
 void
-umount_dev_all(char *sd_dev)	// umount sd_dev
+umount_dev_all(char *sd_dev)
 {
 	FILE *procpt;
 	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160];
@@ -2023,7 +2021,7 @@ umount_dev_all(char *sd_dev)	// umount sd_dev
 }
 
 void
-umount_sddev_all(void)	// umount all sdxx
+umount_sddev_all(void)
 {
 	FILE *procpt;
 	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160];
@@ -2073,7 +2071,6 @@ count_sddev_mountpoint(void)
 	
 	return count;
 }
-
 
 int
 count_sddev_partition(void)
