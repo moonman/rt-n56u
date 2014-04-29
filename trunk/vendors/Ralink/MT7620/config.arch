@@ -35,7 +35,7 @@ CFLAGS += -Wno-pointer-sign
 CFLAGS += -Wno-unused-but-set-variable
 
 # disable new loop optimization mode in 4.8.x - fix regressions
-#CFLAGS += -fno-aggressive-loop-optimizations
+CFLAGS += -fno-aggressive-loop-optimizations
 
 ###########################################################################
 
