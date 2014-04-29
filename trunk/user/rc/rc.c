@@ -162,9 +162,7 @@ init_gpio_leds_buttons(void)
 #endif
 
 #if defined (BOARD_GPIO_LED_WIFI)
-#if !defined (CONFIG_RALINK_MT7620)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_WIFI, 1);
-#endif
 	LED_CONTROL(BOARD_GPIO_LED_WIFI, LED_ON);
 #endif
 
@@ -446,8 +444,10 @@ LED_CONTROL(int led, int flag)
 	}
 
 #if defined (BOARD_GPIO_LED_WIFI) && defined (CONFIG_RALINK_MT7620)
-	if (led == BOARD_GPIO_LED_WIFI)
+	if (led == BOARD_GPIO_LED_WIFI) {
 		cpu_gpio_mode_set_bit(13, (flag == LED_OFF) ? 1 : 0); // change GPIO Mode for WLED
+		cpu_gpio_set_pin(led, LED_OFF); // always set GPIO to high
+	}
 	else
 #endif
 	cpu_gpio_set_pin(led, flag);
@@ -1230,6 +1230,12 @@ main(int argc, char **argv)
 			ret = get_wireless_mac(0);
 		}
 	}
+	else if (!strcmp(base, "radio2_restart")) {
+		int radio_on = get_enabled_radio_rt();
+		if (radio_on)
+			radio_on = is_radio_allowed_rt();
+		restart_wifi_rt(radio_on, 1);
+	}
 #if BOARD_HAS_5G_RADIO
 	else if (!strcmp(base, "radio5_toggle")) {
 		manual_toggle_radio_wl(-1);
@@ -1259,6 +1265,12 @@ main(int argc, char **argv)
 			printf("Usage: %s XX:XX:XX:XX:XX:XX\n\n", base);
 			ret = get_wireless_mac(1);
 		}
+	}
+	else if (!strcmp(base, "radio5_restart")) {
+		int radio_on = get_enabled_radio_wl();
+		if (radio_on)
+			radio_on = is_radio_allowed_wl();
+		restart_wifi_wl(radio_on, 1);
 	}
 #endif
 #if (BOARD_NUM_USB_PORTS > 0)
