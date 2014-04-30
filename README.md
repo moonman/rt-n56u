@@ -1,7 +1,7 @@
-rt-n56u
+rt-n56u-qos
 =======
 
-ASUS RT-N56U/N65U/N14U custom firmware
+ASUS RT-N56U/N65U/N14U custom firmware with QOS
 
 Upstream: http://code.google.com/p/rt-n56u/
 
@@ -13,7 +13,7 @@ Modifications:
 2. Added OpenWRT QOS script for QOS into the firmware   
 3. Added patch for newer systems with texinfo >= 5 to bootstrap cross-gcc 4.4.7  
 4. Added gcc 4.7.3. All images are compiled with this now.  
-TODO: get 4.8.2 to work  
+Starting with *3.8-moonman-6 all builds are compiled with gcc 4.8.2 (with better optimizations for 74kc)  
 5. All images are compiled with appropriate compiler optimizations instead of generic mips32r2:  
 RT-N14U: -march=24kec -mtune=24kec  
 RT-N56U/RT-N65U: -march=74kc -mtune=74kc  
@@ -22,16 +22,13 @@ RT-N56U/RT-N65U: -march=74kc -mtune=74kc
 
 How-To:
 
-0. If coming not from stock f/w, reset internal storage after flashing:  
+0. If NOT coming from stock f/w, reset internal storage after flashing:  
 Advanced Settings -> Administration -> Settings ->  
 Router Internal Storage (/etc/storage) -> Reset  
 1. Disable HW Nat:  
 Advanced Settings -> WAN -> Hardware offload NAT/Routing IPv4 -> Disable  
-2. SSH into the router and modify /etc/storage/qos.conf for your connection  
-3. Advanced Settings -> Administration -> Tweaks -> Run after WAN up/down Events  
-Uncomment the last line  
-OR  
-if on build >= *3.8-080-moonman-3 change QOS_ENABLED variable in qos.conf to YES
+2. SSH (or WinSCP) into the router and modify /etc/storage/qos.conf for your connection  
+3. Change QOS_ENABLED variable in qos.conf to YES  
 
 =========  
   
