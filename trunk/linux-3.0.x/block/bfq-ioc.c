@@ -199,7 +199,7 @@ static struct cfq_io_context *bfq_alloc_io_context(struct bfq_data *bfqd,
 		 * the field raising_time_left and assign 1 to it, to mark the queue
 		 * as needing weight raising.
 		 */
-		cic->raising_time_left = 1;
+		cic->wr_time_left = 1;
 		INIT_LIST_HEAD(&cic->queue_list);
 		INIT_HLIST_NODE(&cic->cic_list);
 		cic->dtor = bfq_free_io_context;

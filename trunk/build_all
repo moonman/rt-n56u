@@ -45,7 +45,6 @@ evaluate_path()
 		;;
   esac
   echo "$_path"
-
 }
 
 if [ $BUILD_TOOLCHAIN = "YES" ]
@@ -59,10 +58,10 @@ then
   fi
 
   ./clean_sources
-  ./build_toolchain
+  ./build_toolchain || exit 1
 
   ./clean_sources
-  ./build_toolchain_3.4.x
+  ./build_toolchain_3.4.x || exit 1
    ./clean_sources
 fi
 

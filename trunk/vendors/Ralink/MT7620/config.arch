@@ -5,9 +5,9 @@ CONSOLE_BAUD_RATE = 57600
 ###########################################################################
 
 ENDIAN = little
-CPUFLAGS = -march=24kec -mtune=24kec
 #CPUFLAGS = -mips32r2 -march=mips32r2 -mtune=24kec
 #CPUFLAGS = -mips32r2 -march=mips32r2
+CPUFLAGS = -march=24kec -mtune=24kec
 VENDOR_CFLAGS =
 UOPT = -Os
 LOPT = -Os
@@ -35,7 +35,7 @@ CFLAGS += -Wno-pointer-sign
 CFLAGS += -Wno-unused-but-set-variable
 
 # disable new loop optimization mode in 4.8.x - fix regressions
-CFLAGS += -fno-aggressive-loop-optimizations
+#CFLAGS += -fno-aggressive-loop-optimizations
 
 ###########################################################################
 

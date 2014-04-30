@@ -3096,15 +3096,6 @@ diff -Naur gcc-4.8.2.orig/gcc/tree-ssa-tail-merge.c gcc-4.8.2/gcc/tree-ssa-tail-
      return false;
  
    def_p = SINGLE_SSA_DEF_OPERAND (stmt, SSA_OP_DEF);
-diff -Naur gcc-4.8.2.orig/gcc/version.c gcc-4.8.2/gcc/version.c
---- gcc-4.8.2.orig/gcc/version.c	2013-01-10 20:38:27.000000000 +0000
-+++ gcc-4.8.2/gcc/version.c	2013-11-01 16:12:34.231838079 +0000
-@@ -32,4 +32,4 @@
-    Makefile.  */
- 
- const char version_string[] = BASEVER DATESTAMP DEVPHASE REVISION;
--const char pkgversion_string[] = PKGVERSION;
-+const char pkgversion_string[] = "(GCC for Cross-LFS 4.8.2.20131101) ";
 diff -Naur gcc-4.8.2.orig/libffi/doc/libffi.info gcc-4.8.2/libffi/doc/libffi.info
 --- gcc-4.8.2.orig/libffi/doc/libffi.info	2013-10-16 08:21:34.000000000 +0000
 +++ gcc-4.8.2/libffi/doc/libffi.info	1970-01-01 00:00:00.000000000 +0000

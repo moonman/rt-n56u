@@ -74,7 +74,7 @@ AVAHI_LIBS =
 AWK = gawk
 CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec
 CCDEPMODE = depmode=gcc3
-CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -Wno-unused-but-set-variable -fno-aggressive-loop-optimizations -DBOARD_N14U -DBOARD_RAM_SIZE=64
+CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -Wno-unused-but-set-variable -DBOARD_N14U -DBOARD_RAM_SIZE=64
 COND_FFMPEG_FALSE = #
 COND_FFMPEG_TRUE = 
 COND_FLAC_FALSE = #
