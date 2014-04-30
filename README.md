@@ -13,7 +13,7 @@ Modifications:
 2. Added OpenWRT QOS script for QOS into the firmware   
 3. Added patch for newer systems with texinfo >= 5 to bootstrap cross-gcc 4.4.7  
 4. Added gcc 4.7.3. All images are compiled with this now.  
-Starting with *3.8-moonman-6 all builds are compiled with gcc 4.8.2 (with better optimizations for 74kc)  
+Starting with *3.8-081-moonman-6 all builds are compiled with gcc 4.8.2 (with better optimizations for 74kc)  
 5. All images are compiled with appropriate compiler optimizations instead of generic mips32r2:  
 RT-N14U: -march=24kec -mtune=24kec  
 RT-N56U/RT-N65U: -march=74kc -mtune=74kc  
