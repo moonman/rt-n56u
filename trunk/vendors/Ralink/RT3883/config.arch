@@ -6,8 +6,8 @@ CONSOLE_BAUD_RATE = 57600
 
 ENDIAN = little
 #CPUFLAGS = -mips32r2 -march=mips32r2 -mtune=74kc
-#CPUFLAGS = -mips32r2 -march=mips32r2
-CPUFLAGS = -march=74kc -mtune=74kc
+CPUFLAGS = -mips32r2 -march=mips32r2
+#CPUFLAGS = -march=74kc -mtune=74kc
 VENDOR_CFLAGS =
 UOPT = -Os
 LOPT = -Os
@@ -32,7 +32,7 @@ CXXFLAGS += -Wno-strict-aliasing
 CFLAGS += -Wno-pointer-sign
 
 # disable variable unused warnings in gcc 4.6.x
-CFLAGS += -Wno-unused-but-set-variable
+#CFLAGS += -Wno-unused-but-set-variable
 
 # disable new loop optimization mode in 4.8.x - fix regressions
 #CFLAGS += -fno-aggressive-loop-optimizations

@@ -64,15 +64,15 @@ AUTOCONF = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run au
 AUTOHEADER = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run autoheader
 AUTOMAKE = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run automake-1.7
 AWK = gawk
-CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec
+CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2
 CCAS = $(CC)
 CCASFLAGS = $(CFLAGS)
 CCDEPMODE = depmode=gcc3
-CFLAGS = -O3 -funroll-loops -finline-functions -Wall -W -Winline -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -Wno-unused-but-set-variable -ffunction-sections -fdata-sections
-CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec -E
+CFLAGS = -O3 -funroll-loops -finline-functions -Wall -W -Winline -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -ffunction-sections -fdata-sections
+CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -mips32r2 -march=mips32r2 -E
 CPPFLAGS = -DFLaC__INLINE=__inline__ -DNDEBUG -I$(top_builddir) -I$(srcdir)/include -I$(top_srcdir)/include -I/root/rt-n56u/trunk/stage/include
-CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec
-CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec -E
+CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2
+CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -mips32r2 -march=mips32r2 -E
 CXXDEPMODE = depmode=gcc3
 CXXFLAGS = -Wall -Wno-trigraphs -Wno-strict-aliasing -Wall -Wno-trigraphs -Wno-strict-aliasing
 CYGPATH_W = echo

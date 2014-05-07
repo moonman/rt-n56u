@@ -4,7 +4,7 @@
 MY_VERSION=$1
 
 CLEAR_TOOLCHAIN="NO"
-BUILD_TOOLCHAIN="NO"
+BUILD_TOOLCHAIN="YES"
 
 BUILD_FIRMWARE="YES"
 ## Only used if BUILD_FIRMWARE="YES"##
@@ -80,7 +80,7 @@ then
     cp ./images/RT-N* ../images/$(evaluate_path $fw)
 
     #if build successful, change version in the reference config too
-    change_version ./configs/$fw
+#    change_version ./configs/$fw
 
     ./clear_tree
   done
