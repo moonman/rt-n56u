@@ -1,5 +1,10 @@
 #!/bin/bash
-
+################## PARAMS ######################
+# First parameter = subversion number
+# Second parameter: if "upload" specified, then
+#                   upload to mediafire, if not,
+#                   then copy to ../images/<mdl>
+#
 ################## CONFIG ######################
 MY_VERSION=$1
 
@@ -77,7 +82,16 @@ then
     change_version ./.config
 
     ./build_firmware || exit 1
-    cp ./images/RT-N* ../images/$(evaluate_path $fw)
+
+    _path=$(evaluate_path $fw)
+
+    if [ $2 = "upload" ]; then
+      ## uploadfiles is my local script that uploads files to mediafire using plowshare4.
+      ## For obvious reasons it is not included.
+      uploadfiles  "${_path: -4}" "./images/RT-N*"
+    else
+      cp ./images/RT-N* ../images/$_path
+    fi
 
     #if build successful, change version in the reference config too
     change_version ./configs/$fw
