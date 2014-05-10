@@ -75,8 +75,8 @@
  *
  * The inode preallocation space is used looking at the _logical_ start
  * block. If only the logical file block falls within the range of prealloc
- * space we will consume the particular prealloc space. This make sure that
- * that the we have contiguous physical blocks representing the file blocks
+ * space we will consume the particular prealloc space. This makes sure that
+ * we have contiguous physical blocks representing the file blocks
  *
  * The important thing to be noted in case of inode prealloc space is that
  * we don't modify the values associated to inode prealloc space except
@@ -84,7 +84,7 @@
  *
  * If we are not able to find blocks in the inode prealloc space and if we
  * have the group allocation flag set then we look at the locality group
- * prealloc space. These are per CPU prealloc list repreasented as
+ * prealloc space. These are per CPU prealloc list represented as
  *
  * ext4_sb_info.s_locality_groups[smp_processor_id()]
  *
@@ -152,7 +152,7 @@
  * best extent in the found extents. Searching for the blocks starts with
  * the group specified as the goal value in allocation context via
  * ac_g_ex. Each group is first checked based on the criteria whether it
- * can used for allocation. ext4_mb_good_group explains how the groups are
+ * can be used for allocation. ext4_mb_good_group explains how the groups are
  * checked.
  *
  * Both the prealloc space are getting populated as above. So for the first
@@ -2283,8 +2283,10 @@ int ext4_mb_add_groupinfo(struct super_block *sb, ext4_group_t group,
 
 exit_group_info:
 	/* If a meta_group_info table has been allocated, release it now */
-	if (group % EXT4_DESC_PER_BLOCK(sb) == 0)
+	if (group % EXT4_DESC_PER_BLOCK(sb) == 0) {
 		kfree(sbi->s_group_info[group >> EXT4_DESC_PER_BLOCK_BITS(sb)]);
+		sbi->s_group_info[group >> EXT4_DESC_PER_BLOCK_BITS(sb)] = NULL;
+	}
 exit_meta_group_info:
 	return -ENOMEM;
 } /* ext4_mb_add_groupinfo */
@@ -2408,13 +2410,13 @@ static int ext4_groupinfo_create_slab(size_t size)
 					slab_size, 0, SLAB_RECLAIM_ACCOUNT,
 					NULL);
 
+	ext4_groupinfo_caches[cache_index] = cachep;
+
 	mutex_unlock(&ext4_grpinfo_slab_create_mutex);
 	if (!cachep) {
 		printk(KERN_EMERG "EXT4: no memory for groupinfo slab cache\n");
 		return -ENOMEM;
 	}
-
-	ext4_groupinfo_caches[cache_index] = cachep;
 
 	return 0;
 }
@@ -2573,7 +2575,7 @@ int ext4_mb_release(struct super_block *sb)
 				atomic_read(&sbi->s_mb_lost_chunks));
 		printk(KERN_INFO
 		       "EXT4-fs: mballoc: %lu generated and it took %Lu\n",
-				sbi->s_mb_buddies_generated++,
+				sbi->s_mb_buddies_generated,
 				sbi->s_mb_generation_time);
 		printk(KERN_INFO
 		       "EXT4-fs: mballoc: %u preallocated, %u discarded\n",
@@ -4910,6 +4912,8 @@ int ext4_trim_fs(struct super_block *sb, struct fstrim_range *range)
 
 	if (unlikely(minlen > EXT4_BLOCKS_PER_GROUP(sb)))
 		return -EINVAL;
+	if (start + len <= first_data_blk)
+		goto out;
 	if (start < first_data_blk) {
 		len -= first_data_blk - start;
 		start = first_data_blk;
@@ -4958,5 +4962,6 @@ int ext4_trim_fs(struct super_block *sb, struct fstrim_range *range)
 	}
 	range->len = trimmed * sb->s_blocksize;
 
+out:
 	return ret;
 }
