@@ -311,37 +311,35 @@ qmi_start_network(const char* control_node)
 	if (*usr_name && *usr_pass)
 		snprintf(auth_cmd, sizeof(auth_cmd), " --auth-type both --username \"%s\" --password \"%s\"", usr_name, usr_pass);
 
-	unlink(QMI_HANDLE_OK);
+	unlink(QMI_HANDLE_PDH);
 	for (i = 0; i < 3; i++) {
 		doSystem("/bin/uqmi -d /dev/%s%s --keep-client-id wds%s --start-network \"%s\"", 
 				control_node, clid_cmd, auth_cmd, nvram_safe_get("modem_apn"));
-		if (check_if_file_exist(QMI_HANDLE_OK))
+		if (check_if_file_exist(QMI_HANDLE_PDH))
 			return 0;
 		sleep(1);
 	}
-
 	return 1;
 }
 
 static int
 qmi_stop_network(const char* control_node)
 {
-#if 0
 	FILE *fp;
-	int i, qmi_client_id = -1;
+	unsigned int qmi_pdh = 0;
 
 	/* try to get previous client id */
-	fp = fopen(QMI_CLIENT_ID, "r");
-	if (fp) {
-		fscanf(fp, "%d", &qmi_client_id);
-		fclose(fp);
-	}
+	fp = fopen(QMI_HANDLE_PDH, "r");
+	if (!fp)
+		return 0;
 
-	if (qmi_client_id > 0)
-		doSystem("/bin/uqmi -d /dev/%s --set-client-id wds,%d --release-client-id wds", control_node, qmi_client_id);
+	fscanf(fp, "%u", &qmi_pdh);
+	fclose(fp);
 
-	unlink(QMI_CLIENT_ID);
-#endif
+	doSystem("/bin/uqmi -d /dev/%s --stop-network %u", control_node, qmi_pdh);
+
+	unlink(QMI_HANDLE_PDH);
+
 	return 0;
 }
 
@@ -418,7 +416,6 @@ connect_ndis(int devnum)
 		else
 			return qmi_start_network(control_node);
 	}
-
 	return 1;
 }
 
@@ -453,7 +450,6 @@ disconnect_ndis(int devnum)
 		else
 			return qmi_stop_network(control_node);
 	}
-
 	return 1;
 }
 
@@ -512,7 +508,6 @@ void
 unload_modem_modules(void)
 {
 	unlink(QMI_CLIENT_ID);
-#if (BOARD_NUM_USB_PORTS > 0)
 	int ret = 0;
 	ret |= module_smart_unload("rndis_host", 1);
 	ret |= module_smart_unload("qmi_wwan", 1);
@@ -525,14 +520,12 @@ unload_modem_modules(void)
 	ret |= module_smart_unload("option", 1);
 	if (ret)
 		sleep(1);
-#endif
 }
 
 void
 reload_modem_modules(int modem_type, int reload)
 {
 	unlink(QMI_CLIENT_ID);
-#if (BOARD_NUM_USB_PORTS > 0)
 	int ret = 0;
 	if (modem_type == 3) {
 		ret |= module_smart_unload("cdc_acm", 1);
@@ -559,7 +552,6 @@ reload_modem_modules(int modem_type, int reload)
 	module_smart_load("sierra", NULL);
 	if (reload)
 		sleep(1);
-#endif
 }
 
 void
@@ -617,6 +609,35 @@ launch_modem_ras_pppd(int unit)
 	return 1;
 }
 
+void
+launch_wan_usbnet(int unit)
+{
+	int modem_devnum = 0;
+	char ndis_ifname[16] = {0};
+	
+	if (get_modem_ndis_ifname(ndis_ifname, &modem_devnum) && is_interface_exist(ndis_ifname)) {
+		int ndis_mtu = nvram_safe_get_int("modem_mtu", 1500, 1000, 1500);
+		doSystem("ifconfig %s mtu %d up %s", ndis_ifname, ndis_mtu, "0.0.0.0");
+		connect_ndis(modem_devnum);
+		start_udhcpc_wan(ndis_ifname, unit, 0);
+		nvram_set_temp("wan_ifname_t", ndis_ifname);
+	}
+	else
+		nvram_set_temp("wan_ifname_t", "");
+}
+
+void
+stop_wan_usbnet(void)
+{
+	int modem_devnum = 0;
+	char ndis_ifname[16] = {0};
+	
+	if (get_modem_ndis_ifname(ndis_ifname, &modem_devnum)) {
+		disconnect_ndis(modem_devnum);
+		if (is_interface_exist(ndis_ifname))
+			ifconfig(ndis_ifname, 0, "0.0.0.0", NULL);
+	}
+}
 
 int
 launch_usb_modeswitch(int vid, int pid, int inquire)

@@ -96,13 +96,17 @@ static int ext4_ext_get_access(handle_t *handle, struct inode *inode,
  *  - ENOMEM
  *  - EIO
  */
-static int ext4_ext_dirty(handle_t *handle, struct inode *inode,
-				struct ext4_ext_path *path)
+#define ext4_ext_dirty(handle, inode, path) \
+		__ext4_ext_dirty(__func__, __LINE__, (handle), (inode), (path))
+static int __ext4_ext_dirty(const char *where, unsigned int line,
+			    handle_t *handle, struct inode *inode,
+			    struct ext4_ext_path *path)
 {
 	int err;
 	if (path->p_bh) {
 		/* path points to block */
-		err = ext4_handle_dirty_metadata(handle, inode, path->p_bh);
+		err = __ext4_handle_dirty_metadata(where, line, handle,
+						   inode, path->p_bh);
 	} else {
 		/* path points to leaf/index in inode body */
 		err = ext4_mark_inode_dirty(handle, inode);
@@ -810,8 +814,9 @@ static int ext4_ext_insert_index(handle_t *handle, struct inode *inode,
 	if (unlikely(le16_to_cpu(curp->p_hdr->eh_entries)
 			     > le16_to_cpu(curp->p_hdr->eh_max))) {
 		EXT4_ERROR_INODE(inode,
-				 "logical %d == ei_block %d!",
-				 logical, le32_to_cpu(curp->p_idx->ei_block));
+				 "eh_entries %d > eh_max %d!",
+				 le16_to_cpu(curp->p_hdr->eh_entries),
+				 le16_to_cpu(curp->p_hdr->eh_max));
 		return -EIO;
 	}
 	if (unlikely(ix > EXT_LAST_INDEX(curp->p_hdr))) {
@@ -2967,7 +2972,8 @@ static int ext4_ext_convert_to_initialized(handle_t *handle,
 	struct ext4_extent zero_ex;
 	struct ext4_extent *ex;
 	ext4_lblk_t ee_block, eof_block;
-	unsigned int allocated, ee_len, depth;
+	unsigned int ee_len, depth;
+	int allocated;
 	int err = 0;
 	int split_flag = 0;
 
@@ -3240,9 +3246,11 @@ ext4_ext_handle_uninitialized_extents(handle_t *handle, struct inode *inode,
 		 * that this IO needs to conversion to written when IO is
 		 * completed
 		 */
-		if (io && !(io->flag & EXT4_IO_END_UNWRITTEN)) {
-			io->flag = EXT4_IO_END_UNWRITTEN;
-			atomic_inc(&EXT4_I(inode)->i_aiodio_unwritten);
+		if (io) {
+			if (!(io->flag & EXT4_IO_END_UNWRITTEN)) {
+				io->flag = EXT4_IO_END_UNWRITTEN;
+				atomic_inc(&EXT4_I(inode)->i_aiodio_unwritten);
+			}
 		} else
 			ext4_set_inode_state(inode, EXT4_STATE_DIO_UNWRITTEN);
 		if (ext4_should_dioread_nolock(inode))
@@ -3604,9 +3612,11 @@ int ext4_ext_map_blocks(handle_t *handle, struct inode *inode,
 		 * that we need to perform conversion when IO is done.
 		 */
 		if ((flags & EXT4_GET_BLOCKS_PRE_IO)) {
-			if (io && !(io->flag & EXT4_IO_END_UNWRITTEN)) {
-				io->flag = EXT4_IO_END_UNWRITTEN;
-				atomic_inc(&EXT4_I(inode)->i_aiodio_unwritten);
+			if (io) {
+				if (!(io->flag & EXT4_IO_END_UNWRITTEN)) {
+					io->flag = EXT4_IO_END_UNWRITTEN;
+					atomic_inc(&EXT4_I(inode)->i_aiodio_unwritten);
+				}
 			} else
 				ext4_set_inode_state(inode,
 						     EXT4_STATE_DIO_UNWRITTEN);

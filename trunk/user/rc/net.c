@@ -596,6 +596,24 @@ void hwnat_configure(void)
 #endif
 }
 
+void hw_vlan_tx_map(int idx, int vid)
+{
+	char vlan_tx_data[16];
+
+	/* use slots 10..14 for custom VID */
+	if (vid < 10 || idx < 10 || idx > 14)
+		return;
+
+	/* map VLAN VID to raeth (for support RT3883/MT7620 HW_VLAN_TX with VID > 15) */
+	snprintf(vlan_tx_data, sizeof(vlan_tx_data), "%d: %d", idx, vid);
+
+#if defined (CONFIG_RALINK_RT3883)
+	fput_string("/proc/rt3883/vlan_tx", vlan_tx_data);
+#elif defined (CONFIG_RALINK_MT7620)
+	fput_string("/proc/mt7620/vlan_tx", vlan_tx_data);
+#endif
+}
+
 void reload_nat_modules(void)
 {
 	int loaded_ftp;
@@ -772,78 +790,4 @@ void disable_all_passthrough(void)
 
 	fput_string("/proc/net/pthrough/pppoe", pthrough);
 }
-
-in_addr_t get_ipv4_addr(char* ifname)
-{
-	int s;
-	struct ifreq ifr;
-	struct sockaddr_in *ipv4_inaddr;
-	in_addr_t ipv4_addr = INADDR_ANY;
-
-	/* Retrieve IP info */
-	if ((s = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
-		return INADDR_ANY;
-
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, ifname, IFNAMSIZ);
-
-	/* Get IPv4 address */
-	if (ioctl(s, SIOCGIFADDR, &ifr) == 0) {
-		ipv4_inaddr = (struct sockaddr_in *)&ifr.ifr_addr;
-		if (ipv4_inaddr->sin_addr.s_addr != INADDR_ANY &&
-		    ipv4_inaddr->sin_addr.s_addr != INADDR_NONE)
-			ipv4_addr = ipv4_inaddr->sin_addr.s_addr;
-	}
-
-	close(s);
-
-	return ipv4_addr;
-}
-
-int is_interface_exist(const char *ifname)
-{
-	int sockfd;
-	struct ifreq ifreq;
-	int if_exist = 1;
-	
-	if ((sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
-		return 0;
-	}
-	
-	strncpy(ifreq.ifr_name, ifname, IFNAMSIZ);
-	if (ioctl(sockfd, SIOCGIFFLAGS, &ifreq) < 0) {
-		if_exist = 0;
-	}
-	
-	close(sockfd);
-	
-	return if_exist;
-}
-
-int is_interface_up(const char *ifname)
-{
-	int sockfd;
-	struct ifreq ifreq;
-	int iflags = 0;
-	
-	if ((sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
-		return 0;
-	}
-	
-	strncpy(ifreq.ifr_name, ifname, IFNAMSIZ);
-	if (ioctl(sockfd, SIOCGIFFLAGS, &ifreq) < 0) {
-		iflags = 0;
-	} else {
-		iflags = ifreq.ifr_flags;
-	}
-	
-	close(sockfd);
-	
-	if (iflags & IFF_UP)
-		return 1;
-	
-	return 0;
-}
-
-
 

@@ -1,89 +1,66 @@
-/*
-Copyright (C) 2003-2004 Narcis Ilisei
-
-This program is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public License
-as published by the Free Software Foundation; either version 2
-of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+/* Interface for TCP functions
+ *
+ * Copyright (C) 2003-2004  Narcis Ilisei <inarcis2002@hotpop.com>
+ * Copyright (C) 2010-2014  Joachim Nilsson <troglobit@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, visit the Free Software Foundation
+ * website at http://www.gnu.org/licenses/gpl-2.0.html or write to the
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA  02110-1301, USA.
 */
 
-
-/* interface for tcp functions */
-
-#ifndef _TCP_H_INCLUDED
-#define _TCP_H_INCLUDED
+#ifndef INADYN_TCP_H_
+#define INADYN_TCP_H_
 
 #include "os.h"
-#include "errorcode.h"
+#include "error.h"
 #include "ip.h"
 
+#define TCP_DEFAULT_TIMEOUT	20000	/* msec */
 
-/* SOME DEFAULT CONFIGURATIONS */
-#define TCP_DEFAULT_TIMEOUT	20000 /*ms*/
+typedef struct {
+	ip_sock_t ip;
+	int       initialized;
+} tcp_sock_t;
 
+int tcp_construct          (tcp_sock_t *tcp);
+int tcp_destruct           (tcp_sock_t *tcp);
 
-typedef struct 
-{
-	IP_SOCKET super;
-	BOOL initialized;
-} TCP_SOCKET;
+int tcp_init               (tcp_sock_t *tcp, char *msg, int verbose);
+int tcp_exit               (tcp_sock_t *tcp);
 
-typedef struct
-{
-	TCP_SOCKET super;
-} TCP_CLIENT_SOCKET;
+int tcp_send               (tcp_sock_t *tcp, const char *buf, int len);
+int tcp_recv               (tcp_sock_t *tcp,       char *buf, int len, int *recv_len);
 
-/*public functions*/
+int tcp_set_port           (tcp_sock_t *tcp, int  port);
+int tcp_get_port           (tcp_sock_t *tcp, int *port);
 
-/*
-	 basic resource allocations for the tcp object
-*/
-RC_TYPE tcp_construct(TCP_SOCKET *p_self);
+int tcp_set_remote_name    (tcp_sock_t *tcp, const char  *name);
+int tcp_get_remote_name    (tcp_sock_t *tcp, const char **name);
 
-/*
-	Resource free.
-*/	
-RC_TYPE tcp_destruct(TCP_SOCKET *p_self);
+int tcp_set_remote_timeout (tcp_sock_t *tcp, int  timeout);
+int tcp_get_remote_timeout (tcp_sock_t *tcp, int *timeout);
 
-/* 
-	Sets up the object.
+int tcp_set_bind_iface     (tcp_sock_t *tcp, char  *ifname);
+int tcp_get_bind_iface     (tcp_sock_t *tcp, char **ifname);
 
-	- ...
-*/
-RC_TYPE tcp_initialize(TCP_SOCKET *p_self, char *msg);
+#endif /* INADYN_TCP_H_ */
 
-/* 
-	Disconnect and some other clean up.
-*/
-RC_TYPE tcp_shutdown(TCP_SOCKET *p_self);
-
-
-/* send data*/
-RC_TYPE tcp_send(TCP_SOCKET *p_self, const char *p_buf, int len);
-
-/* receive data*/
-RC_TYPE tcp_recv(TCP_SOCKET *p_self, char *p_buf, int max_recv_len, int *p_recv_len);
-
-/* Accessors */
-
-RC_TYPE tcp_set_port(TCP_SOCKET *p_self, int p);
-RC_TYPE tcp_set_remote_name(TCP_SOCKET *p_self, const char* p);
-RC_TYPE tcp_set_remote_timeout(TCP_SOCKET *p_self, int t);
-RC_TYPE tcp_set_bind_iface(TCP_SOCKET *p_self, char *ifname);
-
-RC_TYPE tcp_get_port(TCP_SOCKET *p_self, int *p_port);
-RC_TYPE tcp_get_remote_name(TCP_SOCKET *p_self, const char* *p);
-RC_TYPE tcp_get_remote_timeout(TCP_SOCKET *p_self, int *p);
-RC_TYPE tcp_get_bind_iface(TCP_SOCKET *p_self, char **ifname);
-
-
-#endif /*_TCP_H_INCLUDED*/
+/**
+ * Local Variables:
+ *  version-control: t
+ *  indent-tabs-mode: t
+ *  c-file-style: "linux"
+ * End:
+ */

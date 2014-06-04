@@ -116,8 +116,8 @@
  * Unfortunately the size is different depending on whether sequence numbers
  * are enabled.
  */
-#define PPPOL2TP_L2TP_HDR_SIZE_SEQ		10
-#define PPPOL2TP_L2TP_HDR_SIZE_NOSEQ		6
+#define PPPOL2TP_L2TP_HDR_SIZE_SEQ		12
+#define PPPOL2TP_L2TP_HDR_SIZE_NOSEQ		8
 
 /* Private data of each session. This data lives at the end of struct
  * l2tp_session, referenced via session->priv[].
@@ -258,11 +258,13 @@ static void pppol2tp_recv(struct l2tp_session *session, struct sk_buff *skb, int
 		ppp_input(&po->chan, skb);
 	} else {
 		PRINTK(session->debug, PPPOL2TP_MSG_DATA, KERN_INFO,
-		       "%s: socket not bound\n", session->name);
+			 "%s: recv %d byte data frame, passing to L2TP socket\n",
+			 session->name, data_len);
 
-		/* Not bound. Nothing we can do, so discard. */
-		session->stats.rx_errors++;
-		kfree_skb(skb);
+		if (sock_queue_rcv_skb(sk, skb) < 0) {
+			session->stats.rx_errors++;
+			kfree_skb(skb);
+		}
 	}
 
 	return;
@@ -766,9 +768,9 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 	session->deref = pppol2tp_session_sock_put;
 
 	/* If PMTU discovery was enabled, use the MTU that was discovered */
-	dst = sk_dst_get(sk);
+	dst = sk_dst_get(tunnel->sock);
 	if (dst != NULL) {
-		u32 pmtu = dst_mtu(__sk_dst_get(sk));
+		u32 pmtu = dst_mtu(__sk_dst_get(tunnel->sock));
 		if (pmtu != 0)
 			session->mtu = session->mru = pmtu -
 				PPPOL2TP_HEADER_OVERHEAD;
@@ -1299,6 +1301,7 @@ static int pppol2tp_session_setsockopt(struct sock *sk,
 			po->chan.hdrlen += NET_SKB_PAD_ORIG + sizeof(struct iphdr) +
 				sizeof(struct udphdr) + 2;
 		}
+		l2tp_session_set_header_len(session, session->tunnel->version);
 		PRINTK(session->debug, PPPOL2TP_MSG_CONTROL, KERN_INFO,
 		       "%s: set send_seq=%d\n", session->name, session->send_seq);
 		break;

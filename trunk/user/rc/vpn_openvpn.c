@@ -82,31 +82,6 @@ openvpn_check_key(const char *key_name, int is_server)
 }
 
 static void
-openvpn_load_user_config(FILE *fp, const char *dir_name, const char *file_name)
-{
-	FILE *fp_user;
-	char line[256], real_path[128];
-	
-	snprintf(real_path, sizeof(real_path), "%s/%s", dir_name, file_name);
-	fp_user = fopen(real_path, "r");
-	if (fp_user) {
-		while (fgets(line, sizeof(line), fp_user)) {
-			if (line[0] == '\0' ||
-			    line[0] == '\r' ||
-			    line[0] == '\n' ||
-			    line[0] == '#' ||
-			    line[0] == ';')
-				continue;
-			
-			line[strlen(line) - 1] = '\n';
-			fprintf(fp, line);
-		}
-		
-		fclose(fp_user);
-	}
-}
-
-static void
 openvpn_create_client_secret(const char *secret_name)
 {
 	FILE *fp;
@@ -286,8 +261,8 @@ openvpn_create_server_conf(const char *conf_file, int is_tun)
 		
 		fprintf(fp, "persist-key\n");
 		fprintf(fp, "persist-tun\n");
-		fprintf(fp, "user %s\n", "nobody");
-		fprintf(fp, "group %s\n", "nogroup");
+		fprintf(fp, "user %s\n", SYS_USER_NOBODY);
+		fprintf(fp, "group %s\n", SYS_GROUP_NOGROUP);
 		fprintf(fp, "script-security %d\n", 2);
 		fprintf(fp, "tmp-dir %s\n", COMMON_TEMP_DIR);
 		fprintf(fp, "writepid %s\n", SERVER_PID_FILE);
@@ -297,7 +272,7 @@ openvpn_create_server_conf(const char *conf_file, int is_tun)
 		
 		fprintf(fp, "\n### User params:\n");
 		
-		openvpn_load_user_config(fp, SERVER_CERT_DIR, "server.conf");
+		load_user_config(fp, SERVER_CERT_DIR, "server.conf");
 		
 		fclose(fp);
 		
@@ -370,7 +345,7 @@ openvpn_create_client_conf(const char *conf_file, int is_tun)
 		
 		fprintf(fp, "\n### User params:\n");
 		
-		openvpn_load_user_config(fp, CLIENT_CERT_DIR, "client.conf");
+		load_user_config(fp, CLIENT_CERT_DIR, "client.conf");
 		
 		fclose(fp);
 		

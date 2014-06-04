@@ -194,6 +194,33 @@ void ext4_evict_inode(struct inode *inode)
 	ext4_ioend_wait(inode);
 
 	if (inode->i_nlink) {
+		/*
+		 * When journalling data dirty buffers are tracked only in the
+		 * journal. So although mm thinks everything is clean and
+		 * ready for reaping the inode might still have some pages to
+		 * write in the running transaction or waiting to be
+		 * checkpointed. Thus calling jbd2_journal_invalidatepage()
+		 * (via truncate_inode_pages()) to discard these buffers can
+		 * cause data loss. Also even if we did not discard these
+		 * buffers, we would have no way to find them after the inode
+		 * is reaped and thus user could see stale data if he tries to
+		 * read them before the transaction is checkpointed. So be
+		 * careful and force everything to disk here... We use
+		 * ei->i_datasync_tid to store the newest transaction
+		 * containing inode's data.
+		 *
+		 * Note that directories do not have this problem because they
+		 * don't use page cache.
+		 */
+		if (ext4_should_journal_data(inode) &&
+		    (S_ISLNK(inode->i_mode) || S_ISREG(inode->i_mode)) &&
+		    inode->i_ino != EXT4_JOURNAL_INO) {
+			journal_t *journal = EXT4_SB(inode->i_sb)->s_journal;
+			tid_t commit_tid = EXT4_I(inode)->i_datasync_tid;
+
+			jbd2_complete_transaction(journal, commit_tid);
+			filemap_write_and_wait(&inode->i_data);
+		}
 		truncate_inode_pages(&inode->i_data, 0);
 		goto no_delete;
 	}
@@ -1295,6 +1322,11 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 	ext_debug("ext4_map_blocks(): inode %lu, flag %d, max_blocks %u,"
 		  "logical block %lu\n", inode->i_ino, flags, map->m_len,
 		  (unsigned long) map->m_lblk);
+
+	/* We can handle the block number less than EXT_MAX_BLOCKS */
+	if (unlikely(map->m_lblk >= EXT_MAX_BLOCKS))
+		return -EIO;
+
 	/*
 	 * Try to see if we can get the block without requesting a new
 	 * file system block.
@@ -1882,6 +1914,7 @@ static int ext4_journalled_write_end(struct file *file,
 	if (new_i_size > inode->i_size)
 		i_size_write(inode, pos+copied);
 	ext4_set_inode_state(inode, EXT4_STATE_JDATA);
+	EXT4_I(inode)->i_datasync_tid = handle->h_transaction->t_tid;
 	if (new_i_size > EXT4_I(inode)->i_disksize) {
 		ext4_update_i_disksize(inode, new_i_size);
 		ret2 = ext4_mark_inode_dirty(handle, inode);
@@ -2355,13 +2388,15 @@ static void mpage_da_map_and_submit(struct mpage_da_data *mpd)
 
 		for (i = 0; i < map.m_len; i++)
 			unmap_underlying_metadata(bdev, map.m_pblk + i);
-	}
 
-	if (ext4_should_order_data(mpd->inode)) {
-		err = ext4_jbd2_file_inode(handle, mpd->inode);
-		if (err)
-			/* This only happens if the journal is aborted */
-			return;
+		if (ext4_should_order_data(mpd->inode)) {
+			err = ext4_jbd2_file_inode(handle, mpd->inode);
+			if (err) {
+				/* Only if the journal is aborted */
+				mpd->retval = err;
+				goto submit_io;
+			}
+		}
 	}
 
 	/*
@@ -2602,6 +2637,7 @@ static int __ext4_journalled_writepage(struct page *page,
 				write_end_fn);
 	if (ret == 0)
 		ret = err;
+	EXT4_I(inode)->i_datasync_tid = handle->h_transaction->t_tid;
 	err = ext4_journal_stop(handle);
 	if (!ret)
 		ret = err;
@@ -3057,11 +3093,12 @@ retry:
 			ret = 0;
 		} else if (ret == MPAGE_DA_EXTENT_TAIL) {
 			/*
-			 * got one extent now try with
-			 * rest of the pages
+			 * Got one extent now try with rest of the pages.
+			 * If mpd.retval is set -EIO, journal is aborted.
+			 * So we don't need to write any more.
 			 */
 			pages_written += mpd.pages_written;
-			ret = 0;
+			ret = mpd.retval;
 			io_done = 1;
 		} else if (wbc->nr_to_write)
 			/*
@@ -3626,10 +3663,11 @@ static void ext4_end_io_dio(struct kiocb *iocb, loff_t offset,
  		  iocb->private, io_end->inode->i_ino, iocb, offset,
 		  size);
 
+	iocb->private = NULL;
+
 	/* if not aio dio with unwritten extents, just free io and return */
 	if (!(io_end->flag & EXT4_IO_END_UNWRITTEN)) {
 		ext4_free_io_end(io_end);
-		iocb->private = NULL;
 out:
 		if (is_async)
 			aio_complete(iocb, ret, 0);
@@ -3652,7 +3690,6 @@ out:
 
 	/* queue the work to convert unwritten extents to written */
 	queue_work(wq, &io_end->work);
-	iocb->private = NULL;
 }
 
 static void ext4_end_io_buffer_write(struct buffer_head *bh, int uptodate)
@@ -3844,6 +3881,12 @@ static ssize_t ext4_direct_IO(int rw, struct kiocb *iocb,
 	struct inode *inode = file->f_mapping->host;
 	ssize_t ret;
 
+	/*
+	 * If we are doing data journalling we don't support O_DIRECT
+	 */
+	if (ext4_should_journal_data(inode))
+		return 0;
+
 	trace_ext4_direct_IO_enter(inode, offset, iov_length(iov, nr_segs), rw);
 	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
 		ret = ext4_ext_direct_IO(rw, iocb, iov, offset, nr_segs);
@@ -3913,6 +3956,7 @@ static const struct address_space_operations ext4_journalled_aops = {
 	.bmap			= ext4_bmap,
 	.invalidatepage		= ext4_invalidatepage,
 	.releasepage		= ext4_releasepage,
+	.direct_IO		= ext4_direct_IO,
 	.is_partially_uptodate  = block_is_partially_uptodate,
 	.error_remove_page	= generic_error_remove_page,
 };
@@ -4067,11 +4111,8 @@ int ext4_block_zero_page_range(handle_t *handle,
 	err = 0;
 	if (ext4_should_journal_data(inode)) {
 		err = ext4_handle_dirty_metadata(handle, inode, bh);
-	} else {
-		if (ext4_should_order_data(inode) && EXT4_I(inode)->jinode)
-			err = ext4_jbd2_file_inode(handle, inode);
+	} else
 		mark_buffer_dirty(bh);
-	}
 
 unlock:
 	unlock_page(page);

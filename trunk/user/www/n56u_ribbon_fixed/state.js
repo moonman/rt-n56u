@@ -297,21 +297,30 @@ function show_menu(L1, L2, L3){
 		menuL2_title[5] = "";
 	}
 
-	if(!found_app_smbd() && !found_app_ftpd()){
-		tabtitle[6].splice(2,2);
-		tablink[6].splice(2,2);
+	if(!support_usb()){
+		tabtitle[6].splice(1,5);
+		tablink[6].splice(1,5);
 		menuL1_link[2] = "";  //remove AiDisk
 		menuL1_title[2] = "";
-	}
-	else if(!found_app_smbd()){
-		tabtitle[6].splice(2,1);
-		tablink[6].splice(2,1);
-	}
-	else if(!found_app_ftpd()){
-		tabtitle[6].splice(3,1);
-		tablink[6].splice(3,1);
-		menuL1_link[2] = "";  //remove AiDisk
-		menuL1_title[2] = "";
+		menuL2_link[7] = "";  //remove USB
+		menuL2_title[7] = "";
+	}else{
+		if(!found_app_smbd() && !found_app_ftpd()){
+			tabtitle[6].splice(2,2);
+			tablink[6].splice(2,2);
+			menuL1_link[2] = "";  //remove AiDisk
+			menuL1_title[2] = "";
+		}
+		else if(!found_app_smbd()){
+			tabtitle[6].splice(2,1);
+			tablink[6].splice(2,1);
+		}
+		else if(!found_app_ftpd()){
+			tabtitle[6].splice(3,1);
+			tablink[6].splice(3,1);
+			menuL1_link[2] = "";  //remove AiDisk
+			menuL1_title[2] = "";
+		}
 	}
 
 	for(i = 1; i <= menuL1_title.length-1; i++){
@@ -459,7 +468,7 @@ function reboot(){
 }
 
 function commit(){
-	if(!confirm('<#Commit_confirm#>'))
+	if(!confirm("<#Commit_confirm#>"))
 		return;
 	var $j = jQuery.noConflict();
 	$j.getJSON('/nvram_action.asp', {nvram_action: "commit_nvram"},
@@ -640,7 +649,7 @@ function is_string(o){
 	else if(keyPressed >= 0 && keyPressed <= 126)
 		return true;
 
-	alert('<#JS_validchar#>');
+	alert("<#JS_validchar#>");
 	return false;
 }
 

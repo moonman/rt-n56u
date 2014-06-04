@@ -514,8 +514,18 @@
 			{"ddns_hostname3_x", "", NULL, RESTART_DDNS},
 			{"ddns_wildcard_x", "", NULL, RESTART_DDNS},
 			{"ddns_period", "", NULL, RESTART_DDNS },
+			{"ddns_forced", "", NULL, RESTART_DDNS },
 			{"ddns_verbose", "", NULL, RESTART_DDNS },
 			{"ddns_source", "", NULL, RESTART_DDNS },
+			{"ddns_checkip", "", NULL, RESTART_DDNS },
+#if defined (SUPPORT_DDNS_SSL)
+			{"ddns_ssl", "", NULL, RESTART_DDNS },
+			{"ddns2_ssl", "", NULL, RESTART_DDNS },
+#endif
+			{"ddns2_server", "", NULL, RESTART_DDNS },
+			{"ddns2_hname", "", NULL, RESTART_DDNS },
+			{"ddns2_user", "", NULL, RESTART_DDNS },
+			{"ddns2_pass", "", NULL, RESTART_DDNS },
 			{"ManualDHCPList", "Group", ARGV((char*)variables_LANHostConfig_ManualDHCPList, "8", "55", "dhcp_staticnum_x"), RESTART_DHCPD},
 			{"VPNSACLList", "Group", ARGV((char*)variables_LANHostConfig_VPNSACLList, "8", "107", "vpns_num_x"), RESTART_VPNSVR},
 			{0,0,0,0}
@@ -612,6 +622,7 @@
 			{"wl_sta_wpa_mode", "", NULL, RESTART_WIFI},
 			{"wl_sta_crypto", "", NULL, RESTART_WIFI},
 			{"wl_sta_wpa_psk", "", NULL, RESTART_WIFI},
+			{"wl_sta_wisp", "", NULL, RESTART_WIFI},
 			{"wl_guest_enable", "", NULL, RESTART_WIFI},
 			{"wl_guest_date_x", "", NULL, RESTART_WIFI},
 			{"wl_guest_time_x", "", NULL, RESTART_WIFI},
@@ -691,6 +702,9 @@
 			{"rt_sta_wpa_mode", "", NULL, RESTART_WIFI},
 			{"rt_sta_crypto", "", NULL, RESTART_WIFI},
 			{"rt_sta_wpa_psk", "", NULL, RESTART_WIFI},
+#if !defined(USE_RT3352_MII)
+			{"rt_sta_wisp", "", NULL, RESTART_WIFI},
+#endif
 			{"rt_guest_enable", "", NULL, RESTART_WIFI},
 			{"rt_guest_date_x", "", NULL, RESTART_WIFI},
 			{"rt_guest_time_x", "", NULL, RESTART_WIFI},

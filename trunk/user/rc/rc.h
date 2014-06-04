@@ -33,10 +33,6 @@
 /* do not set current year, it used for ntp done check! */
 #define SYS_START_YEAR			2010
 
-#define IFUP				(IFF_UP | IFF_RUNNING | IFF_BROADCAST | IFF_MULTICAST)
-
-#define sin_addr(s)			(((struct sockaddr_in *)(s))->sin_addr)
-
 #define SCRIPT_UDHCPC_LAN		"/tmp/udhcpc_lan.script"
 #define SCRIPT_UDHCPC_WAN		"/tmp/udhcpc.script"
 #define SCRIPT_UDHCPC_VIPTV		"/tmp/udhcpc_viptv.script"
@@ -62,15 +58,13 @@
 #define PPP_PEERS_DIR			"/tmp/ppp/peers"
 
 #define QMI_CLIENT_ID			"/tmp/qmi-client-id"
-#define QMI_HANDLE_OK			"/tmp/qmi-handle"
+#define QMI_HANDLE_PDH			"/tmp/qmi-handle"
 
-#define FLAG_FILE_REBOOT		"/tmp/.reboot"
 #define FLAG_FILE_WWAN_GONE		"/tmp/.wwan_gone"
 
 #define DDNS_CONF_FILE			"/etc/inadyn.conf"
-#define DDNS_CACHE_FILE			"/tmp/ddns.cache"
 #define DDNS_DONE_SCRIPT		"/sbin/ddns_updated"
-#define DDNS_FORCE_DAYS			(7)
+#define DDNS_CACHE_DIR			"/tmp/inadyn"
 
 #define NTPC_DONE_SCRIPT		"/sbin/ntpc_updated"
 
@@ -85,6 +79,9 @@
 #define MINIUPNPD_CHAIN_IP4_FORWARD	"UPNP"
 #define MINIUPNPD_CHAIN_IP6_FORWARD	"UPNP"
 
+// for log message title
+#define LOGNAME				BOARD_NAME
+
 
 /* rc.c */
 void setenv_tz(void);
@@ -94,11 +91,14 @@ void shutdown_router(void);
 void handle_notifications(void);
 void LED_CONTROL(int led, int flag);
 void storage_save_time(time_t delta);
+void erase_storage(void);
+void erase_nvram(void);
 
 /* init.c */
 void init_main_loop(void);
-void sys_exit(void);
 int  is_system_down(void);
+int  sys_exit(void);
+int  sys_stop(void);
 
 /* auth.c */
 int  wpacli_main(int argc, char **argv);
@@ -110,6 +110,7 @@ void stop_auth_kabinet(void);
 /* common_ex.c */
 long uptime(void);
 int rand_seed_by_time(void);
+void set_pagecache_reclaim(void);
 void restart_all_sysctl(void);
 void convert_asus_values(int skipflag);
 void init_router_mode();
@@ -119,6 +120,7 @@ char *mac_conv2(char *mac_name, int idx, char *buf);
 void get_eeprom_params(void);
 void char_to_ascii(char *output, char *input);
 unsigned int get_param_int_hex(const char *param);
+void load_user_config(FILE *fp, const char *dir_name, const char *file_name);
 int is_module_loaded(char *module_name);
 int module_smart_load(char *module_name, char *module_param);
 int module_smart_unload(char *module_name, int recurse_unload);
@@ -126,13 +128,16 @@ int module_param_get(char *module_name, char *module_param, char *param_value, s
 void kill_services(char* svc_name[], int wtimeout, int forcekill);
 int kill_process_pidfile(char *pidfile, int wtimeout, int forcekill);
 int create_file(const char *fn);
+int mkdir_if_none(char *dir);
+int check_if_file_exist(const char *filepath);
+int check_if_dir_exist(const char *dirpath);
+int check_if_dev_exist(const char *devpath);
 
 /* net.c */
 int  control_static_routes(char *ift, char *ifname, int is_add);
 int  route_add(char *name, int metric, char *dst, char *gateway, char *genmask);
 int  route_del(char *name, int metric, char *dst, char *gateway, char *genmask);
 int  ifconfig(char *ifname, int flags, char *addr, char *netmask);
-int  is_interface_up(const char *ifname);
 char* sanity_hostname(char *hname);
 char* get_our_hostname(void);
 int  is_same_subnet(char *ip1, char *ip2, char *msk);
@@ -152,17 +157,16 @@ int  is_hwnat_allow(void);
 int  is_hwnat_loaded(void);
 int  is_fastnat_allow(void);
 int  is_ftp_conntrack_loaded(int ftp_port0, int ftp_port1);
-int  is_interface_exist(const char *ifname);
 int  found_default_route(int only_broadband_wan);
 void hwnat_load(void);
 void hwnat_configure(void);
+void hw_vlan_tx_map(int idx, int vid);
 void reload_nat_modules(void);
 void restart_firewall(void);
 void set_ipv4_forward(void);
 void set_force_igmp_mld(void);
 void set_pppoe_passthrough(void);
 void disable_all_passthrough(void);
-in_addr_t get_ipv4_addr(char* ifname);
 
 /* net_lan.c */
 in_addr_t get_lan_ipaddr(void);
@@ -170,11 +174,10 @@ int add_static_lan_routes(char *lan_ifname);
 int del_static_lan_routes(char *lan_ifname);
 void reset_lan_temp(void);
 void reset_lan_vars(void);
+void update_hosts_ap(void);
 void start_lan(void);
 void stop_lan(void);
 void lan_up_manual(char *lan_ifname);
-void lan_up_auto(char *lan_ifname);
-void lan_down_auto(char *lan_ifname);
 void update_lan_status(int isup);
 void full_restart_lan(void);
 void init_loopback(void);
@@ -195,7 +198,6 @@ void reset_wan_temp(void);
 void reset_man_vars(void);
 void reset_wan_vars(int full_reset);
 void set_man_ifname(char *man_ifname, int unit);
-char*get_man_ifname(int unit);
 int  get_vlan_vid_wan(void);
 void start_wan(int is_first_run);
 void stop_wan(void);
@@ -205,6 +207,8 @@ void wan_down(char *ifname);
 void select_usb_modem_to_wan(void);
 void full_restart_wan(void);
 void try_wan_reconnect(int try_use_modem);
+void manual_wan_disconnect(void);
+void manual_wan_connect(void);
 void add_dhcp_routes(char *rt, char *rt_rfc, char *rt_ms, char *ifname, int metric);
 void add_dhcp_routes_by_prefix(char *prefix, char *ifname, int metric);
 int  add_static_wan_routes(char *wan_ifname);
@@ -212,10 +216,9 @@ int  del_static_wan_routes(char *wan_ifname);
 int  add_static_man_routes(char *wan_ifname);
 int  del_static_man_routes(char *wan_ifname);
 int  update_resolvconf(int is_first_run, int do_not_notify);
-int  update_hosts(void);
+int  update_hosts_router(void);
 int  wan_ifunit(char *ifname);
 int  wan_primary_ifunit(void);
-int  is_wan_ppp(char *wan_proto);
 int  wan_prefix(char *ifname, char *prefix);
 void get_wan_ifname(char wan_ifname[16]);
 void update_wan_status(int isup);
@@ -238,7 +241,7 @@ int start_zcip_wan(const char *wan_ifname);
 int start_zcip_viptv(const char *man_ifname);
 
 /* net_ppp.c */
-int start_pppd(char *prefix);
+int start_pppd(char *prefix, int unit, int wan_proto);
 int safe_start_xl2tpd(void);
 int ipup_main(int argc, char **argv);
 int ipdown_main(int argc, char **argv);
@@ -333,6 +336,9 @@ int ovpn_client_script_main(int argc, char **argv);
 #endif
 
 /* net_wifi.c */
+void  nvram_wlan_set(const char* prefix, const char* param, char *value);
+char* nvram_wlan_get(const char* prefix, const char* param);
+int   nvram_wlan_get_int(const char* prefix, const char* param);
 void mlme_state_wl(int is_on);
 void mlme_state_rt(int is_on);
 void mlme_radio_wl(int is_on);
@@ -343,6 +349,14 @@ int  get_enabled_radio_wl(void);
 int  get_enabled_radio_rt(void);
 int  get_enabled_guest_wl(void);
 int  get_enabled_guest_rt(void);
+int  get_mode_radio_wl(void);
+int  get_mode_radio_rt(void);
+int  is_apcli_wisp_wl(void);
+int  is_apcli_wisp_rt(void);
+char* get_apcli_wisp_ifname(void);
+#if defined(USE_RT3352_MII)
+void check_inic_mii_rebooted(void);
+#endif
 void start_wifi_ap_wl(int radio_on);
 void start_wifi_ap_rt(int radio_on);
 void start_wifi_wds_wl(int radio_on);
@@ -379,6 +393,15 @@ int  manual_change_guest_wl(int radio_on);
 int  timecheck_wifi(char *nv_date, char *nv_time1, char *nv_time2);
 
 /* services.c */
+void stop_syslogd();
+void stop_klogd();
+int start_syslogd();
+int start_klogd();
+void start_infosvr(void);
+void stop_infosvr(void);
+int start_networkmap(int first_call);
+void stop_networkmap(void);
+void restart_networkmap(void);
 void stop_telnetd(void);
 void run_telnetd(void);
 void start_telnetd(void);
@@ -391,31 +414,38 @@ void restart_term(void);
 void start_httpd(int restart_fw);
 void stop_httpd(void);
 void restart_httpd(void);
+int start_lltd(void);
+void stop_lltd(void);
+void stop_rstats(void);
+void start_rstats(void);
+int start_logger(int showinfo);
+void stop_logger(void);
+void start_watchdog_cpu(void);
+void restart_watchdog_cpu(void);
+int start_services_once(int is_ap_mode);
+void stop_services(int stopall);
+void stop_services_lan_wan(void);
+void stop_misc(void);
+
+/* services_ex.c */
+int is_dns_dhcpd_run(void);
+int start_dns_dhcpd(void);
+void stop_dns_dhcpd(void);
 int is_upnp_run(void);
 int start_upnp(void);
 void stop_upnp(void);
 void smart_restart_upnp(void);
 void update_upnp(void);
-int start_lltd(void);
-void stop_lltd(void);
-void stop_rstats(void);
-void start_rstats(void);
-int start_services_once(int is_ap_mode);
-void stop_services(int stopall);
-void stop_services_lan_wan(void);
-void write_storage_to_mtd(void);
-void erase_storage(void);
-void erase_nvram(void);
-int start_logger(int showinfo);
-void stop_logger(void);
-void set_pagecache_reclaim(void);
-void start_watchdog_cpu(void);
-void restart_watchdog_cpu(void);
+int ddns_updated_main(int argc, char *argv[]);
+int update_ddns(void);
+int start_ddns(int clear_cache);
+void stop_ddns(void);
+void manual_ddns_hostname_check(void);
+int restart_dhcpd(void);
+int restart_dns(void);
 
-/* services_ex.c */
-int mkdir_if_none(char *dir);
-void start_infosvr(void);
-void stop_infosvr(void);
+#if (BOARD_NUM_USB_PORTS > 0)
+/* services_usb.c */
 #if defined(SRV_U2EC)
 void start_u2ec(void);
 void stop_u2ec(void);
@@ -468,20 +498,9 @@ void stop_aria(void);
 void run_aria(void);
 void restart_aria(void);
 #endif
-int start_networkmap(int first_call);
-void stop_networkmap(void);
-void restart_networkmap(void);
-int start_dns_dhcpd(void);
-void stop_dns_dhcpd(void);
-int is_dns_dhcpd_run(void);
-int ddns_updated_main(int argc, char *argv[]);
-int update_ddns(void);
-int start_ddns(void);
-void stop_ddns(void);
-void stop_misc(void);
+int safe_remove_usb_device(int port, const char *dev_name);
 void stop_usb(void);
 void restart_usb_printer_spoolers(void);
-void try_start_usb_printer_spoolers(void);
 void stop_usb_printer_spoolers(void);
 void on_deferred_hotplug_usb(void);
 void umount_ejected(void);
@@ -489,25 +508,10 @@ int count_sddev_mountpoint(void);
 int count_sddev_partition(void);
 void start_usb_apps(void);
 void stop_usb_apps(void);
-void try_start_usb_apps(void);
-void umount_sddev_all(void);
-void manual_wan_disconnect(void);
-void manual_wan_connect(void);
-void manual_ddns_hostname_check(void);
-void try_start_usb_modem_to_wan(void);
-int restart_dhcpd(void);
-int restart_dns(void);
-int safe_remove_usb_device(int port, const char *dev_name);
-int check_if_file_exist(const char *filepath);
-int check_if_dir_exist(const char *dirpath);
-int check_if_dev_exist(const char *devpath);
 void umount_dev(char *sd_dev);
 void umount_dev_all(char *sd_dev);
 void umount_sddev_all(void);
-void stop_syslogd();
-void stop_klogd();
-int start_syslogd();
-int start_klogd();
+#endif
 
 /* firewall_ex.c */
 void ipt_nat_default(void);
@@ -563,6 +567,7 @@ void stop_detect_internet(void);
 /* detect_wan.c */
 int detect_wan_main(int argc, char *argv[]);
 
+#if (BOARD_NUM_USB_PORTS > 0)
 /* usb_modem.c */
 int  is_ready_modem_ras(int* devnum_out);
 int  is_ready_modem_ndis(int* devnum_out);
@@ -575,7 +580,8 @@ void safe_remove_usb_modem(void);
 void unload_modem_modules(void);
 void reload_modem_modules(int modem_type, int reload);
 int  launch_modem_ras_pppd(int unit);
-int  launch_usb_modeswitch(int vid, int pid, int inquire);
+void launch_wan_usbnet(int unit);
+void stop_wan_usbnet(void);
 int  zerocd_main(int argc, char **argv);
 
 /* usb_devices.c */
@@ -588,23 +594,6 @@ int  mdev_lp_main(int argc, char **argv);
 int  mdev_net_main(int argc, char **argv);
 int  mdev_tty_main(int argc, char **argv);
 int  mdev_wdm_main(int argc, char **argv);
-
-// for log message title
-#define ERR		"err"
-#define LOGNAME		BOARD_NAME
-
-#define varkey_nvram_set(key, value, args...)({ \
-        char nvram_word[64]; \
-        memset(nvram_word, 0x00, sizeof(nvram_word)); \
-        sprintf(nvram_word, key, ##args); \
-        nvram_set(nvram_word, value); \
-})
-
-#define varval_nvram_set(key, value, args...)({ \
-        char nvram_value[64]; \
-        memset(nvram_value, 0x00, sizeof(nvram_value)); \
-        sprintf(nvram_value, value, ##args); \
-        nvram_set(key, nvram_value); \
-})
+#endif
 
 #endif /* _rc_h_ */

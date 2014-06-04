@@ -76,8 +76,8 @@
 #define L2TP_SLFLAG_S	   0x40000000
 #define L2TP_SL_SEQ_MASK   0x00ffffff
 
-#define L2TP_HDR_SIZE_SEQ		10
-#define L2TP_HDR_SIZE_NOSEQ		6
+#define L2TP_HDR_SIZE_SEQ		12
+#define L2TP_HDR_SIZE_NOSEQ		8
 
 /* Default trace flags */
 #define L2TP_DEFAULT_DEBUG_FLAGS	0
@@ -111,7 +111,6 @@ struct l2tp_net {
 	spinlock_t l2tp_session_hlist_lock;
 };
 
-static void l2tp_session_set_header_len(struct l2tp_session *session, int version);
 static void l2tp_tunnel_free(struct l2tp_tunnel *tunnel);
 static void l2tp_tunnel_closeall(struct l2tp_tunnel *tunnel);
 
@@ -441,30 +440,6 @@ out:
 	spin_unlock_bh(&session->reorder_q.lock);
 }
 
-static inline int l2tp_verify_udp_checksum(struct sock *sk,
-					   struct sk_buff *skb)
-{
-	struct udphdr *uh = udp_hdr(skb);
-	u16 ulen = ntohs(uh->len);
-	struct inet_sock *inet;
-	__wsum psum;
-
-	if (sk->sk_no_check || skb_csum_unnecessary(skb) || !uh->check)
-		return 0;
-
-	inet = inet_sk(sk);
-	psum = csum_tcpudp_nofold(inet->inet_saddr, inet->inet_daddr, ulen,
-				  IPPROTO_UDP, 0);
-
-	if ((skb->ip_summed == CHECKSUM_COMPLETE) &&
-	    !csum_fold(csum_add(psum, skb->csum)))
-		return 0;
-
-	skb->csum = psum;
-
-	return __skb_checksum_complete(skb);
-}
-
 /* Do receive processing of L2TP data frames. We handle both L2TPv2
  * and L2TPv3 data frames here.
  *
@@ -743,8 +718,7 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb,
 	u16 version;
 	int length;
 
-	if (tunnel->sock && l2tp_verify_udp_checksum(tunnel->sock, skb))
-		goto discard_bad_csum;
+	/* UDP has verifed checksum */
 
 	/* UDP always verifies the packet length. */
 	__skb_pull(skb, sizeof(struct udphdr));
@@ -831,14 +805,6 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb,
 
 	return 0;
 
-discard_bad_csum:
-	LIMIT_NETDEBUG("%s: UDP: bad checksum\n", tunnel->name);
-	UDP_INC_STATS_USER(tunnel->l2tp_net, UDP_MIB_INERRORS, 0);
-	tunnel->stats.rx_errors++;
-	kfree_skb(skb);
-
-	return 0;
-
 error:
 	/* Put UDP header back */
 	__skb_push(skb, sizeof(struct udphdr));
@@ -887,7 +853,7 @@ static int l2tp_build_l2tpv2_header(struct l2tp_session *session, void *buf)
 	struct l2tp_tunnel *tunnel = session->tunnel;
 	__be16 *bufp = buf;
 	__be16 *optr = buf;
-	u16 flags = L2TP_HDR_VER_2;
+	u16 flags = L2TP_HDR_VER_2 | L2TP_HDRFLAG_O;
 	u32 tunnel_id = tunnel->peer_tunnel_id;
 	u32 session_id = session->peer_session_id;
 
@@ -906,6 +872,7 @@ static int l2tp_build_l2tpv2_header(struct l2tp_session *session, void *buf)
 		PRINTK(session->debug, L2TP_MSG_SEQ, KERN_DEBUG,
 		       "%s: updated ns to %u\n", session->name, session->ns);
 	}
+	*bufp++ = 0; // offset 2B
 
 	return bufp - optr;
 }
@@ -1546,12 +1513,10 @@ EXPORT_SYMBOL_GPL(l2tp_session_delete);
 /* We come here whenever a session's send_seq, cookie_len or
  * l2specific_len parameters are set.
  */
-static void l2tp_session_set_header_len(struct l2tp_session *session, int version)
+void l2tp_session_set_header_len(struct l2tp_session *session, int version)
 {
 	if (version == L2TP_HDR_VER_2) {
-		session->hdr_len = 6;
-		if (session->send_seq)
-			session->hdr_len += 4;
+		session->hdr_len = (session->send_seq) ? L2TP_HDR_SIZE_SEQ : L2TP_HDR_SIZE_NOSEQ;
 	} else {
 		session->hdr_len = 4 + session->cookie_len + session->l2specific_len + session->offset;
 		if (session->tunnel->encap == L2TP_ENCAPTYPE_UDP)
@@ -1559,6 +1524,7 @@ static void l2tp_session_set_header_len(struct l2tp_session *session, int versio
 	}
 
 }
+EXPORT_SYMBOL_GPL(l2tp_session_set_header_len);
 
 struct l2tp_session *l2tp_session_create(int priv_size, struct l2tp_tunnel *tunnel, u32 session_id, u32 peer_session_id, struct l2tp_session_cfg *cfg)
 {

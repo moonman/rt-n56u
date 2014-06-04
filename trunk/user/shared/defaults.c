@@ -15,9 +15,10 @@
  * MA 02111-1307 USA
  */
 
-#include "nvram/bcmnvram.h"
 #include <ralink_boards.h>
+#include "nvram/bcmnvram.h"
 #include "netutils.h"
+#include "defaults.h"
 
 #define STR1(x) #x
 #define STR(x) STR1(x)
@@ -28,7 +29,7 @@ struct nvram_pair router_defaults[] = {
 	{ "nvram_manual", "0" },		/* Manual commit mode: 1: manual, 0: auto */
 
 	/* Miscellaneous parameters */
-	{ "time_zone", "GMT0" },
+	{ "time_zone", DEF_TIMEZONE },
 	{ "log_level", "0" },			/* Bitmask 0:off 1:denied 2:accepted */
 	{ "stats_server", "" },			/* URL for posting stats */
 	{ "console_loglevel", "7" },		/* Kernel panics only */
@@ -52,7 +53,7 @@ struct nvram_pair router_defaults[] = {
 	{ "lan_stp", "1" },			/* LAN spanning tree protocol */
 
 	/* WAN H/W parameters */
-	{ "wan_ifname", "eth3" },		/* WAN interface name */
+	{ "wan_ifname", IFNAME_WAN },		/* WAN interface name */
 	{ "wan_hwname", "" },			/* WAN driver name (e.g. et1) */
 	{ "wan_hwaddr", "" },			/* WAN interface MAC address */
 
@@ -96,21 +97,21 @@ struct nvram_pair router_defaults[] = {
 	{ "dmz_ip", "" },
 
 	/* Web server parameters */
-	{ "http_username", "admin" },		/* Username */
-	{ "http_passwd", "admin" },		/* Password */
+	{ "http_username", SYS_USER_ROOT },	/* Username */
+	{ "http_passwd", DEF_ROOT_PASSWORD },	/* Password */
 	{ "http_access", "0" },			/* HTTP access (0: ALL, 1: LAN only, 2: LAN + Wireless MainAP) */
 	{ "http_proto", "0" },			/* HTTP proto (0: HTTP, 1: HTTPS, 2: Both) */
 	{ "http_lanport", "80" },		/* HTTP LAN port to listen on */
 	{ "https_lport", "443" },		/* HTTPS LAN port to listen on */
-	{ "https_clist", "DH+AESGCM:DH+AES256:DH+AES:DH+3DES:RSA+AES:RSA+3DES:!ADH:!MD5:!DSS" },	/* HTTPS SSL cipher list */
+	{ "https_clist", DEF_HTTPS_CIPH_LIST },	/* HTTPS SSL cipher list */
 	{ "fw_dos_x", "0" },			// oleg patch
 	{ "dr_enable_x", "1" },			// oleg patch
 	{ "mr_enable_x", "0" },			// oleg patch
 	{ "mr_ttl_fix", "0" },
 
 	/* 5G Wireless parameters */
-	{ "wl_country_code", "GB" },		/* Country Code (default obtained from driver) */
-	{ "wl_ssid", "ASUS_5G" },		/* Service set ID (network name) */
+	{ "wl_country_code", DEF_WLAN_5G_CC },		/* Country Code (default obtained from driver) */
+	{ "wl_ssid", DEF_WLAN_5G_SSID },		/* Service set ID (network name) */
 #if BOARD_HAS_5G_11AC
 	{ "wl_gmode", "4" },			/* A/N/AC Mixed */
 #else
@@ -148,12 +149,12 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_TxPower", "100" },
 	{ "wl_TxBurst", "1" },
 	{ "wl_PktAggregate", "1" },
-	{ "wl_APSDCapable", "0" },
+	{ "wl_APSDCapable", "1" },
 	{ "wl_HT_OpMode", "0" },
 	{ "wl_HT_BW", "1" },
 	{ "wl_VHT_Only", "0" },
 	{ "wl_txbf", "0" },
-	{ "wl_ssid2", "ASUS_5G" },
+	{ "wl_ssid2",  DEF_WLAN_5G_SSID },
 	{ "wl_mode_x", "0" },
 	{ "wl_wdsapply_x", "0" },
 	{ "wl_wdsnum_x", "0" },
@@ -181,7 +182,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_guest_date_x", "1111111" },
 	{ "wl_guest_time_x", "00002359" },
 	{ "wl_guest_time2_x", "00002359" },
-	{ "wl_guest_ssid", "ASUS_GUEST_5G" },
+	{ "wl_guest_ssid", DEF_WLAN_5G_GSSID },
 	{ "wl_guest_closed", "0" },
 	{ "wl_guest_ap_isolate", "1" },
 	{ "wl_guest_lan_isolate", "1" },
@@ -198,13 +199,11 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_sta_wpa_mode", "2" },
 	{ "wl_sta_crypto", "aes" },
 	{ "wl_sta_wpa_psk", "" },
+	{ "wl_sta_wisp", "0" },
 
 	/* 2G Wireless parameters */
-	{ "rt_TxPower", "100" },
-	{ "rt_TxBurst", "1" },
-	{ "rt_PktAggregate", "1" },
-	{ "rt_country_code", "GB" },
-	{ "rt_ssid", "ASUS" },
+	{ "rt_country_code", DEF_WLAN_2G_CC },
+	{ "rt_ssid", DEF_WLAN_2G_SSID },
 	{ "rt_gmode", "2" },
 	{ "rt_channel", "0" },
 	{ "rt_bcn", "100" },
@@ -223,10 +222,13 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_HT_OpMode", "0" },
 	{ "rt_wsc_config_state", "0" },
 	{ "rt_secret_code", "0" },
-	{ "rt_APSDCapable", "0" },
 	{ "rt_wme", "1" },
 	{ "rt_wme_no_ack", "off" },
 	{ "rt_IgmpSnEnable", "1" },
+	{ "rt_TxPower", "100" },
+	{ "rt_TxBurst", "1" },
+	{ "rt_PktAggregate", "1" },
+	{ "rt_APSDCapable", "1" },
 	{ "rt_auth_mode", "open" },
 	{ "rt_crypto", "aes" },
 	{ "rt_wpa_psk", "" },
@@ -242,7 +244,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_radius_port", "1812" },
 	{ "rt_radius_key", "" },
 	{ "rt_radio_x", "1" },
-	{ "rt_ssid2", "ASUS" },
+	{ "rt_ssid2", DEF_WLAN_2G_SSID },
 	{ "rt_mode_x", "0" },
 	{ "rt_wdsapply_x", "0" },
 	{ "rt_wdsnum_x", "0" },
@@ -270,7 +272,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_guest_date_x", "1111111" },
 	{ "rt_guest_time_x", "00002359" },
 	{ "rt_guest_time2_x", "00002359" },
-	{ "rt_guest_ssid", "ASUS_GUEST" },
+	{ "rt_guest_ssid", DEF_WLAN_2G_GSSID },
 	{ "rt_guest_closed", "0" },
 	{ "rt_guest_ap_isolate", "1" },
 	{ "rt_guest_lan_isolate", "1" },
@@ -287,6 +289,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_sta_wpa_mode", "2" },
 	{ "rt_sta_crypto", "aes" },
 	{ "rt_sta_wpa_psk", "" },
+	{ "rt_sta_wisp", "0" },
 
 	// USB related
 	{ "acc_num", "0" },
@@ -297,7 +300,7 @@ struct nvram_pair router_defaults[] = {
 	{ "st_ftp_mode", "1" },
 	{ "st_ftp_log", "0" },
 	{ "st_max_user", "10" },
-	{ "st_samba_workgroup", "WORKGROUP" },
+	{ "st_samba_workgroup", DEF_SMB_WORKGROUP },
 	{ "apps_dms", "0" },
 	{ "apps_itunes", "0"},
 	{ "sh_num", "0" },
@@ -428,8 +431,8 @@ struct nvram_pair router_defaults[] = {
 
 	/* NTP client parameters */
 	{ "ntp_period", "24" },
-	{ "ntp_server0", "pool.ntp.org" },
-	{ "ntp_server1", "time.nist.gov" },
+	{ "ntp_server0", DEF_NTP_SERVER0 },
+	{ "ntp_server1", DEF_NTP_SERVER1 },
 
 	/* DDNS parameters */
 	{ "ddns_enable_x", "0" },
@@ -440,9 +443,17 @@ struct nvram_pair router_defaults[] = {
 	{ "ddns_hostname2_x", "" },
 	{ "ddns_hostname3_x", "" },
 	{ "ddns_wildcard_x", "0" },
-	{ "ddns_period", "12" },
+	{ "ddns_period", "24" },
+	{ "ddns_forced", "10" },
 	{ "ddns_verbose", "1" },
 	{ "ddns_source", "0" },
+	{ "ddns_checkip", "0" },
+	{ "ddns_ssl", "1" },
+	{ "ddns2_server", "" },
+	{ "ddns2_hname", "" },
+	{ "ddns2_user", "" },
+	{ "ddns2_pass", "" },
+	{ "ddns2_ssl", "1" },
 	{ "asusddns_tos_agreement", "0" },
 
 	{ "preferred_lang", "" },
@@ -482,7 +493,6 @@ struct nvram_pair router_defaults[] = {
 	{ "controlrate_broadcast", "10" },
 	{ "asus_debug", "0" },
 	{ "di_debug", "0" },
-	{ "telnetd", "1" },
 
 	{ "fw_pt_pptp", "1" },
 	{ "fw_pt_l2tp", "1" },
@@ -513,6 +523,7 @@ struct nvram_pair router_defaults[] = {
 	{ "pppoe_dhcp_route", "1" },
 	{ "sw_mode", "1" },
 
+	{ "telnetd", "1" },
 	{ "sshd_enable", "0" },
 
 	{ "u2ec_enable", "1" },

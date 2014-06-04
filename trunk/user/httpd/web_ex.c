@@ -40,7 +40,6 @@ typedef unsigned char   bool;
 #include <sys/wait.h>
 #include <dirent.h>
 #include <sys/reboot.h>
-#include <net/ethernet.h>
 #include <net/if.h>
 #include <linux/types.h>
 #include <linux/sockios.h>
@@ -217,6 +216,9 @@ void sys_script(char *name)
 	{
 		if (SystemCmd[0])
 		{
+			char path_env[64];
+			snprintf(path_env, sizeof(path_env), "PATH=%s", SYS_EXEC_PATH_OPT);
+			putenv(path_env);
 			doSystem("%s >/tmp/syscmd.log 2>&1\n", SystemCmd);
 			SystemCmd[0] = '\0';
 		}
@@ -296,7 +298,8 @@ void sys_script(char *name)
 	}
 	else if (strcmp(name,"ddnsclient")==0)
 	{
-		eval("start_ddns");
+		if (pids("inadyn"))
+			doSystem("killall %s %s", "-SIGUSR1", "inadyn");
 	}
 	else if (strcmp(name,"hostname_check") == 0)
 	{
@@ -812,7 +815,7 @@ static int dump_file(webs_t wp, char *filename)
 
 static int
 ej_dump(int eid, webs_t wp, int argc, char_t **argv)
-{	
+{
 	char filename[128];
 	char *file, *script;
 	int ret;
@@ -1019,14 +1022,36 @@ static void clean_error_msg() {
 	return;
 }
 
-#define WIFI_COMMON_CHANGE_BIT	(1<<0)
-#define WIFI_RADIO_CONTROL_BIT	(1<<1)
-#define WIFI_GUEST_CONTROL_BIT	(1<<2)
-#define WIFI_SCHED_CONTROL_BIT	(1<<3)
+#define WIFI_IWPRIV_CHANGE_BIT	(1<<0)
+#define WIFI_COMMON_CHANGE_BIT	(1<<1)
+#define WIFI_RADIO_CONTROL_BIT	(1<<2)
+#define WIFI_GUEST_CONTROL_BIT	(1<<3)
+#define WIFI_SCHED_CONTROL_BIT	(1<<4)
 
 static int nvram_modified = 0;
 static int wl_modified = 0;
 static int rt_modified = 0;
+
+static const char* wifn_list[][3] = {
+	{IFNAME_2G_MAIN, IFNAME_2G_APCLI, IFNAME_2G_WDS0},
+#if BOARD_HAS_5G_RADIO
+	{IFNAME_5G_MAIN, IFNAME_5G_APCLI, IFNAME_5G_WDS0}
+#endif
+};
+
+static char* get_wifi_ifname(int is_5g)
+{
+	int i;
+
+	is_5g &= 1;
+	for (i = 0; i < ARRAY_SIZE(wifn_list[is_5g]); i++) {
+		char *wifn = (char *)wifn_list[is_5g][i];
+		if (is_interface_up(wifn))
+			return wifn;
+	}
+
+	return NULL;
+}
 
 static void set_wifi_ssid(char* ifname, char* value)
 {
@@ -1242,32 +1267,48 @@ static int validate_asp_apply(webs_t wp, int sid) {
 						char_to_ascii(buff, value);
 						nvram_set("wl_ssid2", buff);
 						set_wifi_ssid(IFNAME_5G_MAIN, value);
+						
+						wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "wl_guest_ssid"))
 					{
 						set_wifi_ssid(IFNAME_5G_GUEST, value);
+						
+						wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else
 #endif
 					if (!strcmp(v->name, "wl_TxPower"))
 					{
-						set_wifi_param_int(IFNAME_5G_MAIN, "TxPower", value, 0, 100);
+						char *wifn = get_wifi_ifname(1);
+						if (wifn)
+							set_wifi_param_int(wifn, "TxPower", value, 0, 100);
+						
+						wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "wl_greenap"))
 					{
 						set_wifi_param_int(IFNAME_5G_MAIN, "GreenAP", value, 0, 1);
+						
+						wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "wl_IgmpSnEnable"))
 					{
 						set_wifi_param_int(IFNAME_5G_MAIN, "IgmpSnEnable", value, 0, 1);
+						
+						wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "wl_mcastrate"))
 					{
 						set_wifi_mrate(IFNAME_5G_MAIN, value);
+						
+						wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "wl_guest_mcs_mode"))
 					{
 						set_wifi_mcs_mode(IFNAME_5G_GUEST, value);
+						
+						wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "wl_guest_enable") ||
 					         !strcmp(v->name, "wl_guest_time_x") ||
@@ -1306,32 +1347,48 @@ static int validate_asp_apply(webs_t wp, int sid) {
 						char_to_ascii(buff, value);
 						nvram_set("rt_ssid2", buff);
 						set_wifi_ssid(IFNAME_2G_MAIN, value);
+						
+						rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "rt_guest_ssid"))
 					{
 						set_wifi_ssid(IFNAME_2G_GUEST, value);
+						
+						rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else
 #endif
 					if (!strcmp(v->name, "rt_TxPower"))
 					{
-						set_wifi_param_int(IFNAME_2G_MAIN, "TxPower", value, 0, 100);
+						char *wifn = get_wifi_ifname(0);
+						if (wifn)
+							set_wifi_param_int(wifn, "TxPower", value, 0, 100);
+						
+						rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "rt_greenap"))
 					{
 						set_wifi_param_int(IFNAME_2G_MAIN, "GreenAP", value, 0, 1);
+						
+						rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "rt_IgmpSnEnable"))
 					{
 						set_wifi_param_int(IFNAME_2G_MAIN, "IgmpSnEnable", value, 0, 1);
+						
+						rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "rt_mcastrate"))
 					{
 						set_wifi_mrate(IFNAME_2G_MAIN, value);
+						
+						rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "rt_guest_mcs_mode"))
 					{
 						set_wifi_mcs_mode(IFNAME_2G_GUEST, value);
+						
+						rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
 					}
 					else if (!strcmp(v->name, "rt_guest_enable") ||
 					         !strcmp(v->name, "rt_guest_time_x") ||
@@ -1430,6 +1487,8 @@ static int update_variables_ex(int eid, webs_t wp, int argc, char_t **argv) {
 			}
 			else if (!strcmp(action_mode, "Update")) {
 				validate_asp_apply(wp, sid);
+				/* block restart signal (only nvram update + call script) */
+				restart_needed_bits = 0;
 			}
 			else {
 				char group_id[64];
@@ -1588,7 +1647,7 @@ static int update_variables_ex(int eid, webs_t wp, int argc, char_t **argv) {
 		
 		websWrite(wp, "<script>restart_needed_time(%d);</script>\n", restart_total_time);
 	}
-	
+
 	return 0;
 }
 
@@ -1638,17 +1697,27 @@ static int ej_notify_services(int eid, webs_t wp, int argc, char_t **argv) {
 				restart_needed_bits &= ~(u32)RESTART_IPTV;		// igmpproxy already re-started (RESTART_LAN)
 				restart_needed_bits &= ~(u32)RESTART_FIREWALL;		// firewall already re-started (RESTART_LAN)
 			}
+#if (BOARD_NUM_USB_PORTS > 0)
 			if ((restart_needed_bits & RESTART_MODEM) != 0) {
 				notify_rc("restart_modem");
 				restart_needed_bits &= ~(u32)RESTART_MODEM;
 				restart_needed_bits &= ~(u32)RESTART_WAN;		// wan already re-started (RESTART_MODEM)
 			}
+#endif
 			if ((restart_needed_bits & RESTART_WAN) != 0) {
 				notify_rc("restart_whole_wan");
 				restart_needed_bits &= ~(u32)RESTART_WAN;
 				restart_needed_bits &= ~(u32)RESTART_IPTV;		// iptv already re-started (RESTART_WAN)
 				restart_needed_bits &= ~(u32)RESTART_SWITCH_VLAN;	// vlan filter already re-started (RESTART_WAN)
 				restart_needed_bits &= ~(u32)RESTART_FIREWALL;		// firewall already re-started (RESTART_WAN)
+			}
+			if ((restart_needed_bits & RESTART_SWITCH) != 0) {
+				notify_rc("restart_switch_config");
+				restart_needed_bits &= ~(u32)RESTART_SWITCH;
+			}
+			if ((restart_needed_bits & RESTART_SWITCH_VLAN) != 0) {
+				notify_rc("restart_switch_vlan");
+				restart_needed_bits &= ~(u32)RESTART_SWITCH_VLAN;
 			}
 			if ((restart_needed_bits & RESTART_IPTV) != 0) {
 				notify_rc("restart_iptv");
@@ -1664,10 +1733,6 @@ static int ej_notify_services(int eid, webs_t wp, int argc, char_t **argv) {
 				notify_rc("restart_dhcpd");
 				restart_needed_bits &= ~(u32)RESTART_DHCPD;
 			}
-			if ((restart_needed_bits & RESTART_FTPSAMBA) != 0) {
-				notify_rc("restart_cifs");
-				restart_needed_bits &= ~(u32)RESTART_FTPSAMBA;
-			}
 			if ((restart_needed_bits & RESTART_TERMINAL) != 0) {
 				notify_rc("restart_term");
 				restart_needed_bits &= ~(u32)RESTART_TERMINAL;
@@ -1682,10 +1747,6 @@ static int ej_notify_services(int eid, webs_t wp, int argc, char_t **argv) {
 				restart_needed_bits &= ~(u32)RESTART_VPNCLI;
 				restart_needed_bits &= ~(u32)RESTART_FIREWALL;		// firewall already re-started (RESTART_VPNCLI)
 			}
-			if ((restart_needed_bits & RESTART_DDNS) != 0) {
-				notify_rc("restart_ddns");
-				restart_needed_bits &= ~(u32)RESTART_DDNS;
-			}
 			if ((restart_needed_bits & RESTART_HTTPD) != 0) {
 				notify_rc("restart_httpd");
 				restart_needed_bits &= ~(u32)RESTART_HTTPD;
@@ -1695,10 +1756,29 @@ static int ej_notify_services(int eid, webs_t wp, int argc, char_t **argv) {
 				notify_rc("restart_dns");
 				restart_needed_bits &= ~(u32)RESTART_DNS;
 			}
+			if ((restart_needed_bits & RESTART_DDNS) != 0) {
+				notify_rc("restart_ddns");
+				restart_needed_bits &= ~(u32)RESTART_DDNS;
+			}
 			if ((restart_needed_bits & RESTART_UPNP) != 0) {
 				notify_rc("restart_upnp");
 				restart_needed_bits &= ~(u32)RESTART_UPNP;
 			}
+			if ((restart_needed_bits & RESTART_FIREWALL) != 0) {
+				notify_rc("restart_firewall");
+				restart_needed_bits &= ~(u32)RESTART_FIREWALL;
+			}
+#if (BOARD_NUM_USB_PORTS > 0)
+			if ((restart_needed_bits & RESTART_FTPSAMBA) != 0) {
+				notify_rc("restart_cifs");
+				restart_needed_bits &= ~(u32)RESTART_FTPSAMBA;
+			}
+#if defined(APP_NFSD)
+			if ((restart_needed_bits & RESTART_NFS) != 0) {
+				notify_rc("restart_nfs");
+				restart_needed_bits &= ~(u32)RESTART_NFS;
+			}
+#endif
 #if defined(APP_MINIDLNA)
 			if ((restart_needed_bits & RESTART_DMS) != 0) {
 				notify_rc("restart_dms");
@@ -1723,38 +1803,6 @@ static int ej_notify_services(int eid, webs_t wp, int argc, char_t **argv) {
 				restart_needed_bits &= ~(u32)RESTART_ITUNES;
 			}
 #endif
-			if ((restart_needed_bits & RESTART_SWITCH) != 0) {
-				notify_rc("restart_switch_config");
-				restart_needed_bits &= ~(u32)RESTART_SWITCH;
-			}
-			if ((restart_needed_bits & RESTART_SWITCH_VLAN) != 0) {
-				notify_rc("restart_switch_vlan");
-				restart_needed_bits &= ~(u32)RESTART_SWITCH_VLAN;
-			}
-			if ((restart_needed_bits & RESTART_SYSLOG) != 0) {
-				notify_rc("restart_syslog");
-				restart_needed_bits &= ~(u32)RESTART_SYSLOG;
-			}
-			if ((restart_needed_bits & RESTART_WDG_CPU) != 0) {
-				notify_rc("restart_wdg_cpu");
-				restart_needed_bits &= ~(u32)RESTART_WDG_CPU;
-			}
-			if ((restart_needed_bits & RESTART_FIREWALL) != 0) {
-				notify_rc("restart_firewall");
-				restart_needed_bits &= ~(u32)RESTART_FIREWALL;
-			}
-			if ((restart_needed_bits & RESTART_NTPC) != 0) {
-				notify_rc("restart_ntpc");
-				restart_needed_bits &= ~(u32)RESTART_NTPC;
-			}
-			if ((restart_needed_bits & RESTART_NFS) != 0) {
-				notify_rc("restart_nfs");
-				restart_needed_bits &= ~(u32)RESTART_NFS;
-			}
-			if ((restart_needed_bits & RESTART_TIME) != 0) {
-				notify_rc("restart_time");
-				restart_needed_bits &= ~(u32)RESTART_TIME;
-			}
 			if ((restart_needed_bits & RESTART_SPOOLER) != 0) {
 				notify_rc("restart_spooler");
 				restart_needed_bits &= ~(u32)RESTART_SPOOLER;
@@ -1763,16 +1811,37 @@ static int ej_notify_services(int eid, webs_t wp, int argc, char_t **argv) {
 				notify_rc("restart_hddtune");
 				restart_needed_bits &= ~(u32)RESTART_HDDTUNE;
 			}
+#endif
+			if ((restart_needed_bits & RESTART_SYSLOG) != 0) {
+				notify_rc("restart_syslog");
+				restart_needed_bits &= ~(u32)RESTART_SYSLOG;
+			}
+			if ((restart_needed_bits & RESTART_WDG_CPU) != 0) {
+				notify_rc("restart_wdg_cpu");
+				restart_needed_bits &= ~(u32)RESTART_WDG_CPU;
+			}
 			if ((restart_needed_bits & RESTART_SYSCTL) != 0) {
 				notify_rc("restart_sysctl");
 				restart_needed_bits &= ~(u32)RESTART_SYSCTL;
 			}
+			if ((restart_needed_bits & RESTART_NTPC) != 0) {
+				notify_rc("restart_ntpc");
+				restart_needed_bits &= ~(u32)RESTART_NTPC;
+			}
+			if ((restart_needed_bits & RESTART_TIME) != 0) {
+				notify_rc("restart_time");
+				restart_needed_bits &= ~(u32)RESTART_TIME;
+			}
 			if ((restart_needed_bits & RESTART_WIFI) != 0) {
+#if BOARD_HAS_5G_RADIO
 				if (wl_modified) {
 					if (wl_modified & WIFI_COMMON_CHANGE_BIT)
 						notify_rc("restart_wifi_wl");
 					else {
-						if (rt_modified & WIFI_RADIO_CONTROL_BIT)
+						if (wl_modified & WIFI_IWPRIV_CHANGE_BIT)
+							notify_rc("control_wifi_config_wl");
+						
+						if (wl_modified & WIFI_RADIO_CONTROL_BIT)
 							notify_rc("control_wifi_radio_wl");
 						
 						if (wl_modified & WIFI_GUEST_CONTROL_BIT)
@@ -1783,11 +1852,14 @@ static int ej_notify_services(int eid, webs_t wp, int argc, char_t **argv) {
 					}
 					wl_modified = 0;
 				}
-				
+#endif
 				if (rt_modified) {
 					if (rt_modified & WIFI_COMMON_CHANGE_BIT)
 						notify_rc("restart_wifi_rt");
 					else {
+						if (rt_modified & WIFI_IWPRIV_CHANGE_BIT)
+							notify_rc("control_wifi_config_rt");
+						
 						if (rt_modified & WIFI_RADIO_CONTROL_BIT)
 							notify_rc("control_wifi_radio_rt");
 						
@@ -1801,303 +1873,258 @@ static int ej_notify_services(int eid, webs_t wp, int argc, char_t **argv) {
 				}
 				restart_needed_bits &= ~(u32)RESTART_WIFI;
 			}
+			
 			dbG("debug restart_needed_bits after: 0x%lx\n", restart_needed_bits);
 		}
 		restart_needed_bits = 0;
 	}
-	
-	return 0;
-}
-
-static int detect_if_wan(int eid, webs_t wp, int argc, char_t **argv) {
-	int phy_wan = 0;
-
-	if (!get_ap_mode()) {
-		phy_wan = (get_wan_phy_connected()) ? 1 : 0;
-		kill_pidfile_s("/var/run/detect_internet.pid", SIGHUP);
-	}
-
-	websWrite(wp, "%d", phy_wan);
 
 	return 0;
 }
 
-int file_to_buf(char *path, char *buf, int len) {
-	FILE *fp;
-	memset(buf, 0 , len);
-	
-	if ((fp = fopen(path, "r")) != NULL) {
-		fgets(buf, len, fp);
-		fclose(fp);
-		
-		return 1;
-	}
-	
-	return 0;
-}
-
-int get_ppp_pid(char *conntype) {
-	int pid = -1;
-	char tmp[80], tmp1[80];
-	
-	snprintf(tmp, sizeof(tmp), "/var/run/%s.pid", conntype);
-	file_to_buf(tmp, tmp1, sizeof(tmp1));
-	pid = atoi(tmp1);
-	
-	return pid;
-}
-
-/* Find process name by pid from /proc directory */
-char *find_name_by_proc(int pid) {
-	FILE *fp;
-	char line[254];
-	char filename[80];
-	static char name[80];
-	
-	snprintf(filename, sizeof(filename), "/proc/%d/status", pid);
-	
-	if ((fp = fopen(filename, "r")) != NULL) {
-		fgets(line, sizeof(line), fp);
-		/* Buffer should contain a string like "Name:   binary_name" */
-		sscanf(line, "%*s %s", name);
-		fclose(fp);
-		return name;
-	}
-	
-	return "";
-}
-
-int check_ppp_exist() {
-	DIR *dir;
-	struct dirent *dent;
-	char task_file[64], cmdline[64];
-	int pid, fd;
-	
-	if ((dir = opendir("/proc")) == NULL) {
-		perror("open proc");
-		return -1;
-	}
-	
-	while((dent = readdir(dir)) != NULL) {
-		if ((pid = atoi(dent->d_name)) > 1) {
-			memset(task_file, 0, 64);
-			sprintf(task_file, "/proc/%d/cmdline", pid);
-			if ((fd = open(task_file, O_RDONLY)) > 0) {
-				memset(cmdline, 0, 64);
-				read(fd, cmdline, 64);
-				close(fd);
-				
-				if (strstr(cmdline, "pppoecd")
-						|| strstr(cmdline, "pppd")
-						) {
-					closedir(dir);
-					return 0;
-				}
-			}
-			else
-				printf("cannot open %s\n", task_file);
-		}
-	}
-	closedir(dir);
-	
-	return -1;
-}
-
-int check_subnet() {
-	if (!strcmp(nvram_safe_get("wan_subnet_t"), nvram_safe_get("lan_subnet_t")))
-		return 1;
-	else
-		return 0;
-}
-
-int
-get_if_status(const char *wan_ifname)
+static int
+detect_if_wan(int eid, webs_t wp, int argc, char_t **argv)
 {
-	int s, status;
-	struct ifreq ifr;
-	struct sockaddr_in *wan_addr_in;
-	
-	if (get_ap_mode())
-		return 0;
-	
-	status = 0;
-	
-	s = socket(AF_INET, SOCK_DGRAM, 0);
-	if (s >= 0) {
-		/* Check for valid IP address */
-		memset(&ifr, 0, sizeof(ifr));
-		strncpy(ifr.ifr_name, wan_ifname, IFNAMSIZ);
-		
-		if (ioctl(s, SIOCGIFADDR, &ifr) == 0) {
-			wan_addr_in = (struct sockaddr_in *)&ifr.ifr_addr;
-			if (wan_addr_in->sin_addr.s_addr != INADDR_ANY &&
-			    wan_addr_in->sin_addr.s_addr != INADDR_NONE)
-				status = 1;
-		}
-		
-		close(s);
-	}
-	
-	return status;
+	if (!get_ap_mode())
+		kill_pidfile_s("/var/run/detect_internet.pid", SIGHUP);
+
+	return 0;
 }
 
-static int wanlink_hook(int eid, webs_t wp, int argc, char_t **argv) {
+#define IF_STATE_EXIST		1
+#define IF_STATE_UP		2
+#define IF_STATE_HAS_ADDR	3
+
+static int
+get_if_state(const char *ifname, char addr4[INET_ADDRSTRLEN])
+{
+	struct in_addr addr4_in;
+	int ifstate = 0;
+	int iflags = get_interface_flags(ifname);
+
+	if (iflags >= 0) {
+		ifstate = IF_STATE_EXIST;
+		if (iflags & IFF_UP) {
+			ifstate = IF_STATE_UP;
+			addr4_in.s_addr = get_interface_addr4(ifname);
+			if (addr4_in.s_addr != INADDR_ANY) {
+				ifstate = IF_STATE_HAS_ADDR;
+				strcpy(addr4, inet_ntoa(addr4_in));
+			}
+		}
+	}
+
+	return ifstate;
+}
+
+/*
+Internet connection status code:
+0 - Connected
+1 - No cable attached (Ethernet)
+2 - No connection to AP (APCli)
+3 - No connection to BTS (Modem) // not implemented yet
+4 - Network interface not ready
+5 - Network interface wait DHCP
+6 - Wait PPP interface connection
+7 - Inactive PPP state
+8 - No Default Gateway
+*/
+
+#define INET_STATE_CONNECTED		0
+#define INET_STATE_NO_ETH_LINK		1
+#define INET_STATE_NO_AP_LINK		2
+#define INET_STATE_NO_BS_LINK		3
+#define INET_STATE_NETIF_NOT_READY	4
+#define INET_STATE_NETIF_WAIT_DHCP	5
+#define INET_STATE_PPP_WAIT		6
+#define INET_STATE_PPP_INACTIVE		7
+#define INET_STATE_NO_DGW		8
+
+static int
+wanlink_hook(int eid, webs_t wp, int argc, char_t **argv)
+{
 	FILE *fp;
-	char type[32], dns[256], dns_item[80], wan_mac[18], statusstr[32], etherlink[32] = {0};
-	int status = 0, unit, is_first, i_wan_src_phy, is_wan_modem;
+	char wan_dns[512], wan_mac[18], etherlink[32], apclilink[32];
+	char wan_desc[32], tmp[64], prefix[16], statusstr[32];
+	char addr4_wan[INET_ADDRSTRLEN], addr4_man[INET_ADDRSTRLEN];
+	char *wan0_ip, *wanx_ip, *wan0_gw, *wanx_gw, *wan_ip6, *lan_ip6, *man_ifname;
+	int unit, status_code, wan_proto, ifstate_wan, ifstate_man, phy_failed, ppp_mode;
 	long ppp_time;
-	char tmp[100], prefix[] = "wanXXXXXXXXXX_";
-	char *wan0_ip, *wanx_ip, *wan0_gw, *wanx_gw, *wan_ip6, *lan_ip6;
 #if defined (USE_IPV6)
 	int ipv6_type;
 	char *wan6_ifname = NULL;
 	char addr6_wan[INET6_ADDRSTRLEN], addr6_lan[INET6_ADDRSTRLEN];
 #endif
-	snprintf(wan_mac, sizeof(wan_mac), "%s", nvram_safe_get("wan_hwaddr"));
-	
+
 	wanx_ip = "";
 	wanx_gw = "";
 	wan_ip6 = "";
 	lan_ip6 = "";
 	ppp_time = 0;
-	
+	ppp_mode = 0;
+
 	/* current unit */
 	if ((unit = nvram_get_int("wan_unit")) < 0)
 		unit = 0;
-	
+
 	snprintf(prefix, sizeof(prefix), "wan%d_", unit);
-	
+	snprintf(wan_mac, sizeof(wan_mac), "%s", nvram_safe_get("wan_hwaddr"));
+
+	phy_failed = 0;
+	ifstate_wan = 0;
+	ifstate_man = 0;
+	status_code = INET_STATE_CONNECTED;
 	statusstr[0] = 0;
-	
-	is_wan_modem = get_usb_modem_wan(0);
-	
-	if (is_wan_modem)
-	{
+	etherlink[0] = 0;
+	apclilink[0] = 0;
+	addr4_wan[0] = 0;
+	addr4_man[0] = 0;
+	wan_desc[0] = 0;
+
+	fill_eth_port_status(nvram_get_int("wan_src_phy"), etherlink);
+
+	wan_proto = get_wan_proto(unit);
+	man_ifname = get_man_ifname(unit);
+
+#if (BOARD_NUM_USB_PORTS > 0)
+	if (get_usb_modem_wan(0)) {
 		if (nvram_match("modem_type", "3")) {
-			struct ifreq ifr;
 			char *ndis_ifname = nvram_safe_get("wan_ifname_t");
 			if (isUsbNetIf(ndis_ifname)) {
-				status = get_if_status(ndis_ifname);
-				if (get_if_hwaddr(ndis_ifname, &ifr) == 0) {
-					sprintf(wan_mac, "%02X:%02X:%02X:%02X:%02X:%02X", 
-						(unsigned char)ifr.ifr_hwaddr.sa_data[0],
-						(unsigned char)ifr.ifr_hwaddr.sa_data[1],
-						(unsigned char)ifr.ifr_hwaddr.sa_data[2],
-						(unsigned char)ifr.ifr_hwaddr.sa_data[3],
-						(unsigned char)ifr.ifr_hwaddr.sa_data[4],
-						(unsigned char)ifr.ifr_hwaddr.sa_data[5]);
+				ifstate_wan = get_if_state(ndis_ifname, addr4_wan);
+				if (ifstate_wan > 0) {
+					unsigned char mac[8];
+					if (get_interface_hwaddr(ndis_ifname, mac) == 0) {
+						sprintf(wan_mac, "%02X:%02X:%02X:%02X:%02X:%02X", 
+							mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+					}
 				}
 			}
-		}
-		else {
+			etherlink[0] = 0; // hide ethernet link
+			strcpy(wan_desc, "USB Modem (NDIS/RNDIS)");
+		} else {
 #if defined (USE_IPV6)
 			if (nvram_get_int("ip6_wan_if") == 0)
 				wan6_ifname = IFNAME_RAS;
 #endif
-			status = get_if_status(IFNAME_RAS);
+			ifstate_wan = get_if_state(IFNAME_RAS, addr4_wan);
 			ppp_time = nvram_get_int(strcat_r(prefix, "time", tmp));
+			ppp_mode = 1;
 			
-			// Dual access with 3G Modem
-			if (nvram_match(strcat_r(prefix, "proto", tmp), "pptp") ||
-			    nvram_match(strcat_r(prefix, "proto", tmp), "l2tp") ||
-			    nvram_match(strcat_r(prefix, "proto", tmp), "pppoe") )
-			{
-				if (nvram_match("link_wan", "1")) {
-					wanx_ip = nvram_safe_get("wanx_ipaddr");
-					wanx_gw = nvram_safe_get("wanx_gateway");
-				}
+			// Dual access with RAS Modem
+			if (wan_proto == IPV4_WAN_PROTO_PPPOE ||
+			    wan_proto == IPV4_WAN_PROTO_PPTP ||
+			    wan_proto == IPV4_WAN_PROTO_L2TP) {
+				ifstate_man = get_if_state(man_ifname, addr4_man);
+			} else {
+				etherlink[0] = 0; // hide ethernet link
+			}
+			strcpy(wan_desc, "USB Modem (RAS)");
+		}
+	} else
+#endif
+	{
+		if (is_man_wisp(man_ifname)) {
+			struct iwreq wrq;
+			unsigned char mac[8];
+			
+			if (get_interface_hwaddr(man_ifname, mac) == 0) {
+				sprintf(wan_mac, "%02X:%02X:%02X:%02X:%02X:%02X", 
+					mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+			}
+			
+			if (get_apcli_peer_connected(man_ifname, &wrq)) {
+				sprintf(apclilink, "BSSID: %02X:%02X:%02X:%02X:%02X:%02X", 
+					(unsigned char)wrq.u.ap_addr.sa_data[0],
+					(unsigned char)wrq.u.ap_addr.sa_data[1],
+					(unsigned char)wrq.u.ap_addr.sa_data[2],
+					(unsigned char)wrq.u.ap_addr.sa_data[3],
+					(unsigned char)wrq.u.ap_addr.sa_data[4],
+					(unsigned char)wrq.u.ap_addr.sa_data[5]);
+			} else {
+				strcpy(apclilink, "---");
+				phy_failed = 2; // STA not connected
+			}
+			
+			etherlink[0] = 0; // hide ethernet link
+		} else {
+			if (!get_ethernet_phy_link(1)) {
+				phy_failed = 1; // No port link
 			}
 		}
-	}
-	else
-	if (!get_wan_phy_connected()) {
-		status = 0;
-		strcpy(statusstr, "Cable is not attached");
-	}
-	else if (nvram_match(strcat_r(prefix, "proto", tmp), "pptp") ||
-	         nvram_match(strcat_r(prefix, "proto", tmp), "l2tp") ||
-	         nvram_match(strcat_r(prefix, "proto", tmp), "pppoe") )
-	{
-#if defined (USE_IPV6)
-		if (nvram_get_int("ip6_wan_if") == 0)
-			wan6_ifname = IFNAME_PPP;
-#endif
-		status = get_if_status(IFNAME_PPP);
-		ppp_time = nvram_get_int(strcat_r(prefix, "time", tmp));
 		
-		wanx_ip = nvram_safe_get("wanx_ipaddr");
-		wanx_gw = nvram_safe_get("wanx_gateway");
-	}
-	else {
-		if (check_subnet())
-			status = 0;
+		if (wan_proto == IPV4_WAN_PROTO_PPPOE ||
+		    wan_proto == IPV4_WAN_PROTO_PPTP ||
+		    wan_proto == IPV4_WAN_PROTO_L2TP) {
+#if defined (USE_IPV6)
+			if (nvram_get_int("ip6_wan_if") == 0)
+				wan6_ifname = IFNAME_PPP;
+#endif
+			ifstate_wan = get_if_state(IFNAME_PPP, addr4_wan);
+			ifstate_man = get_if_state(man_ifname, addr4_man);
+			ppp_time = nvram_get_int(strcat_r(prefix, "time", tmp));
+			ppp_mode = (wan_proto == IPV4_WAN_PROTO_L2TP) ? 2 : 1;
+		} else {
+			ifstate_wan = get_if_state(man_ifname, addr4_wan);
+		}
+		
+		if (wan_proto == IPV4_WAN_PROTO_PPPOE)
+			strcpy(wan_desc, "PPPoE");
+		else if (wan_proto == IPV4_WAN_PROTO_PPTP)
+			strcpy(wan_desc, "PPTP");
+		else if (wan_proto == IPV4_WAN_PROTO_L2TP)
+			strcpy(wan_desc, "L2TP");
+		else if (wan_proto == IPV4_WAN_PROTO_IPOE_DHCP)
+			strcpy(wan_desc, "Automatic IP");
 		else
-			status = get_if_status(nvram_safe_get("wan0_ifname"));
+			strcpy(wan_desc, "Static IP");
 	}
-	
-	if (ppp_time > 0)
-		ppp_time = uptime() - ppp_time;
-	
-	if ( !statusstr[0] ) {
-		if (status)
-			strcpy(statusstr, "Connected");
-		else
-			strcpy(statusstr, "Disconnected");
-	}
-	
-	if (is_wan_modem)
-	{
-		if(nvram_match("modem_type", "3"))
-			strcpy(type, "Modem (NDIS/RNDIS)");
-		else
-			strcpy(type, "Modem (RAS)");
-	}
-	else
-	if (nvram_match(strcat_r(prefix, "proto", tmp), "pppoe"))
-	{
-		strcpy(type, "PPPoE");
-	}
-	else if (nvram_match(strcat_r(prefix, "proto", tmp), "pptp"))
-	{
-		strcpy(type, "PPTP");
-	}
-	else if (nvram_match(strcat_r(prefix, "proto", tmp), "l2tp"))
-	{
-		strcpy(type, "L2TP");
-	}
-	else if (nvram_match(strcat_r(prefix, "proto", tmp), "static"))
-	{
-		strcpy(type, "Static IP");
-	}
-	else // dhcp
-	{
-		strcpy(type, "Automatic IP");
-	}
-	
-	if (status == 0)
-	{
+
+	if (ifstate_wan == IF_STATE_HAS_ADDR) {
+		wan0_ip = addr4_wan;
+		wan0_gw = nvram_safe_get(strcat_r(prefix, "gateway", tmp));
+		if (!is_valid_ipv4(wan0_gw)) {
+			status_code = INET_STATE_NO_DGW;
+			wan0_gw = "---";
+		}
+		if (ppp_time > 0)
+			ppp_time = uptime() - ppp_time;
+	} else {
 		wan0_ip = "---";
 		wan0_gw = "---";
+		ppp_time = 0;
+		if (ppp_mode) {
+			if (ppp_mode == 2) {
+				char *l2tpd = (nvram_match("wan_l2tpd", "0")) ? "xl2tpd" : "l2tpd";
+				status_code = (pids(l2tpd)) ? INET_STATE_PPP_WAIT : INET_STATE_PPP_INACTIVE;
+			}
+			else
+				status_code = (pids("pppd")) ? INET_STATE_PPP_WAIT : INET_STATE_PPP_INACTIVE;
+		}
+		else
+			status_code = (ifstate_wan == IF_STATE_UP) ? INET_STATE_NETIF_WAIT_DHCP : INET_STATE_NETIF_NOT_READY;
 	}
+
+	if (phy_failed == 1)
+		status_code = INET_STATE_NO_ETH_LINK;
+	else if (phy_failed == 2)
+		status_code = INET_STATE_NO_AP_LINK;
+	else if (phy_failed == 3)
+		status_code = INET_STATE_NO_BS_LINK;
+
+	if (status_code == INET_STATE_CONNECTED)
+		strcpy(statusstr, "Connected");
 	else
-	{
-		wan0_ip = nvram_safe_get(strcat_r(prefix, "ipaddr", tmp));
-		wan0_gw = nvram_safe_get(strcat_r(prefix, "gateway", tmp));
-		if (strcmp(wan0_ip, "0.0.0.0") == 0 || !(*wan0_ip))
-			wan0_ip = "---";
-		if (strcmp(wan0_gw, "0.0.0.0") == 0 || !(*wan0_gw))
-			wan0_gw = "---";
-	}
-	
+		strcpy(statusstr, "Disconnected");
+
 #if defined (USE_IPV6)
 	ipv6_type = get_ipv6_type();
-	if (ipv6_type != IPV6_DISABLED)
-	{
-		if (ipv6_type == IPV6_6IN4 || ipv6_type == IPV6_6TO4 || ipv6_type == IPV6_6RD)
+	if (ipv6_type != IPV6_DISABLED) {
+		if (ipv6_type == IPV6_6IN4 || ipv6_type == IPV6_6TO4 || ipv6_type == IPV6_6RD) {
 			wan6_ifname = IFNAME_SIT;
-		else {
+		} else {
 			if (!wan6_ifname)
-				wan6_ifname = nvram_safe_get("wan0_ifname");
+				wan6_ifname = man_ifname;
 		}
 		
 		if (get_ifaddr6(wan6_ifname, 0, addr6_wan))
@@ -2111,53 +2138,54 @@ static int wanlink_hook(int eid, webs_t wp, int argc, char_t **argv) {
 			lan_ip6 = "---";
 	}
 #endif
-	
-	if (strcmp(wanx_ip, "0.0.0.0") == 0)
-		wanx_ip = "";
-	if (strcmp(wanx_gw, "0.0.0.0") == 0 || !(*wanx_gw))
-		wanx_gw = "---";
-	
-	dns[0] = 0;
+
+	if (ifstate_man == IF_STATE_HAS_ADDR) {
+		wanx_ip = addr4_man;
+		wanx_gw = nvram_safe_get("wanx_gateway");
+		if (!is_valid_ipv4(wanx_gw))
+			wanx_gw = "---";
+	}
+
+	wan_dns[0] = 0;
 	fp = fopen("/etc/resolv.conf", "r");
 	if (fp) {
-		is_first = 1;
-		dns_item[0] = 0;
+		int is_first = 1;
+		char dns_item[80] = {0};
 		while(fscanf(fp, "nameserver %s\n", dns_item) > 0) {
 			if (*dns_item && strcmp(dns_item, "127.0.0.1") != 0) {
 				if (is_first)
 					is_first = 0;
 				else
-					strcat(dns, "<br/>");
-				strcat(dns, dns_item);
+					strcat(wan_dns, "<br/>");
+				strcat(wan_dns, dns_item);
 			}
 		}
 		fclose(fp);
 	}
-	
-	if (!(*dns))
-		strcpy(dns, "---");
-	
-	i_wan_src_phy = nvram_get_int("wan_src_phy");
-	fill_eth_port_status(i_wan_src_phy, etherlink);
-	
-	websWrite(wp, "function wanlink_status() { return %d;}\n", status);
+
+	if (strlen(wan_dns) < 7)
+		strcpy(wan_dns, "---");
+
+	websWrite(wp, "function wanlink_status() { return %d;}\n", status_code);
 	websWrite(wp, "function wanlink_statusstr() { return '%s';}\n", statusstr);
 	websWrite(wp, "function wanlink_etherlink() { return '%s';}\n", etherlink);
+	websWrite(wp, "function wanlink_apclilink() { return '%s';}\n", apclilink);
 	websWrite(wp, "function wanlink_time() { return %ld;}\n", (ppp_time > 0) ? ppp_time : 0);
-	websWrite(wp, "function wanlink_type() { return '%s';}\n", type);
+	websWrite(wp, "function wanlink_type() { return '%s';}\n", wan_desc);
 	websWrite(wp, "function wanlink_ip4_wan() { return '%s';}\n", wan0_ip);
 	websWrite(wp, "function wanlink_gw4_wan() { return '%s';}\n", wan0_gw);
 	websWrite(wp, "function wanlink_ip4_man() { return '%s';}\n", wanx_ip);
 	websWrite(wp, "function wanlink_gw4_man() { return '%s';}\n", wanx_gw);
 	websWrite(wp, "function wanlink_ip6_wan() { return '%s';}\n", wan_ip6);
 	websWrite(wp, "function wanlink_ip6_lan() { return '%s';}\n", lan_ip6);
-	websWrite(wp, "function wanlink_dns() { return '%s';}\n", dns);
+	websWrite(wp, "function wanlink_dns() { return '%s';}\n", wan_dns);
 	websWrite(wp, "function wanlink_mac() { return '%s';}\n", wan_mac);
 
 	return 0;
 }
 
-static int lanlink_hook(int eid, webs_t wp, int argc, char_t **argv) 
+static int
+lanlink_hook(int eid, webs_t wp, int argc, char_t **argv)
 {
 	char etherlink0[32] = {0};
 	char etherlink1[32] = {0};
@@ -2180,7 +2208,8 @@ static int lanlink_hook(int eid, webs_t wp, int argc, char_t **argv)
 	return 0;
 }
 
-static int wan_action_hook(int eid, webs_t wp, int argc, char_t **argv) 
+static int
+wan_action_hook(int eid, webs_t wp, int argc, char_t **argv) 
 {
 	char *action;
 	int needed_seconds = 0;
@@ -2208,7 +2237,8 @@ static int wan_action_hook(int eid, webs_t wp, int argc, char_t **argv)
 	return 0;
 }
 
-static int wol_action_hook(int eid, webs_t wp, int argc, char_t **argv) 
+static int
+wol_action_hook(int eid, webs_t wp, int argc, char_t **argv) 
 {
 	int i, sys_result;
 	char *dst_mac, *p1, *p2, *pd;
@@ -2257,7 +2287,8 @@ static int wol_action_hook(int eid, webs_t wp, int argc, char_t **argv)
 	return 0;
 }
 
-static int nvram_action_hook(int eid, webs_t wp, int argc, char_t **argv) 
+static int
+nvram_action_hook(int eid, webs_t wp, int argc, char_t **argv) 
 {
 	int commit_all = 0;
 	int sys_result = 0;
@@ -2282,7 +2313,8 @@ static int nvram_action_hook(int eid, webs_t wp, int argc, char_t **argv)
 }
 
 
-static int nf_values_hook(int eid, webs_t wp, int argc, char_t **argv) 
+static int
+nf_values_hook(int eid, webs_t wp, int argc, char_t **argv) 
 {
 	FILE *fp;
 	char nf_count[32];
@@ -2304,7 +2336,8 @@ static int nf_values_hook(int eid, webs_t wp, int argc, char_t **argv)
 	return 0;
 }
 
-static int ej_firmware_caps_hook(int eid, webs_t wp, int argc, char_t **argv) 
+static int
+ej_firmware_caps_hook(int eid, webs_t wp, int argc, char_t **argv) 
 {
 #if defined(UTL_HDPARM)
 	int found_utl_hdparm = 1;
@@ -2390,20 +2423,30 @@ static int ej_firmware_caps_hook(int eid, webs_t wp, int argc, char_t **argv)
 #else
 	int min_vlan_ext = 3;
 #endif
+#if (BOARD_NUM_USB_PORTS > 0)
+	int has_usb = 1;
+#else
+	int has_usb = 0;
+#endif
 #if defined(USE_USB3)
 	int has_usb3 = 1;
 #else
 	int has_usb3 = 0;
 #endif
-#if defined(EAP_PEAP)
-	int has_peap = 1;
+#if defined(SUPPORT_PEAP_SSL)
+	int has_peap_ssl = 1;
 #else
-	int has_peap = 0;
+	int has_peap_ssl = 0;
 #endif
 #if defined(SUPPORT_HTTPS)
-	int has_https = 1;
+	int has_http_ssl = 1;
 #else
-	int has_https = 0;
+	int has_http_ssl = 0;
+#endif
+#if defined(SUPPORT_DDNS_SSL)
+	int has_ddns_ssl = 1;
+#else
+	int has_ddns_ssl = 0;
 #endif
 #if defined(BOARD_GPIO_LED_ALL)
 	int has_led_all = 1;
@@ -2463,10 +2506,12 @@ static int ej_firmware_caps_hook(int eid, webs_t wp, int argc, char_t **argv)
 	websWrite(wp,
 		"function support_ipv6() { return %d;}\n"
 		"function support_ipv6_ppe() { return %d;}\n"
-		"function support_peap() { return %d;}\n"
-		"function support_https() { return %d;}\n"
+		"function support_peap_ssl() { return %d;}\n"
+		"function support_http_ssl() { return %d;}\n"
+		"function support_ddns_ssl() { return %d;}\n"
 		"function support_min_vlan() { return %d;}\n"
-		"function support_pcie_usb3() { return %d;}\n"
+		"function support_usb() { return %d;}\n"
+		"function support_usb3() { return %d;}\n"
 		"function support_but_wps() { return %d;}\n"
 		"function support_led_phy() { return %d;}\n"
 		"function support_led_all() { return %d;}\n"
@@ -2480,9 +2525,11 @@ static int ej_firmware_caps_hook(int eid, webs_t wp, int argc, char_t **argv)
 		"function support_2g_stream_rx() { return %d;}\n",
 		has_ipv6,
 		has_ipv6_ppe,
-		has_peap,
-		has_https,
+		has_peap_ssl,
+		has_http_ssl,
+		has_ddns_ssl,
 		min_vlan_ext,
+		has_usb,
 		has_usb3,
 		has_but_wps,
 		BOARD_NUM_ETH_LEDS,
@@ -2615,10 +2662,10 @@ static int ej_get_nvram_list(int eid, webs_t wp, int argc, char_t **argv) {
 	char *serviceId, *groupName, *hiddenVar;
 	int i, groupCount, sid;
 	int firstRow, firstItem;
-	
+
 	if (argc < 2)
 		return 0;
-	
+
 	serviceId = argv[0];
 	groupName = argv[1];
 	
@@ -2663,7 +2710,7 @@ static int ej_get_nvram_list(int eid, webs_t wp, int argc, char_t **argv) {
 		
 		websWrite(wp, "]");
 	}
-	
+
 	return 0;
 }
 
@@ -2776,31 +2823,6 @@ static int ej_get_vpns_client(int eid, webs_t wp, int argc, char_t **argv)
 	}
 	
 	fclose(fp);
-	
-	return 0;
-}
-
-int is_interface_up(const char *ifname)
-{
-	int sockfd;
-	struct ifreq ifreq;
-	int iflags = 0;
-	
-	if ((sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
-		return 0;
-	}
-	
-	strncpy(ifreq.ifr_name, ifname, IFNAMSIZ);
-	if (ioctl(sockfd, SIOCGIFFLAGS, &ifreq) < 0) {
-		iflags = 0;
-	} else {
-		iflags = ifreq.ifr_flags;
-	}
-	
-	close(sockfd);
-	
-	if (iflags & IFF_UP)
-		return 1;
 	
 	return 0;
 }
@@ -3392,54 +3414,64 @@ static int ej_get_usb_ports_info(int eid, webs_t wp, int argc, char_t **argv){
 	return 0;
 }
 
-
+#define MAX_DICT_LANGS (15)
 int ej_shown_language_option(int eid, webs_t wp, int argc, char **argv) {
-	struct language_table *pLang = NULL;
-	char lang[4];
+	FILE *fp;
 	int i, len;
-	FILE *fp = fopen("EN.dict", "r");
-	char buffer[1024], key[16], target[16];
-	char *follow_info, *follow_info_end;
+	struct language_table *pLang = NULL;
+	char buffer[256], key[16], target[32];
+	char *follow_info, *follow_info_end, *selected, *lang_set;
 
-	if (fp == NULL) {
+	lang_set = nvram_safe_get("preferred_lang");
+
+	fp = fopen("EN.dict", "r");
+	if (!fp) {
 		fprintf(stderr, "No English dictionary!\n");
 		return 0;
 	}
 
-	memset(lang, 0, 4);
-	strcpy(lang, nvram_safe_get("preferred_lang"));
-
-	for (i = 0; i < 21; ++i) {
-		memset(buffer, 0, sizeof(buffer));
-		if ((follow_info = fgets(buffer, sizeof(buffer), fp)) != NULL) {
-			if (strncmp(follow_info, "LANG_", 5))    // 5 = strlen("LANG_")
-				continue;
-
-			follow_info += 5;
-			follow_info_end = strstr(follow_info, "=");
-			len = follow_info_end-follow_info;
-			memset(key, 0, sizeof(key));
-			strncpy(key, follow_info, len);
-
-			for (pLang = language_tables; pLang->Lang != NULL; ++pLang) {
-				if (strcmp(key, pLang->Target_Lang))
-					continue;
-				follow_info = follow_info_end+1;
-				follow_info_end = strstr(follow_info, "\n");
-				len = follow_info_end-follow_info;
-				memset(target, 0, sizeof(target));
-				strncpy(target, follow_info, len);
-
-				if (!strcmp(key, lang))
-					websWrite(wp, "<option value=\"%s\" selected>%s</option>\\n", key, target);
-				else
-					websWrite(wp, "<option value=\"%s\">%s</option>\\n", key, target);
-				break;
-			}
-		}
-		else
+	for (i = 0; i <= MAX_DICT_LANGS; ++i) {
+		follow_info = fgets(buffer, sizeof(buffer), fp);
+		if (!follow_info)
 			break;
+		
+		if (strncmp(follow_info, "LANG_", 5))    // 5 = strlen("LANG_")
+			continue;
+		
+		follow_info += 5;
+		follow_info_end = strstr(follow_info, "=");
+		len = follow_info_end-follow_info;
+		if (len < 1 || len >= sizeof(key))
+			continue;
+		
+		strncpy(key, follow_info, len);
+		key[len] = 0;
+		
+		follow_info = follow_info_end+1;
+		follow_info_end = strstr(follow_info, "\n");
+		len = follow_info_end-follow_info;
+		if (len < 1)
+			continue;
+		
+		if (len >= sizeof(target))
+			len = sizeof(target) - 1;
+		strncpy(target, follow_info, len);
+		target[len] = 0;
+		
+		for (pLang = language_tables; pLang->Lang != NULL; ++pLang) {
+			if (strcmp(key, pLang->Target_Lang))
+				continue;
+			
+			selected = "";
+			if (!strcmp(key, lang_set))
+				selected = " selected";
+			
+			websWrite(wp, "<option value=\"%s\"%s>%s</option>\\n", key, selected, target);
+			
+			break;
+		}
 	}
+
 	fclose(fp);
 
 	return 0;

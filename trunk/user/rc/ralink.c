@@ -507,40 +507,17 @@ int getCountryRegionABand(const char *str)
 	return i_code;
 }
 
-static void nvram_wlan_set(const char* prefix, const char* param, char *value)
-{
-	char wlan_param[64];
-
-	snprintf(wlan_param, sizeof(wlan_param), "%s_%s", prefix, param);
-	nvram_set(wlan_param, value);
-}
-
-static char* nvram_wlan_get(const char* prefix, const char* param)
-{
-	char wlan_param[64];
-
-	snprintf(wlan_param, sizeof(wlan_param), "%s_%s", prefix, param);
-	return nvram_safe_get(wlan_param);
-}
-
-static int nvram_wlan_get_int(const char* prefix, const char* param)
-{
-	char *value = nvram_wlan_get(prefix, param);
-	if (value)
-		return atoi(value);
-	else
-		return 0;
-}
-
 static int gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 {
 	FILE *fp;
-	char *p_str, *dat_file, *sku_file, *sku_link, *prefix, *c_val_mbss[2];
+	char *p_str, *dat_file, *sku_file, *sku_link, *prefix;
 	char macbuf[36], list[2048];
-	int i, i_num,  i_val, i_wmm, i_val_mbss[2];
+	int i, i_num,  i_val, i_wmm;
 	int i_mode_x, i_gmode, i_auth, i_encr, i_wep, i_wds;
 	int i_ssid_num, i_channel, i_channel_max, i_HTBW_MAX;
 	int i_stream_tx, i_stream_rx, i_mphy, i_mmcs, i_fix, i_mcs;
+	int i_val_mbss[2];
+	char *c_val_mbss[2];
 
 	i_ssid_num = 2; // AP+GuestAP
 	i_channel_max = 13;
@@ -856,7 +833,7 @@ static int gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	fprintf(fp, "PhyRateLimit=%d\n", 0);
 	fprintf(fp, "DebugFlags=%d\n", 0);
 	fprintf(fp, "FineAGC=%d\n", 0);
-	fprintf(fp, "StreamMode=%d\n", 3);
+	fprintf(fp, "StreamMode=%d\n", (is_aband) ? 3 : 0);
 	fprintf(fp, "StreamModeMac0=\n");
 	fprintf(fp, "StreamModeMac1=\n");
 	fprintf(fp, "StreamModeMac2=\n");
@@ -1494,6 +1471,12 @@ static int gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		fprintf(fp, "ApCliKey%dType=%d\n", i, 0);
 		fprintf(fp, "ApCliKey%dStr=\n", i);
 	}
+
+	//ApCliAPSDCapable
+	i_val = nvram_wlan_get_int(prefix, "APSDCapable");
+	if (i_val) i_val = 1;
+	if (!i_wmm) i_val = 0;
+	fprintf(fp, "ApCliAPSDCapable=%d\n", i_val);
 
 	//RadioOn
 	fprintf(fp, "RadioOn=%d\n", 1);

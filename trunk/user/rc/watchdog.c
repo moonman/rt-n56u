@@ -323,23 +323,29 @@ btn_check_ez(void)
 #endif
 }
 
-static void 
+static void
 refresh_ntp(void)
 {
-	char *ntp_server;
-	char* svcs[] = { "ntpd", NULL };
+	char *svcs[] = { "ntpd", NULL };
+	char *ntp_addr[2], *ntp_server;
 
 	kill_services(svcs, 3, 1);
 
-	if (ntpc_server_idx)
-		ntp_server = nvram_safe_get("ntp_server1");
-	else
-		ntp_server = nvram_safe_get("ntp_server0");
+	ntp_addr[0] = nvram_safe_get("ntp_server0");
+	ntp_addr[1] = nvram_safe_get("ntp_server1");
 
+	if (strlen(ntp_addr[0]) < 3)
+		ntp_addr[0] = ntp_addr[1];
+	else if (strlen(ntp_addr[1]) < 3)
+		ntp_addr[1] = ntp_addr[0];
+
+	if (strlen(ntp_addr[0]) < 3) {
+		ntp_addr[0] = "pool.ntp.org";
+		ntp_addr[1] = ntp_addr[0];
+	}
+
+	ntp_server = (ntpc_server_idx) ? ntp_addr[1] : ntp_addr[0];
 	ntpc_server_idx = (ntpc_server_idx + 1) % 2;
-
-	if (!(*ntp_server))
-		ntp_server = "pool.ntp.org";
 
 	eval("/usr/sbin/ntpd", "-qt", "-S", NTPC_DONE_SCRIPT, "-p", ntp_server);
 
@@ -657,9 +663,11 @@ ez_action_change_guest_wifi5(void)
 static void 
 ez_action_usb_saferemoval(void)
 {
+#if (BOARD_NUM_USB_PORTS > 0)
 	logmessage("watchdog", "Perform ez-button safe-removal USB...");
 	
 	safe_remove_usb_device(0, NULL);
+#endif
 }
 
 static void 
@@ -689,7 +697,7 @@ ez_action_wan_toggle(void)
 {
 	if (get_ap_mode())
 		return;
-	
+
 	if (is_interface_up(get_man_ifname(0)))
 	{
 		logmessage("watchdog", "Perform ez-button WAN %s", "down...");
@@ -708,8 +716,8 @@ static void
 ez_action_shutdown(void)
 {
 	logmessage("watchdog", "Perform ez-button shutdown...");
-	
-	notify_rc("shutdown_prepare");
+
+	sys_stop();
 }
 
 static void 

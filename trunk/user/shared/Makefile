@@ -1,8 +1,8 @@
 CFLAGS += -fPIC
 CFLAGS += -Wall -I. -I./include
-CFLAGS += $(if $(CONFIG_RAETH_GMAC2),,-DUSE_SINGLE_MAC)
-CFLAGS += $(if $(CONFIG_RT3352_INIC_MII),-DUSE_RT3352_MII,)
-CFLAGS += $(if $(CONFIG_IPV6),-DUSE_IPV6,)
+
+include boards.mk
+include cflags.mk
 
 LDFLAGS += -L.
 

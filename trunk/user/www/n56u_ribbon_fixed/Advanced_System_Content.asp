@@ -72,7 +72,7 @@ function initial(){
 	else
 		sshd_auth_change();
 
-	if (!support_https()) {
+	if (!support_http_ssl()) {
 		document.form.http_proto.value = "0";
 		$("row_http_proto").style.display = "none";
 		$("row_https_lport").style.display = "none";
@@ -135,7 +135,7 @@ function validForm(){
 	if(!validate_range(document.form.http_lanport, 80, 65535))
 		return false;
 
-	if (support_https()){
+	if (support_http_ssl()){
 		var mode = document.form.http_proto.value;
 		if (mode == "0" || mode == "2"){
 			if(!validate_range(document.form.http_lanport, 80, 65535))
@@ -457,7 +457,7 @@ function sshd_auth_change(){
                                                     <option value="AST4ADT" <% nvram_match_x("","time_zone", "AST4ADT","selected"); %>		>(GMT-04:00) <#TZ17#></option>
                                                     <option value="UCT4_1" <% nvram_match_x("","time_zone", "UCT4_1","selected"); %>			>(GMT-04:00) <#TZ18#></option>
                                                     <option value="UCT4_2" <% nvram_match_x("","time_zone", "UCT4_2","selected"); %>			>(GMT-04:00) <#TZ19#></option>
-                                                    <option value="NST3.30" <% nvram_match_x("","time_zone", "NST3.30","selected"); %>		>(GMT-03:30) <#TZ20#></option>
+                                                    <option value="NST3.30NDT" <% nvram_match_x("","time_zone", "NST3.30NDT","selected"); %>		>(GMT-03:30) <#TZ20#></option>
                                                     <option value="BRT3BRST" <% nvram_match_x("","time_zone", "BRT3BRST","selected"); %>		>(GMT-03:00) <#TZ21#></option>
                                                     <option value="UCT3" <% nvram_match_x("","time_zone", "UCT3","selected"); %>			>(GMT-03:00) <#TZ22#></option>
                                                     <option value="EBST3EBDT_2" <% nvram_match_x("","time_zone", "EBST3EBDT_2","selected"); %>	>(GMT-03:00) <#TZ23#></option>
