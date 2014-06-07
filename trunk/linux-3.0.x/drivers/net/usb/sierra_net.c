@@ -311,10 +311,9 @@ static int sierra_net_send_cmd(struct usbnet *dev,
 	struct sierra_net_data *priv = sierra_net_get_private(dev);
 	int  status;
 
-	status = usb_control_msg(dev->udev, usb_sndctrlpipe(dev->udev, 0),
-			USB_CDC_SEND_ENCAPSULATED_COMMAND,
-			USB_DIR_OUT|USB_TYPE_CLASS|USB_RECIP_INTERFACE,	0,
-			priv->ifnum, cmd, cmdlen, USB_CTRL_SET_TIMEOUT);
+	status = usbnet_write_cmd(dev, USB_CDC_SEND_ENCAPSULATED_COMMAND,
+				  USB_DIR_OUT|USB_TYPE_CLASS|USB_RECIP_INTERFACE,
+				  0, priv->ifnum, cmd, cmdlen);
 
 	if (status != cmdlen && status != -ENODEV)
 		netdev_err(dev->net, "Submit %s failed %d\n", cmd_name, status);
@@ -412,17 +411,23 @@ static void sierra_net_handle_lsi(struct usbnet *dev, char *data,
 	if (link_up) {
 		sierra_net_set_ctx_index(priv, hh->msgspecific.byte);
 		priv->link_up = 1;
-		netif_carrier_on(dev->net);
 	} else {
 		priv->link_up = 0;
-		netif_carrier_off(dev->net);
 	}
+	usbnet_link_change(dev, link_up, 0);
 }
 
 static void sierra_net_dosync(struct usbnet *dev)
 {
 	int status;
 	struct sierra_net_data *priv = sierra_net_get_private(dev);
+
+	/* The SIERRA_NET_HIP_MSYNC_ID command appears to request that the
+	 * firmware restart itself.  After restarting, the modem will respond
+	 * with the SIERRA_NET_HIP_RESTART_ID indication.  The driver continues
+	 * sending MSYNC commands every few seconds until it receives the
+	 * RESTART event from the firmware
+	 */
 
 	/* tell modem we are ready */
 	status = sierra_net_send_sync(dev);
@@ -623,32 +628,22 @@ static int sierra_net_change_mtu(struct net_device *net, int new_mtu)
 static int sierra_net_get_fw_attr(struct usbnet *dev, u16 *datap)
 {
 	int result = 0;
-	u16 *attrdata;
+	__le16 attrdata;
 
-	attrdata = kmalloc(sizeof(*attrdata), GFP_KERNEL);
-	if (!attrdata)
-		return -ENOMEM;
+	result = usbnet_read_cmd(dev,
+				/* _u8 vendor specific request */
+				SWI_USB_REQUEST_GET_FW_ATTR,
+				USB_DIR_IN | USB_TYPE_VENDOR,	/* __u8 request type */
+				0x0000,		/* __u16 value not used */
+				0x0000,		/* __u16 index  not used */
+				&attrdata,	/* char *data */
+				sizeof(attrdata)	/* __u16 size */
+				);
 
-	result = usb_control_msg(
-			dev->udev,
-			usb_rcvctrlpipe(dev->udev, 0),
-			/* _u8 vendor specific request */
-			SWI_USB_REQUEST_GET_FW_ATTR,
-			USB_DIR_IN | USB_TYPE_VENDOR,	/* __u8 request type */
-			0x0000,		/* __u16 value not used */
-			0x0000,		/* __u16 index  not used */
-			attrdata,	/* char *data */
-			sizeof(*attrdata),		/* __u16 size */
-			USB_CTRL_SET_TIMEOUT);	/* int timeout */
-
-	if (result < 0) {
-		kfree(attrdata);
+	if (result < 0)
 		return -EIO;
-	}
 
-	*datap = le16_to_cpu(*attrdata);
-
-	kfree(attrdata);
+	*datap = le16_to_cpu(attrdata);
 	return result;
 }
 
@@ -707,6 +702,9 @@ static int sierra_net_bind(struct usbnet *dev, struct usb_interface *intf)
 	/* set context index initially to 0 - prepares tx hdr template */
 	sierra_net_set_ctx_index(priv, 0);
 
+	/* prepare sync message template */
+	memcpy(priv->sync_msg, sync_tmplate, sizeof(priv->sync_msg));
+
 	/* decrease the rx_urb_size and max_tx_size to 4k on USB 1.1 */
 	dev->rx_urb_size  = SIERRA_NET_RX_URB_SIZE;
 	if (dev->udev->speed != USB_SPEED_HIGH)
@@ -742,11 +740,6 @@ static int sierra_net_bind(struct usbnet *dev, struct usb_interface *intf)
 		kfree(priv);
 		return -ENODEV;
 	}
-	/* prepare sync message from template */
-	memcpy(priv->sync_msg, sync_tmplate, sizeof(priv->sync_msg));
-
-	/* initiate the sync sequence */
-	sierra_net_dosync(dev);
 
 	return 0;
 }
@@ -767,8 +760,9 @@ static void sierra_net_unbind(struct usbnet *dev, struct usb_interface *intf)
 		netdev_err(dev->net,
 			"usb_control_msg failed, status %d\n", status);
 
-	sierra_net_set_private(dev, NULL);
+	usbnet_status_stop(dev);
 
+	sierra_net_set_private(dev, NULL);
 	kfree(priv);
 }
 
@@ -906,6 +900,24 @@ static const struct driver_info sierra_net_info_direct_ip = {
 	.tx_fixup = sierra_net_tx_fixup,
 };
 
+static int
+sierra_net_probe(struct usb_interface *udev, const struct usb_device_id *prod)
+{
+	int ret;
+
+	ret = usbnet_probe(udev, prod);
+	if (ret == 0) {
+		struct usbnet *dev = usb_get_intfdata(udev);
+
+		ret = usbnet_status_start(dev, GFP_KERNEL);
+		if (ret == 0) {
+			/* Interrupt URB now set up; initiate sync sequence */
+			sierra_net_dosync(dev);
+		}
+	}
+	return ret;
+}
+
 #define DIRECT_IP_DEVICE(vend, prod) \
 	{USB_DEVICE_INTERFACE_NUMBER(vend, prod, 7), \
 	.driver_info = (unsigned long)&sierra_net_info_direct_ip}, \
@@ -928,7 +940,7 @@ MODULE_DEVICE_TABLE(usb, products);
 static struct usb_driver sierra_net_driver = {
 	.name = "sierra_net",
 	.id_table = products,
-	.probe = usbnet_probe,
+	.probe = sierra_net_probe,
 	.disconnect = usbnet_disconnect,
 	.suspend = usbnet_suspend,
 	.resume = usbnet_resume,

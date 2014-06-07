@@ -64,28 +64,28 @@ write_pppd_ras_conf(const char* call_path, const char *modem_node, int ppp_unit)
 {
 	FILE *fp;
 	int modem_type, vid = 0, pid = 0;
-	char *user, *pass, *isp;
-	
+	char *user, *pass, *isp, tmp[256];
+
 	if (!get_modem_vid_pid(modem_node, &vid, &pid))
 		return 0;
-	
+
 	if (!(fp = fopen(call_path, "w+")))
 		return 0;
-	
+
 	modem_type = nvram_get_int("modem_type");
 	user = nvram_safe_get("modem_user");
 	pass = nvram_safe_get("modem_pass");
 	isp = nvram_safe_get("modem_isp");
-	
+
 	fprintf(fp, "/dev/%s\n", modem_node);
 	fprintf(fp, "modem\n");
 	fprintf(fp, "crtscts\n");
 	fprintf(fp, "noauth\n");
 
 	if(strlen(user) > 0)
-		fprintf(fp, "user '%s'\n", user);
+		fprintf(fp, "user '%s'\n", safe_pppd_line(user, tmp, sizeof(tmp)));
 	if(strlen(pass) > 0)
-		fprintf(fp, "password '%s'\n", pass);
+		fprintf(fp, "password '%s'\n", safe_pppd_line(pass, tmp, sizeof(tmp)));
 
 	if(!strcmp(isp, "Virgin") || !strcmp(isp, "CDMA-UA")){
 		fprintf(fp, "refuse-chap\n");
@@ -512,6 +512,7 @@ unload_modem_modules(void)
 	ret |= module_smart_unload("rndis_host", 1);
 	ret |= module_smart_unload("qmi_wwan", 1);
 	ret |= module_smart_unload("cdc_mbim", 1);
+	ret |= module_smart_unload("huawei_cdc_ncm", 1);
 	ret |= module_smart_unload("cdc_ncm", 1);
 	ret |= module_smart_unload("cdc_ether", 1);
 	ret |= module_smart_unload("cdc_acm", 1);
@@ -536,11 +537,13 @@ reload_modem_modules(int modem_type, int reload)
 		module_smart_load("qmi_wwan", NULL);
 		module_smart_load("cdc_mbim", NULL);
 		module_smart_load("cdc_ncm", NULL);
+		module_smart_load("huawei_cdc_ncm", NULL);
 		module_smart_load("sierra_net", NULL);
 	} else {
 		ret |= module_smart_unload("rndis_host", 1);
 		ret |= module_smart_unload("qmi_wwan", 1);
 		ret |= module_smart_unload("cdc_mbim", 1);
+		ret |= module_smart_unload("huawei_cdc_ncm", 1);
 		ret |= module_smart_unload("cdc_ncm", 1);
 		ret |= module_smart_unload("cdc_ether", 1);
 		ret |= module_smart_unload("sierra_net", 1);

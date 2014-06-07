@@ -30,10 +30,11 @@ struct usbnet {
 	struct driver_info	*driver_info;
 	const char		*driver_name;
 	void			*driver_priv;
-	wait_queue_head_t	*wait;
+	wait_queue_head_t	wait;
 	struct mutex		phy_mutex;
 	unsigned char		suspend_count;
 	unsigned char		pkt_cnt, pkt_err;
+	unsigned short		rx_qlen, tx_qlen;
 
 	/* i/o info: pipes etc */
 	unsigned		in, out;
@@ -56,6 +57,8 @@ struct usbnet {
 	struct sk_buff_head	done;
 	struct sk_buff_head	rxq_pause;
 	struct urb		*interrupt;
+	unsigned		interrupt_count;
+	struct mutex		interrupt_mutex;
 	struct usb_anchor	deferred;
 	struct tasklet_struct	bh;
 
@@ -190,6 +193,16 @@ extern void usbnet_cdc_status(struct usbnet *, struct urb *);
 			|USB_CDC_PACKET_TYPE_PROMISCUOUS \
 			|USB_CDC_PACKET_TYPE_DIRECTED)
 
+extern int usbnet_read_cmd(struct usbnet *dev, u8 cmd, u8 reqtype,
+		    u16 value, u16 index, void *data, u16 size);
+extern int usbnet_write_cmd(struct usbnet *dev, u8 cmd, u8 reqtype,
+		    u16 value, u16 index, const void *data, u16 size);
+extern int usbnet_read_cmd_nopm(struct usbnet *dev, u8 cmd, u8 reqtype,
+		    u16 value, u16 index, void *data, u16 size);
+extern int usbnet_write_cmd_nopm(struct usbnet *dev, u8 cmd, u8 reqtype,
+		    u16 value, u16 index, const void *data, u16 size);
+extern int usbnet_write_cmd_async(struct usbnet *dev, u8 cmd, u8 reqtype,
+		    u16 value, u16 index, const void *data, u16 size);
 
 /* we record the state for each of our queued skbs */
 enum skb_state {
@@ -234,5 +247,11 @@ extern void usbnet_get_drvinfo(struct net_device *, struct ethtool_drvinfo *);
 extern int usbnet_nway_reset(struct net_device *net);
 
 extern int usbnet_manage_power(struct usbnet *, int);
+extern void usbnet_link_change(struct usbnet *, bool, bool);
+
+extern int usbnet_status_start(struct usbnet *dev, gfp_t mem_flags);
+extern void usbnet_status_stop(struct usbnet *dev);
+
+extern void usbnet_update_max_qlen(struct usbnet *dev);
 
 #endif /* __LINUX_USB_USBNET_H */
