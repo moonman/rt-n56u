@@ -141,38 +141,39 @@ set_timezone(void)
 static void
 init_gpio_leds_buttons(void)
 {
-#if defined(BOARD_GPIO_LED_WAN)
+#if defined (BOARD_GPIO_LED_WAN)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_WAN, 1);
 	LED_CONTROL(BOARD_GPIO_LED_WAN, LED_OFF);
 #endif
-
-#if defined(BOARD_GPIO_LED_LAN)
+#if defined (BOARD_GPIO_LED_LAN)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_LAN, 1);
 	LED_CONTROL(BOARD_GPIO_LED_LAN, LED_OFF);
 #endif
-
-#if defined(BOARD_GPIO_LED_USB)
+#if defined (BOARD_GPIO_LED_USB)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_USB, 1);
 	LED_CONTROL(BOARD_GPIO_LED_USB, LED_OFF);
 #endif
-
-#if defined(BOARD_GPIO_LED_ALL)
+#if defined (BOARD_GPIO_LED_ALL)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_ALL, 1);
 	LED_CONTROL(BOARD_GPIO_LED_ALL, LED_ON);
 #endif
-
 #if defined (BOARD_GPIO_LED_WIFI)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_WIFI, 1);
 	LED_CONTROL(BOARD_GPIO_LED_WIFI, LED_ON);
 #endif
-
+#if defined (BOARD_GPIO_LED_POWER)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_POWER, 1);
 	LED_CONTROL(BOARD_GPIO_LED_POWER, LED_ON);
+#endif
 
+#if defined (BOARD_GPIO_BTN_RESET)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_RESET, 0);
-
-#if defined(BOARD_GPIO_BTN_WPS)
+#endif
+#if defined (BOARD_GPIO_BTN_WPS)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_WPS, 0);
+#endif
+#if defined (BOARD_GPIO_BTN_WLTOG)
+	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_WLTOG, 0);
 #endif
 }
 
@@ -195,53 +196,96 @@ set_wan0_vars(void)
 		}
 	}
 
-	nvram_set_int_temp(strcat_r(prefix, "unit", tmp), WAN_PPP_UNIT);
-	nvram_set_int_temp(strcat_r(prefix, "primary", tmp), 1);
-	nvram_set_temp(strcat_r(prefix, "ifname", tmp), IFNAME_WAN);
-	nvram_set_temp(strcat_r(prefix, "desc", tmp), "Default Connection");
+	set_wan_unit_value(0, "unit", "0");
+	set_wan_unit_value(0, "primary", "1");
+	set_wan_unit_value(0, "ifname", IFNAME_WAN);
 }
 
 static void 
 convert_misc_values()
 {
-	char buff[128];
-	char *test_value;
+	char buff[64], *test_value;
+	int sw_mode;
 
+	/* check router mode */
+	sw_mode = nvram_get_int("sw_mode");
+	if (sw_mode == 1) {
+		/* Internet gateway mode */
+		nvram_set_int("wan_nat_x", 1);
+		nvram_set("wan_route_x", "IP_Routed");
+	} else if (sw_mode == 4) {
+		/* Pure router mode */
+		nvram_set_int("wan_nat_x", 0);
+		nvram_set("wan_route_x", "IP_Routed");
+	} else if (sw_mode == 3) {
+		/* AP mode (Ethernet convertor) */
+		nvram_set_int("wan_nat_x", 0);
+		nvram_set("wan_route_x", "IP_Bridged");
+	} else {
+		nvram_set_int("sw_mode", 1);
+		nvram_set_int("wan_nat_x", 1);
+		nvram_set("wan_route_x", "IP_Routed");
+	}
+
+	/* remove old unused params */
 	nvram_unset("lan_route");
 	nvram_unset("wan0_route");
 	nvram_unset("wan_route");
+	nvram_unset("wan_dns_t");
+	nvram_unset("wan_proto_t");
+	nvram_unset("wan_ipaddr_t");
+	nvram_unset("wan_netmask_t");
+	nvram_unset("wan_gateway_t");
+	nvram_unset("wan_ifname_t");
+	nvram_unset("wan_status_t");
+	nvram_unset("wan_subnet_t");
+	nvram_unset("lan_subnet_t");
+	nvram_unset("link_lan");
 
-	test_value = nvram_safe_get("wan_heartbeat_x");
-	if (*test_value && strlen(nvram_safe_get("wan_ppp_peer")) == 0)
-		nvram_set("wan_ppp_peer", test_value);
+	test_value = nvram_get("front_leds");
+	if (test_value) {
+		int front_leds = atoi(test_value);
+		if (front_leds > 2)
+			nvram_set_int("front_led_all", 0);
+		if (front_leds == 4 || front_leds == 2)
+			nvram_set_int("front_led_pwr", 0);
+		nvram_unset("front_leds");
+	}
+
+	test_value = nvram_get("wan_heartbeat_x");
+	if (test_value) {
+		if (strlen(test_value) > 0 && strlen(nvram_safe_get("wan_ppp_peer")) == 0)
+			nvram_set("wan_ppp_peer", test_value);
+		nvram_unset("wan_heartbeat_x");
+	}
 
 	if (nvram_match("modem_pin", "") && nvram_invmatch("wan_3g_pin", ""))
 		nvram_set("modem_pin", nvram_safe_get("wan_3g_pin"));
 	nvram_unset("wan_3g_pin");
 	nvram_unset("wan0_3g_pin");
 
-	if (!strcmp(nvram_safe_get("wl_ssid"), ""))
-		nvram_set("wl_ssid", "ASUS_5G");
+	if (strlen(nvram_wlan_get("wl", "ssid")) < 1)
+		nvram_wlan_set("wl", "ssid", DEF_WLAN_5G_SSID);
 
-	if (!strcmp(nvram_safe_get("rt_ssid"), ""))
-		nvram_set("rt_ssid", "ASUS");
-
-	memset(buff, 0, sizeof(buff));
-	char_to_ascii(buff, nvram_safe_get("wl_ssid"));
-	nvram_set("wl_ssid2", buff);
+	if (strlen(nvram_wlan_get("rt", "ssid")) < 1)
+		nvram_wlan_set("rt", "ssid", DEF_WLAN_5G_SSID);
 
 	memset(buff, 0, sizeof(buff));
-	char_to_ascii(buff, nvram_safe_get("rt_ssid"));
-	nvram_set("rt_ssid2", buff);
+	char_to_ascii(buff, nvram_wlan_get("wl", "ssid"));
+	nvram_wlan_set("wl", "ssid2", buff);
 
-	if (nvram_match("wl_wpa_mode", ""))
-		nvram_set("wl_wpa_mode", "0");
+	memset(buff, 0, sizeof(buff));
+	char_to_ascii(buff, nvram_wlan_get("rt", "ssid"));
+	nvram_wlan_set("rt", "ssid2", buff);
 
-	if (!strcmp(nvram_safe_get("wl_gmode"), ""))
-		nvram_set("wl_gmode", "2");
+	if (strlen(nvram_safe_get("wl_wpa_mode")) < 1)
+		nvram_set_int("wl_wpa_mode", 0);
 
-	if (!strcmp(nvram_safe_get("rt_gmode"), ""))
-		nvram_set("rt_gmode", "2");
+	if (strlen(nvram_safe_get("wl_gmode")) < 1)
+		nvram_set_int("wl_gmode", 2); // a/n Mixed
+
+	if (strlen(nvram_safe_get("rt_gmode")) < 1)
+		nvram_set_int("rt_gmode", 2); // b/g/n Mixed
 
 	if (nvram_get_int("wl_HT_BW") > 1)
 		nvram_set_int("wl_HT_BW", 1);
@@ -261,22 +305,16 @@ convert_misc_values()
 	if (nvram_get_int("rt_stream_rx") > BOARD_NUM_ANT_2G_RX)
 		nvram_set_int("rt_stream_rx", BOARD_NUM_ANT_2G_RX);
 
-	reset_lan_temp();
-	reset_wan_temp();
-	reset_man_vars();
-
-	nvram_set_temp("viptv_ifname", "");
-
 	nvram_set_temp("ntpc_counter", "0000000000");
+	nvram_set_temp("login_timestamp", "0000000000");
 
 	nvram_set_int_temp("networkmap_fullscan", 0);
 	nvram_set_int_temp("link_internet", 2);
+	nvram_set_int_temp("link_wan", 0);
 
 	nvram_set_int_temp("reload_svc_wl", 0);
 	nvram_set_int_temp("reload_svc_rt", 0);
 
-	nvram_set_int_temp("link_wan", 0);
-	nvram_set_int_temp("link_lan", 0);
 	nvram_set_int_temp("usb_hotplug_ms", 0);
 	nvram_set_int_temp("usb_hotplug_lp", 0);
 	nvram_set_int_temp("usb_hotplug_md", 0);
@@ -289,9 +327,19 @@ convert_misc_values()
 	nvram_set_int_temp("l2tp_srv_t", 0);
 	nvram_set_int_temp("vpnc_state_t", 0);
 	nvram_set_temp("vpnc_dns_t", "");
+	nvram_set_temp("viptv_ifname", "");
 
-	/* Setup wan0 variables if necessary */
+	/* setup wan0 variables */
 	set_wan0_vars();
+	set_wan_unit_value(0, "time_ppp", "0000000000");
+	set_usb_modem_dev_wan(0, 0);
+	reset_wan_vars(1);
+
+	/* setup lan variables */
+	reset_lan_vars();
+	reset_lan_temp();
+
+	time_zone_x_mapping();
 }
 
 static void
@@ -331,11 +379,11 @@ flash_firmware(void)
 
 	kill_services(svcs, 6, 1);
 
-	sync();
-
 	/* save storage (if changed) */
 	storage_save_time(60);
 	write_storage_to_mtd();
+
+	sync();
 
 	if (eval("/tmp/mtd_write", "-r", "write", FW_IMG_NAME, FW_MTD_NAME) != 0) {
 		start_watchdog();
@@ -427,48 +475,62 @@ setkernel_tz(void)
 }
 
 void 
-LED_CONTROL(int led, int flag)
+LED_CONTROL(int gpio_led, int flag)
 {
-	int i_front_leds = nvram_get_int("front_leds");
-	switch (i_front_leds)
+	int front_led_x = 1;
+
+	switch (gpio_led)
 	{
-	case 1:
-		if ((led != BOARD_GPIO_LED_POWER)
+#if defined (BOARD_GPIO_LED_WAN)
+	case BOARD_GPIO_LED_WAN:
+		front_led_x = nvram_get_int("front_led_wan");
+		break;
+#endif
+#if defined (BOARD_GPIO_LED_LAN)
+	case BOARD_GPIO_LED_LAN:
+		front_led_x = nvram_get_int("front_led_lan");
+		break;
+#endif
+#if defined (BOARD_GPIO_LED_WIFI)
+	case BOARD_GPIO_LED_WIFI:
+		front_led_x = nvram_get_int("front_led_wif");
+		break;
+#endif
+#if defined (BOARD_GPIO_LED_USB) && (BOARD_NUM_USB_PORTS > 0)
+	case BOARD_GPIO_LED_USB:
+		front_led_x = nvram_get_int("front_led_usb");
+		break;
+#endif
+#if defined (BOARD_GPIO_LED_POWER)
+	case BOARD_GPIO_LED_POWER:
+		front_led_x = nvram_get_int("front_led_pwr");
+		break;
+#endif
 #if defined (BOARD_GPIO_LED_ALL)
-		 && (led != BOARD_GPIO_LED_ALL)
-#elif defined (BOARD_GPIO_LED_WIFI)
-		 && (led != BOARD_GPIO_LED_WIFI)
-#endif
-		   )
-			flag = LED_OFF;
-		break;
-	case 2:
-#if defined (BOARD_GPIO_LED_ALL)
-		if (led != BOARD_GPIO_LED_ALL)
-#elif defined (BOARD_GPIO_LED_WIFI)
-		if (led != BOARD_GPIO_LED_WIFI)
-#endif
-			flag = LED_OFF;
-		break;
-#if defined (BOARD_GPIO_LED_ALL) || defined (BOARD_GPIO_LED_WIFI)
-	case 3:
-		if (led != BOARD_GPIO_LED_POWER)
-			flag = LED_OFF;
-		break;
-	case 4:
-		flag = LED_OFF;
+	case BOARD_GPIO_LED_ALL:
+		front_led_x = nvram_get_int("front_led_all");
 		break;
 #endif
+	default:
+		return;
 	}
 
+	if (front_led_x == 0)
+		flag = LED_OFF;
+
+#if !defined (BOARD_GPIO_LED_ALL)
+	if (gpio_led != BOARD_GPIO_LED_POWER && nvram_get_int("front_led_all") == 0)
+		flag = LED_OFF;
+#endif
+
 #if defined (BOARD_GPIO_LED_WIFI) && defined (CONFIG_RALINK_MT7620)
-	if (led == BOARD_GPIO_LED_WIFI) {
+	if (gpio_led == BOARD_GPIO_LED_WIFI) {
 		cpu_gpio_mode_set_bit(13, (flag == LED_OFF) ? 1 : 0); // change GPIO Mode for WLED
-		cpu_gpio_set_pin(led, LED_OFF); // always set GPIO to high
+		cpu_gpio_set_pin(gpio_led, LED_OFF); // always set GPIO to high
 	}
 	else
 #endif
-	cpu_gpio_set_pin(led, flag);
+		cpu_gpio_set_pin(gpio_led, flag);
 }
 
 void 
@@ -487,9 +549,7 @@ init_router(void)
 
 	get_eeprom_params();
 
-	init_router_mode();
-	convert_misc_values(); //  convert_misc_values must be run first!!! (wanx_... cleared)
-	convert_asus_values(0);
+	convert_misc_values();
 
 	if (nvram_need_commit)
 		nvram_commit();
@@ -538,6 +598,8 @@ init_router(void)
 
 	start_services_once(is_ap_mode);
 
+	detect_link_update_leds();
+
 	// system ready
 	system("/etc/storage/started_script.sh &");
 }
@@ -551,13 +613,13 @@ shutdown_router(void)
 #if (BOARD_NUM_USB_PORTS > 0)
 	stop_usb();
 #endif
-#if defined(BOARD_GPIO_LED_USB)
+#if defined (BOARD_GPIO_LED_USB)
 	LED_CONTROL(BOARD_GPIO_LED_USB, LED_OFF);
 #endif
 
 	stop_wan();
 	stop_services_lan_wan();
-#if defined(BOARD_GPIO_LED_WAN)
+#if defined (BOARD_GPIO_LED_WAN)
 	LED_CONTROL(BOARD_GPIO_LED_WAN, LED_OFF);
 #endif
 
@@ -570,10 +632,12 @@ shutdown_router(void)
 	stop_logger();
 	stop_lan();
 
-#if defined(BOARD_GPIO_LED_LAN)
+#if defined (BOARD_GPIO_LED_LAN)
 	LED_CONTROL(BOARD_GPIO_LED_LAN, LED_OFF);
 #endif
+#if defined (BOARD_GPIO_LED_POWER)
 	LED_CONTROL(BOARD_GPIO_LED_POWER, LED_OFF);
+#endif
 
 	module_smart_unload("rt_timer_wdg", 0);
 }
@@ -648,9 +712,13 @@ handle_notifications(void)
 			restart_iptv();
 			restart_firewall();
 		}
-		else if(!strcmp(entry->d_name, "manual_wan_connect"))
+		else if(!strcmp(entry->d_name, "auto_wan_reconnect"))
 		{
-			manual_wan_connect();
+			auto_wan_reconnect();
+		}
+		else if(!strcmp(entry->d_name, "manual_wan_reconnect"))
+		{
+			manual_wan_reconnect();
 		}
 		else if(!strcmp(entry->d_name, "manual_wan_disconnect"))
 		{
@@ -663,15 +731,18 @@ handle_notifications(void)
 #if (BOARD_NUM_USB_PORTS > 0)
 		else if (!strcmp(entry->d_name, "restart_modem"))
 		{
+			int wan_stopped = 0;
 			int modules_reloaded = 0;
-			int need_restart_wan = 0;
+			int need_restart_wan = get_usb_modem_wan(0);
 			int modem_rule = nvram_get_int("modem_rule");
 			int modem_type = nvram_get_int("modem_type");
 			if (nvram_modem_rule != modem_rule)
 			{
 				nvram_modem_rule = modem_rule;
-				need_restart_wan = 1;
-				stop_wan();
+				if (need_restart_wan) {
+					wan_stopped = 1;
+					stop_wan();
+				}
 				if (modem_rule > 0) {
 					modules_reloaded = 1;
 					reload_modem_modules(modem_type, 1);
@@ -683,12 +754,12 @@ handle_notifications(void)
 			{
 				if (nvram_modem_type == 3 || modem_type == 3) {
 					if (modem_rule > 0 && !modules_reloaded) {
-						stop_wan();
+						if (need_restart_wan && !wan_stopped)
+							stop_wan();
 						reload_modem_modules(modem_type, 1);
 					}
 				}
 				nvram_modem_type = modem_type;
-				need_restart_wan = 1;
 			}
 			if (need_restart_wan)
 				full_restart_wan();
@@ -854,7 +925,7 @@ handle_notifications(void)
 		}
 		else if (strcmp(entry->d_name, "restart_switch_vlan") == 0)
 		{
-			reset_detect_link();
+			detect_link_reset();
 			switch_config_vlan(0);
 		}
 		else if (strcmp(entry->d_name, "restart_syslog") == 0)
@@ -862,9 +933,11 @@ handle_notifications(void)
 			stop_logger();
 			start_logger(0);
 		}
-		else if (strcmp(entry->d_name, "restart_wdg_cpu") == 0)
+		else if (strcmp(entry->d_name, "restart_tweaks") == 0)
 		{
 			restart_watchdog_cpu();
+			detect_link_update_leds();
+//			detect_internet_update_leds();
 		}
 		else if (strcmp(entry->d_name, "restart_firewall_wan") == 0)
 		{
@@ -1217,7 +1290,7 @@ main(int argc, char **argv)
 		start_ddns(1);
 	}
 	else if (!strcmp(base, "restart_wan")) {
-		notify_rc("manual_wan_connect");
+		notify_rc("manual_wan_reconnect");
 	}
 	else if (!strcmp(base, "restart_dns")) {
 		restart_dns();

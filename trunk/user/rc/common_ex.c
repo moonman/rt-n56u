@@ -69,19 +69,20 @@ char *mac_conv(char *mac_name, int idx, char *buf)
 
 	if (idx!=-1)
 		sprintf(name, "%s%d", mac_name, idx);
-	else sprintf(name, "%s", mac_name);
+	else
+		sprintf(name, "%s", mac_name);
 
 	mac = nvram_safe_get(name);
 
-	if (strlen(mac)==0) 
+	if (strlen(mac)==0)
 	{
 		buf[0] = 0;
 	}
 	else
 	{
-		j=0;	
+		j=0;
 		for (i=0; i<12; i++)
-		{		
+		{
 			if (i!=0&&i%2==0) buf[j++] = ':';
 			buf[j++] = mac[i];
 		}
@@ -97,7 +98,7 @@ char *mac_conv2(char *mac_name, int idx, char *buf)
 	char *mac, name[32];
 	int i, j;
 
-	if(idx != -1)	
+	if(idx != -1)
 		sprintf(name, "%s%d", mac_name, idx);
 	else
 		sprintf(name, "%s", mac_name);
@@ -313,32 +314,6 @@ void get_eeprom_params(void)
 #endif
 }
 
-void init_router_mode(void)
-{
-	int sw_mode = nvram_get_int("sw_mode");
-	if (sw_mode == 1)		// Gateway mode
-	{
-		nvram_set_int("wan_nat_x", 1);
-		nvram_set("wan_route_x", "IP_Routed");
-	}
-	else if (sw_mode == 4)		// Router mode
-	{
-		nvram_set_int("wan_nat_x", 0);
-		nvram_set("wan_route_x", "IP_Routed");
-	}
-	else if (sw_mode == 3)		// AP mode
-	{
-		nvram_set_int("wan_nat_x", 0);
-		nvram_set("wan_route_x", "IP_Bridged");
-	}
-	else
-	{
-		nvram_set_int("sw_mode", 1);
-		nvram_set_int("wan_nat_x", 1);
-		nvram_set("wan_route_x", "IP_Routed");
-	}
-}
-
 void update_router_mode(void)
 {
 	if (nvram_get_int("sw_mode") != 3)
@@ -348,23 +323,6 @@ void update_router_mode(void)
 		else
 			nvram_set_int("sw_mode", 1);	// Router mode
 	}
-}
-
-void convert_asus_values(int skipflag)
-{
-	if (!skipflag)
-	{
-		set_usb_modem_dev_wan(0, 0);
-		
-		/* Direct copy value */
-		/* LAN Section */
-		reset_lan_vars();
-		
-		// WAN section
-		reset_wan_vars(1);
-	}
-
-	time_zone_x_mapping();
 }
 
 void set_pagecache_reclaim(void)
@@ -545,6 +503,16 @@ int module_param_get(char *module_name, char *module_param, char *param_value, s
 		param_value[strlen(param_value) - 1] = 0; /* get rid of '\n' */
 
 	fclose(fp);
+
+	return 0;
+}
+
+int module_param_set_int(char *module_name, char *module_param, int param_value)
+{
+	char mod_path[256];
+
+	snprintf(mod_path, sizeof(mod_path), "/sys/module/%s/parameters/%s", module_name, module_param);
+	fput_int(mod_path, param_value);
 
 	return 0;
 }

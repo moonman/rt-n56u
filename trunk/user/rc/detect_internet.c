@@ -137,12 +137,14 @@ try_detect_internet(void)
 {
 	long now;
 	int link_internet;
-	char *login_timestamp = nvram_safe_get("login_timestamp");
+	char *login_timestamp;
 
+	/* check last http login */
+	login_timestamp = nvram_safe_get("login_timestamp");
 	if (strlen(login_timestamp) < 1)
 		return;
 
-	if (!has_wan_ip(0) || !found_default_route(0))
+	if (!has_wan_ip(0) || !has_wan_gateway())
 	{
 #ifdef DEBUG
 		dbg("[di] no WAN IP, or no default route!\n");

@@ -108,7 +108,7 @@ get_wireless_cc(void)
 	if (CC[0] == 0xff && CC[1] == 0xff)	// 0xffff is default
 		printf("EEPROM CC: %s\n", "Undefined");
 	else
-		printf("EEPROM CC: %s\n", (char*)CC);
+		printf("EEPROM CC: %s\n", (char *)CC);
 
 	return 0;
 }
@@ -322,7 +322,7 @@ setPIN(const char *pin)
 {
 	if (pincheck(pin) && !pinvalidate(pin))
 	{
-		FWrite((char*)pin, OFFSET_PIN_CODE, 8);
+		FWrite((char *)pin, OFFSET_PIN_CODE, 8);
 		char PIN[9];
 		memset(PIN, 0, 9);
 		memcpy(PIN, pin, 8);
