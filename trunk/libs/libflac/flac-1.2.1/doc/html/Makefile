@@ -68,13 +68,13 @@ CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc 
 CCAS = $(CC)
 CCASFLAGS = $(CFLAGS)
 CCDEPMODE = depmode=gcc3
-CFLAGS = -O3 -funroll-loops -finline-functions -Wall -W -Winline -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -Wno-unused-but-set-variable -ffunction-sections -fdata-sections
+CFLAGS = -O3 -funroll-loops -finline-functions -Wall -W -Winline -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -Wno-pointer-sign -ffunction-sections -fdata-sections
 CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec -E
 CPPFLAGS = -DFLaC__INLINE=__inline__ -DNDEBUG -I$(top_builddir) -I$(srcdir)/include -I$(top_srcdir)/include -I/root/rt-n56u/trunk/stage/include
 CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec
 CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec -E
 CXXDEPMODE = depmode=gcc3
-CXXFLAGS = -Wall -Wno-trigraphs -Wno-strict-aliasing -Wall -Wno-trigraphs -Wno-strict-aliasing
+CXXFLAGS = -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr 
 CYGPATH_W = echo
 DEBUG_FALSE = 
 DEBUG_TRUE = #

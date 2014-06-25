@@ -61,7 +61,7 @@ AVAHI_LIBS =
 AWK = gawk
 CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec
 CCDEPMODE = depmode=gcc3
-CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-pointer-sign -Wno-unused-but-set-variable
+CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -Wno-pointer-sign
 COND_FFMPEG_FALSE = #
 COND_FFMPEG_TRUE = 
 COND_FLAC_FALSE = #
@@ -95,7 +95,7 @@ CPPFLAGS =  -g -Wall -DFLAC -DHAVE_SQL -DHOST='"mipsel-unknown-linux-gnu"' -DNOT
 CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec
 CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec -E
 CXXDEPMODE = depmode=gcc3
-CXXFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include  -Wall -Wno-trigraphs -Wno-strict-aliasing
+CXXFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr 
 CYGPATH_W = echo
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
