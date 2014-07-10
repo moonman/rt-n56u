@@ -30,19 +30,21 @@ struct nvram_pair router_defaults[] = {
 
 	/* Miscellaneous parameters */
 	{ "time_zone", DEF_TIMEZONE },
+	{ "log_ipaddr", "" },			/* syslog recipient IP */
+	{ "log_port", "514" },			/* syslog recipient Port */
 	{ "log_level", "0" },			/* Bitmask 0:off 1:denied 2:accepted */
-	{ "stats_server", "" },			/* URL for posting stats */
 	{ "console_loglevel", "7" },		/* Kernel panics only */
+	{ "stats_server", "" },			/* URL for posting stats */
 
 	/* Big switches */
 	{ "fw_enable_x", "1" },
-	{ "log_ipaddr", "" },			/* syslog recipient */
 
 	/* LAN H/W parameters */
 	{ "lan_hwaddr", "" },			/* LAN interface MAC address */
 
 	/* LAN TCP/IP parameters */
-	{ "lan_proto_x", "0" },			/* DHCP client [static|dhcp] */
+	{ "lan_proto_x", "0" },			/* DHCP client [static|dhcp] in AP mode */
+	{ "lan_dhcpd_x", "0" },			/* DHCP server in AP mode */
 	{ "lan_ipaddr", "192.168.1.1" },	/* LAN IP address */
 	{ "lan_netmask", "255.255.255.0" },	/* LAN netmask */
 	{ "lan_gateway", "192.168.1.1" },	/* LAN gateway */
@@ -522,17 +524,25 @@ struct nvram_pair router_defaults[] = {
 	{ "controlrate_unknown_multicast", "0" },
 	{ "controlrate_multicast", "0" },
 	{ "controlrate_broadcast", "10" },
-	{ "asus_debug", "0" },
-	{ "di_debug", "0" },
 
-	{ "di4_addr0", "8.8.8.8" },
-	{ "di4_addr1", "208.67.220.220" },
-	{ "di4_addr2", "8.8.4.4" },
-	{ "di4_addr3", "208.67.222.222" },
-	{ "di4_port0", "53" },
-	{ "di4_port1", "53" },
-	{ "di4_port2", "53" },
-	{ "di4_port3", "53" },
+	{ "di_poll_mode", "0" },
+	{ "di_timeout", "3" },
+	{ "di_time_done", "55" },
+	{ "di_time_fail", "5" },
+	{ "di_lost_delay", "10" },
+	{ "di_lost_action", "0" },
+	{ "di_addr0", "77.88.8.8" },
+	{ "di_addr1", "8.8.8.8" },
+	{ "di_addr2", "208.67.222.222" },
+	{ "di_addr3", "77.88.8.1" },
+	{ "di_addr4", "8.8.4.4" },
+	{ "di_addr5", "208.67.220.220" },
+	{ "di_port0", "53" },
+	{ "di_port1", "53" },
+	{ "di_port2", "53" },
+	{ "di_port3", "53" },
+	{ "di_port4", "53" },
+	{ "di_port5", "53" },
 
 	{ "fw_pt_pptp", "1" },
 	{ "fw_pt_l2tp", "1" },

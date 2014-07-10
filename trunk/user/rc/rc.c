@@ -331,7 +331,10 @@ convert_misc_values()
 
 	/* setup wan0 variables */
 	set_wan0_vars();
-	set_wan_unit_value(0, "time_ppp", "0000000000");
+	set_wan_unit_value(0, "uptime", "0000000000");
+	set_wan_unit_value(0, "dltime", "0000000000");
+	set_wan_unit_value(0, "bytes_rx", "00000000000000000000");
+	set_wan_unit_value(0, "bytes_tx", "00000000000000000000");
 	set_usb_modem_dev_wan(0, 0);
 	reset_wan_vars(1);
 
@@ -581,13 +584,15 @@ init_router(void)
 	init_ipv6();
 #endif
 	start_detect_link();
-	start_lan();
+	start_detect_internet(0);
+	start_lan(is_ap_mode);
 
 	if (log_remote)
 		start_logger(1);
 
+	start_dns_dhcpd(is_ap_mode);
+
 	if (!is_ap_mode) {
-		start_dns_dhcpd();
 		ipt_nat_default();
 		ipt_filter_default();
 #if defined (USE_IPV6)
@@ -598,7 +603,7 @@ init_router(void)
 
 	start_services_once(is_ap_mode);
 
-	detect_link_update_leds();
+	notify_leds_detect_link();
 
 	// system ready
 	system("/etc/storage/started_script.sh &");
@@ -607,6 +612,8 @@ init_router(void)
 void 
 shutdown_router(void)
 {
+	int is_ap_mode = get_ap_mode();
+
 	stop_misc();
 	stop_services(1);
 
@@ -630,7 +637,7 @@ shutdown_router(void)
 	stop_wifi_all_wl();
 	stop_wifi_all_rt();
 	stop_logger();
-	stop_lan();
+	stop_lan(is_ap_mode);
 
 #if defined (BOARD_GPIO_LED_LAN)
 	LED_CONTROL(BOARD_GPIO_LED_LAN, LED_OFF);
@@ -686,8 +693,10 @@ handle_notifications(void)
 #if defined (USE_IPV6)
 		else if (!strcmp(entry->d_name, "restart_ipv6"))
 		{
-			full_restart_ipv6(nvram_ipv6_type);
-			nvram_ipv6_type = get_ipv6_type();
+			if (!get_ap_mode()) {
+				full_restart_ipv6(nvram_ipv6_type);
+				nvram_ipv6_type = get_ipv6_type();
+			}
 		}
 		else if (strcmp(entry->d_name, "restart_radvd") == 0)
 		{
@@ -895,16 +904,16 @@ handle_notifications(void)
 		{
 			restart_httpd();
 		}
-		else if (strcmp(entry->d_name, "restart_dns") == 0)
+		else if (strcmp(entry->d_name, "restart_di") == 0)
 		{
-			restart_dns();
+			if (get_ap_mode() || has_wan_ip4(0))
+				notify_run_detect_internet(2);
 		}
 		else if (strcmp(entry->d_name, "restart_dhcpd") == 0)
 		{
 			if (get_ap_mode())
 				update_hosts_ap();
-			else
-				restart_dhcpd();
+			restart_dhcpd();
 		}
 		else if (strcmp(entry->d_name, "restart_upnp") == 0)
 		{
@@ -925,7 +934,7 @@ handle_notifications(void)
 		}
 		else if (strcmp(entry->d_name, "restart_switch_vlan") == 0)
 		{
-			detect_link_reset();
+			notify_reset_detect_link();
 			switch_config_vlan(0);
 		}
 		else if (strcmp(entry->d_name, "restart_syslog") == 0)
@@ -936,8 +945,7 @@ handle_notifications(void)
 		else if (strcmp(entry->d_name, "restart_tweaks") == 0)
 		{
 			restart_watchdog_cpu();
-			detect_link_update_leds();
-//			detect_internet_update_leds();
+			notify_leds_detect_link();
 		}
 		else if (strcmp(entry->d_name, "restart_firewall_wan") == 0)
 		{

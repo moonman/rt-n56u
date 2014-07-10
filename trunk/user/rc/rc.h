@@ -43,6 +43,7 @@
 
 #define SCRIPT_POST_WAN			"/etc/storage/post_wan_script.sh"
 #define SCRIPT_POST_FIREWALL		"/etc/storage/post_iptables_script.sh"
+#define SCRIPT_INTERNET_STATE		"/etc/storage/inet_state_script.sh"
 
 #define SCRIPT_OVPN_SERVER		"ovpns.script"
 #define SCRIPT_OVPN_CLIENT		"ovpnc.script"
@@ -137,8 +138,8 @@ int  route_del(char *ifname, int metric, char *dst, char *gateway, char *genmask
 int  control_static_routes(char *ift, char *ifname, int is_add);
 char* sanity_hostname(char *hname);
 char* get_our_hostname(void);
-int  is_same_subnet(char *ip1, char *ip2, char *msk);
-int  is_same_subnet2(char *ip1, char *ip2, char *msk1, char *msk2);
+int  is_same_subnet(const char *ip1, const char *ip2, const char *msk);
+int  is_same_subnet2(const char *ip1, const char *ip2, const char *msk1, const char *msk2);
 #if defined(APP_XUPNPD)
 void stop_xupnpd(void);
 void start_xupnpd(char *wan_ifname);
@@ -172,8 +173,8 @@ int  del_static_lan_routes(char *lan_ifname);
 void reset_lan_temp(void);
 void reset_lan_vars(void);
 void update_hosts_ap(void);
-void start_lan(void);
-void stop_lan(void);
+void start_lan(int is_ap_mode);
+void stop_lan(int is_ap_mode);
 void lan_up_manual(char *lan_ifname);
 void update_lan_status(int isup);
 void full_restart_lan(void);
@@ -210,6 +211,7 @@ void auto_wan_reconnect(void);
 void manual_wan_reconnect(void);
 void manual_wan_disconnect(void);
 void notify_on_wan_ether_link_restored(void);
+void notify_on_internet_state_changed(int has_internet, long elapsed);
 void add_dhcp_routes(char *rt, char *rt_rfc, char *rt_ms, char *ifname, int metric);
 void add_dhcp_routes_by_prefix(char *prefix, char *ifname, int metric);
 int  add_static_wan_routes(char *wan_ifname);
@@ -218,6 +220,7 @@ int  add_static_man_routes(char *man_ifname);
 int  del_static_man_routes(char *man_ifname);
 int  update_resolvconf(int is_first_run, int do_not_notify);
 int  update_hosts_router(void);
+int  get_wan_ether_link_direct(int is_ap_mode);
 int  get_wan_dns_static(void);
 int  get_wan_wisp_active(int *p_has_link);
 void get_wan_ifname(char wan_ifname[16]);
@@ -430,7 +433,7 @@ void stop_misc(void);
 
 /* services_ex.c */
 int is_dns_dhcpd_run(void);
-int start_dns_dhcpd(void);
+int start_dns_dhcpd(int is_ap_mode);
 void stop_dns_dhcpd(void);
 int is_upnp_run(void);
 int start_upnp(void);
@@ -556,17 +559,17 @@ void notify_rstats_time(void);
 
 /* detect_link.c */
 int detect_link_main(int argc, char *argv[]);
-int get_wan_ether_link_direct(int is_ap_mode);
 int start_detect_link(void);
 void stop_detect_link(void);
-void detect_link_reset(void);
-void detect_link_update_leds(void);
+void notify_reset_detect_link(void);
+void notify_leds_detect_link(void);
 
 /* detect_internet.c */
 int detect_internet_main(int argc, char *argv[]);
-int start_detect_internet(void);
+int start_detect_internet(int autorun_time);
 void stop_detect_internet(void);
-void notify_detect_internet(void);
+void notify_run_detect_internet(int delay_time);
+void notify_pause_detect_internet(void);
 
 /* detect_wan.c */
 int detect_wan_main(int argc, char *argv[]);
@@ -574,8 +577,6 @@ int detect_wan_main(int argc, char *argv[]);
 #if (BOARD_NUM_USB_PORTS > 0)
 /* usb_modem.c */
 int  get_modem_devnum(void);
-int  connect_ndis(int devnum);
-int  disconnect_ndis(int devnum);
 int  get_modem_ndis_ifname(char ndis_ifname[16], int *devnum_out);
 void notify_modem_on_wan_ether_link_changed(int has_link);
 void safe_remove_usb_modem(void);

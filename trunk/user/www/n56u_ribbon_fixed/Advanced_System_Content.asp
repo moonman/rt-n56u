@@ -58,11 +58,9 @@
 
 <script>
 
-<% login_state_hook(); %>
-
 function initial(){
 	show_banner(1);
-	show_menu(5,8,1);
+	show_menu(5,7,1);
 	show_footer();
 
 	load_body();
@@ -158,7 +156,13 @@ function validForm(){
 			return false;
 	}
 
-	if(!validate_ipaddr_final(document.form.log_ipaddr, 'log_ipaddr') || !validate_string(document.form.ntp_server0))
+	if(!validate_string(document.form.ntp_server0))
+		return false;
+
+	if(!validate_ipaddr_final(document.form.log_ipaddr, 'log_ipaddr'))
+		return false;
+
+	if(!validate_range(document.form.log_port, 1, 65535))
 		return false;
 
 	if(document.form.http_passwd2.value.length > 0)
@@ -531,13 +535,13 @@ function sshd_auth_change(){
                                             <th><#Adm_System_ntpp#></th>
                                             <td>
                                                 <select name="ntp_period" class="input">
-                                                    <option value="6" <% nvram_match_x("", "ntp_period", "6","selected"); %>>6 hours</option>
-                                                    <option value="12" <% nvram_match_x("", "ntp_period", "12","selected"); %>>12 hours</option>
-                                                    <option value="24" <% nvram_match_x("", "ntp_period", "24","selected"); %>>1 day</option>
-                                                    <option value="48" <% nvram_match_x("", "ntp_period", "48","selected"); %>>2 days</option>
-                                                    <option value="72" <% nvram_match_x("", "ntp_period", "72","selected"); %>>3 days</option>
-                                                    <option value="168" <% nvram_match_x("", "ntp_period", "168","selected"); %>>1 week</option>
-                                                    <option value="336" <% nvram_match_x("", "ntp_period", "336","selected"); %>>2 weeks</option>
+                                                    <option value="6"   <% nvram_match_x("","ntp_period",  "6","selected"); %>>6 hours</option>
+                                                    <option value="12"  <% nvram_match_x("","ntp_period", "12","selected"); %>>12 hours</option>
+                                                    <option value="24"  <% nvram_match_x("","ntp_period", "24","selected"); %>>1 day</option>
+                                                    <option value="48"  <% nvram_match_x("","ntp_period", "48","selected"); %>>2 days</option>
+                                                    <option value="72"  <% nvram_match_x("","ntp_period", "72","selected"); %>>3 days</option>
+                                                    <option value="168" <% nvram_match_x("","ntp_period","168","selected"); %>>1 week</option>
+                                                    <option value="336" <% nvram_match_x("","ntp_period","336","selected"); %>>2 weeks</option>
                                                 </select>
                                             </td>
                                         </tr>
@@ -563,7 +567,19 @@ function sshd_auth_change(){
                                         </tr>
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,11,1)"><#LANHostConfig_x_ServerLogEnable_itemname#></a></th>
-                                            <td><input type="text" maxlength="15" class="input" size="15" name="log_ipaddr" value="<% nvram_get_x("", "log_ipaddr"); %>" onKeyPress="return is_ipaddr(this)" onKeyUp="change_ipaddr(this)"/></td>
+                                            <td>
+                                                <input type="text" maxlength="15" class="input" size="15" name="log_ipaddr" style="width: 145px" value="<% nvram_get_x("", "log_ipaddr"); %>" onKeyPress="return is_ipaddr(this)" onKeyUp="change_ipaddr(this)"/>&nbsp;:
+                                                <input type="text" maxlength="5" class="input" size="10" name="log_port" style="width: 44px;"  value="<% nvram_get_x("","log_port"); %>" onkeypress="return is_number(this)"/>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,23,1);"><#TweaksWdg#></a></th>
+                                            <td>
+                                                <select name="watchdog_cpu" class="input">
+                                                    <option value="0" <% nvram_match_x("", "watchdog_cpu", "0","selected"); %>><#checkbox_No#> (*)</option>
+                                                    <option value="1" <% nvram_match_x("", "watchdog_cpu", "1","selected"); %>><#checkbox_Yes#> <#TweaksWdg_item#></option>
+                                                </select>
+                                            </td>
                                         </tr>
                                         <tr>
                                             <th><#PASS_LANG#></th>
