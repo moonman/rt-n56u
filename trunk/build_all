@@ -17,7 +17,7 @@ BUILD_FIRMWARE="YES"
 BUILD_FIRMWARE_CF=(\
 		   n56u_qos_k3.0.config \
 		   n56u_qos.config \
-		   n65u_qos.config \
+		   n65u_qos_full.config \
 		   n14u_qos_full.config \
 		   )
 ################################################
@@ -39,7 +39,7 @@ evaluate_path()
 	n56u_qos.config)
 		_path="N56U/k3.4"
 		;;
-	n65u_qos.config)
+	n65u_qos_full.config)
 		_path="N65U"
 		;;
 	n14u_qos_full.config)
