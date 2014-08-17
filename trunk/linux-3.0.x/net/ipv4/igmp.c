@@ -89,6 +89,7 @@
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
 #include <linux/times.h>
+#include <linux/pkt_sched.h>
 
 #include <net/net_namespace.h>
 #include <net/arp.h>
@@ -114,7 +115,8 @@
 
 #define IGMP_V1_Router_Present_Timeout		(400*HZ)
 #define IGMP_V2_Router_Present_Timeout		(400*HZ)
-#define IGMP_Unsolicited_Report_Interval	(10*HZ)
+#define IGMP_V2_Unsolicited_Report_Interval	(10*HZ)
+#define IGMP_V3_Unsolicited_Report_Interval	(1*HZ)
 #define IGMP_Query_Response_Interval		(10*HZ)
 #define IGMP_Unsolicited_Report_Count		2
 
@@ -138,6 +140,29 @@
 	 IN_DEV_CONF_GET((in_dev), FORCE_IGMP_VERSION) == 2 || \
 	 ((in_dev)->mr_v2_seen && \
 	  time_before(jiffies, (in_dev)->mr_v2_seen)))
+
+static int unsolicited_report_interval(struct in_device *in_dev)
+{
+	int interval_ms, interval_jiffies;
+
+	if (IGMP_V1_SEEN(in_dev) || IGMP_V2_SEEN(in_dev))
+		interval_ms = IN_DEV_CONF_GET(
+			in_dev,
+			IGMPV2_UNSOLICITED_REPORT_INTERVAL);
+	else /* v3 */
+		interval_ms = IN_DEV_CONF_GET(
+			in_dev,
+			IGMPV3_UNSOLICITED_REPORT_INTERVAL);
+
+	interval_jiffies = msecs_to_jiffies(interval_ms);
+
+	/* _timer functions can't handle a delay of 0 jiffies so ensure
+	 *  we always return a positive value.
+	 */
+	if (interval_jiffies <= 0)
+		interval_jiffies = 1;
+	return interval_jiffies;
+}
 
 static void igmpv3_add_delrec(struct in_device *in_dev, struct ip_mc_list *im);
 static void igmpv3_del_delrec(struct in_device *in_dev, __be32 multiaddr);
@@ -314,6 +339,7 @@ static struct sk_buff *igmpv3_newpack(struct net_device *dev, int size)
 		if (size < 256)
 			return NULL;
 	}
+	skb->priority = TC_PRIO_CONTROL;
 	igmp_skb_size(skb) = size;
 
 	rt = ip_route_output_ports(net, &fl4, NULL, IGMPV3_ALL_MCR, 0,
@@ -666,6 +692,7 @@ static int igmp_send_report(struct in_device *in_dev, struct ip_mc_list *pmc,
 		ip_rt_put(rt);
 		return -1;
 	}
+	skb->priority = TC_PRIO_CONTROL;
 
 	skb_dst_set(skb, &rt->dst);
 
@@ -715,7 +742,8 @@ static void igmp_ifc_timer_expire(unsigned long data)
 	igmpv3_send_cr(in_dev);
 	if (in_dev->mr_ifc_count) {
 		in_dev->mr_ifc_count--;
-		igmp_ifc_start_timer(in_dev, IGMP_Unsolicited_Report_Interval);
+		igmp_ifc_start_timer(in_dev,
+				     unsolicited_report_interval(in_dev));
 	}
 	in_dev_put(in_dev);
 }
@@ -740,7 +768,7 @@ static void igmp_timer_expire(unsigned long data)
 
 	if (im->unsolicit_count) {
 		im->unsolicit_count--;
-		igmp_start_timer(im, IGMP_Unsolicited_Report_Interval);
+		igmp_start_timer(im, unsolicited_report_interval(in_dev));
 	}
 	im->reporter = 1;
 	spin_unlock(&im->lock);
@@ -811,14 +839,15 @@ static int igmp_marksources(struct ip_mc_list *pmc, int nsrcs, __be32 *srcs)
 	return 1;
 }
 
-static void igmp_heard_report(struct in_device *in_dev, __be32 group)
+/* return true if packet was dropped */
+static bool igmp_heard_report(struct in_device *in_dev, __be32 group)
 {
 	struct ip_mc_list *im;
 
 	/* Timers are only set for non-local groups */
 
 	if (group == IGMP_ALL_HOSTS)
-		return;
+		return false;
 
 	rcu_read_lock();
 	for_each_pmc_rcu(in_dev, im) {
@@ -828,9 +857,11 @@ static void igmp_heard_report(struct in_device *in_dev, __be32 group)
 		}
 	}
 	rcu_read_unlock();
+	return false;
 }
 
-static void igmp_heard_query(struct in_device *in_dev, struct sk_buff *skb,
+/* return true if packet was dropped */
+static bool igmp_heard_query(struct in_device *in_dev, struct sk_buff *skb,
 	int len)
 {
 	struct igmphdr 		*ih = igmp_hdr(skb);
@@ -862,7 +893,7 @@ static void igmp_heard_query(struct in_device *in_dev, struct sk_buff *skb,
 		/* clear deleted report items */
 		igmpv3_clear_delrec(in_dev);
 	} else if (len < 12) {
-		return;	/* ignore bogus packet; freed by caller */
+		return true;	/* ignore bogus packet; freed by caller */
 	} else if (IGMP_V1_SEEN(in_dev)) {
 		/* This is a v3 query with v1 queriers present */
 		max_delay = IGMP_Query_Response_Interval;
@@ -879,13 +910,13 @@ static void igmp_heard_query(struct in_device *in_dev, struct sk_buff *skb,
 			max_delay = 1;	/* can't mod w/ 0 */
 	} else { /* v3 */
 		if (!pskb_may_pull(skb, sizeof(struct igmpv3_query)))
-			return;
+			return true;
 
 		ih3 = igmpv3_query_hdr(skb);
 		if (ih3->nsrcs) {
 			if (!pskb_may_pull(skb, sizeof(struct igmpv3_query)
 					   + ntohs(ih3->nsrcs)*sizeof(__be32)))
-				return;
+				return true;
 			ih3 = igmpv3_query_hdr(skb);
 		}
 
@@ -897,9 +928,9 @@ static void igmp_heard_query(struct in_device *in_dev, struct sk_buff *skb,
 			in_dev->mr_qrv = ih3->qrv;
 		if (!group) { /* general query */
 			if (ih3->nsrcs)
-				return;	/* no sources allowed */
+				return false;	/* no sources allowed */
 			igmp_gq_start_timer(in_dev);
-			return;
+			return false;
 		}
 		/* mark sources to include, if group & source-specific */
 		mark = ih3->nsrcs != 0;
@@ -935,6 +966,7 @@ static void igmp_heard_query(struct in_device *in_dev, struct sk_buff *skb,
 			igmp_mod_timer(im, max_delay);
 	}
 	rcu_read_unlock();
+	return false;
 }
 
 /* called in rcu_read_lock() section */
@@ -944,6 +976,7 @@ int igmp_rcv(struct sk_buff *skb)
 	struct igmphdr *ih;
 	struct in_device *in_dev = __in_dev_get_rcu(skb->dev);
 	int len = skb->len;
+	bool dropped = true;
 
 	if (in_dev == NULL)
 		goto drop;
@@ -965,7 +998,7 @@ int igmp_rcv(struct sk_buff *skb)
 	ih = igmp_hdr(skb);
 	switch (ih->type) {
 	case IGMP_HOST_MEMBERSHIP_QUERY:
-		igmp_heard_query(in_dev, skb, len);
+		dropped = igmp_heard_query(in_dev, skb, len);
 		break;
 	case IGMP_HOST_MEMBERSHIP_REPORT:
 	case IGMPV2_HOST_MEMBERSHIP_REPORT:
@@ -975,7 +1008,7 @@ int igmp_rcv(struct sk_buff *skb)
 		/* don't rely on MC router hearing unicast reports */
 		if (skb->pkt_type == PACKET_MULTICAST ||
 		    skb->pkt_type == PACKET_BROADCAST)
-			igmp_heard_report(in_dev, ih->group);
+			dropped = igmp_heard_report(in_dev, ih->group);
 		break;
 	case IGMP_PIM:
 #ifdef CONFIG_IP_PIMSM_V1
@@ -993,7 +1026,10 @@ int igmp_rcv(struct sk_buff *skb)
 	}
 
 drop:
-	kfree_skb(skb);
+	if (dropped)
+		kfree_skb(skb);
+	else
+		consume_skb(skb);
 	return 0;
 }
 
@@ -1238,7 +1274,7 @@ void ip_mc_inc_group(struct in_device *in_dev, __be32 addr)
 	atomic_set(&im->refcnt, 1);
 	spin_lock_init(&im->lock);
 #ifdef CONFIG_IP_MULTICAST
-	setup_timer(&im->timer, &igmp_timer_expire, (unsigned long)im);
+	setup_timer(&im->timer, igmp_timer_expire, (unsigned long)im);
 	im->unsolicit_count = IGMP_Unsolicited_Report_Count;
 #endif
 
@@ -1369,13 +1405,9 @@ void ip_mc_init_dev(struct in_device *in_dev)
 {
 	ASSERT_RTNL();
 
-	in_dev->mc_tomb = NULL;
 #ifdef CONFIG_IP_MULTICAST
-	in_dev->mr_gq_running = 0;
 	setup_timer(&in_dev->mr_gq_timer, igmp_gq_timer_expire,
 			(unsigned long)in_dev);
-	in_dev->mr_ifc_count = 0;
-	in_dev->mc_count     = 0;
 	setup_timer(&in_dev->mr_ifc_timer, igmp_ifc_timer_expire,
 			(unsigned long)in_dev);
 	in_dev->mr_qrv = IGMP_Unsolicited_Report_Count;

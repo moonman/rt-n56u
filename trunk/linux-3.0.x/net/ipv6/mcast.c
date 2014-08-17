@@ -44,6 +44,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <linux/pkt_sched.h>
 #include <net/mld.h>
 
 #include <linux/netfilter.h>
@@ -1146,9 +1147,7 @@ int igmp6_event_query(struct sk_buff *skb)
 		int switchback;
 		/* MLDv1 router present */
 
-		/* Translate milliseconds to jiffies */
-		max_delay = (ntohs(mld->mld_maxdelay)*HZ)/1000;
-
+		max_delay = msecs_to_jiffies(ntohs(mld->mld_maxdelay));
 		switchback = (idev->mc_qrv + 1) * max_delay;
 		idev->mc_v1_seen = jiffies + switchback;
 
@@ -1165,10 +1164,11 @@ int igmp6_event_query(struct sk_buff *skb)
 			return -EINVAL;
 
 		mlh2 = (struct mld2_query *)skb_transport_header(skb);
-		max_delay = (MLDV2_MRC(ntohs(mlh2->mld2q_mrc))*HZ)/1000;
-		if (!max_delay)
-			max_delay = 1;
+
+		max_delay = max(msecs_to_jiffies(MLDV2_MRC(ntohs(mlh2->mld2q_mrc))), 1UL);
+
 		idev->mc_maxdelay = max_delay;
+
 		if (mlh2->mld2q_qrv)
 			idev->mc_qrv = mlh2->mld2q_qrv;
 		if (group_type == IPV6_ADDR_ANY) { /* general query */
@@ -1357,6 +1357,7 @@ static struct sk_buff *mld_newpack(struct inet6_dev *idev, int size)
 	if (!skb)
 		return NULL;
 
+	skb->priority = TC_PRIO_CONTROL;
 	skb_reserve(skb, LL_RESERVED_SPACE(dev));
 
 	if (__ipv6_get_lladdr(idev, &addr_buf, IFA_F_TENTATIVE)) {
@@ -1754,7 +1755,7 @@ static void igmp6_send(struct in6_addr *addr, struct net_device *dev, int type)
 		rcu_read_unlock();
 		return;
 	}
-
+	skb->priority = TC_PRIO_CONTROL;
 	skb_reserve(skb, LL_RESERVED_SPACE(dev));
 
 	if (ipv6_get_lladdr(dev, &addr_buf, IFA_F_TENTATIVE)) {
