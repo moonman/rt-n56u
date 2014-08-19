@@ -8,17 +8,17 @@
 ################## CONFIG ######################
 MY_VERSION=$1
 
-CLEAR_TOOLCHAIN="YES"
-BUILD_TOOLCHAIN="YES"
+CLEAR_TOOLCHAIN="NO"
+BUILD_TOOLCHAIN="NO"
 
 BUILD_FIRMWARE="YES"
 ## Only used if BUILD_FIRMWARE="YES"##
 ## Comment out the lines containing configs you don't want to build.
 BUILD_FIRMWARE_CF=(\
-#		   n56u_qos_k3.0.config \
+		   n56u_qos_k3.0.config \
 		   n56u_qos.config \
-#		   n65u_qos_full.config \
-#		   n14u_qos_full.config \
+		   n65u_qos_full.config \
+		   n14u_qos_full.config \
 		   )
 ################################################
 
