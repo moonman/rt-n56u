@@ -201,10 +201,65 @@ set_wan0_vars(void)
 	set_wan_unit_value(0, "ifname", IFNAME_WAN);
 }
 
-static void 
-convert_misc_values()
+static void
+nvram_convert_old_params(void)
 {
-	char buff[64], *test_value;
+	char *test_value;
+
+	/* convert old params */
+	test_value = nvram_get("front_leds");
+	if (test_value) {
+		int front_leds = atoi(test_value);
+		if (front_leds > 2)
+			nvram_set_int("front_led_all", 0);
+		if (front_leds == 4 || front_leds == 2)
+			nvram_set_int("front_led_pwr", 0);
+		nvram_unset("front_leds");
+	}
+
+	test_value = nvram_get("pppoe_dhcp_route");
+	if (test_value) {
+		if (strlen(test_value) > 0 && strlen(nvram_safe_get("wan_pppoe_man")) == 0)
+			nvram_set("wan_pppoe_man", test_value);
+		nvram_unset("pppoe_dhcp_route");
+	}
+
+	test_value = nvram_get("wan_heartbeat_x");
+	if (test_value) {
+		if (strlen(test_value) > 0 && strlen(nvram_safe_get("wan_ppp_peer")) == 0)
+			nvram_set("wan_ppp_peer", test_value);
+		nvram_unset("wan_heartbeat_x");
+	}
+	nvram_unset("wan0_heartbeat_x");
+
+	test_value = nvram_get("wan_3g_pin");
+	if (test_value) {
+		if (strlen(test_value) > 0 && strlen(nvram_safe_get("modem_pin")) == 0)
+			nvram_set("modem_pin", test_value);
+		nvram_unset("wan_3g_pin");
+	}
+	nvram_unset("wan0_3g_pin");
+
+	/* remove old unused params */
+	nvram_unset("lan_route");
+	nvram_unset("wan0_route");
+	nvram_unset("wan_route");
+	nvram_unset("wan_dns_t");
+	nvram_unset("wan_proto_t");
+	nvram_unset("wan_ipaddr_t");
+	nvram_unset("wan_netmask_t");
+	nvram_unset("wan_gateway_t");
+	nvram_unset("wan_ifname_t");
+	nvram_unset("wan_status_t");
+	nvram_unset("wan_subnet_t");
+	nvram_unset("lan_subnet_t");
+	nvram_unset("link_lan");
+}
+
+static void
+nvram_convert_misc_values(void)
+{
+	char buff[64];
 	int sw_mode;
 
 	/* check router mode */
@@ -226,43 +281,6 @@ convert_misc_values()
 		nvram_set_int("wan_nat_x", 1);
 		nvram_set("wan_route_x", "IP_Routed");
 	}
-
-	/* remove old unused params */
-	nvram_unset("lan_route");
-	nvram_unset("wan0_route");
-	nvram_unset("wan_route");
-	nvram_unset("wan_dns_t");
-	nvram_unset("wan_proto_t");
-	nvram_unset("wan_ipaddr_t");
-	nvram_unset("wan_netmask_t");
-	nvram_unset("wan_gateway_t");
-	nvram_unset("wan_ifname_t");
-	nvram_unset("wan_status_t");
-	nvram_unset("wan_subnet_t");
-	nvram_unset("lan_subnet_t");
-	nvram_unset("link_lan");
-
-	test_value = nvram_get("front_leds");
-	if (test_value) {
-		int front_leds = atoi(test_value);
-		if (front_leds > 2)
-			nvram_set_int("front_led_all", 0);
-		if (front_leds == 4 || front_leds == 2)
-			nvram_set_int("front_led_pwr", 0);
-		nvram_unset("front_leds");
-	}
-
-	test_value = nvram_get("wan_heartbeat_x");
-	if (test_value) {
-		if (strlen(test_value) > 0 && strlen(nvram_safe_get("wan_ppp_peer")) == 0)
-			nvram_set("wan_ppp_peer", test_value);
-		nvram_unset("wan_heartbeat_x");
-	}
-
-	if (nvram_match("modem_pin", "") && nvram_invmatch("wan_3g_pin", ""))
-		nvram_set("modem_pin", nvram_safe_get("wan_3g_pin"));
-	nvram_unset("wan_3g_pin");
-	nvram_unset("wan0_3g_pin");
 
 	if (strlen(nvram_wlan_get("wl", "ssid")) < 1)
 		nvram_wlan_set("wl", "ssid", DEF_WLAN_5G_SSID);
@@ -335,8 +353,9 @@ convert_misc_values()
 	set_wan_unit_value(0, "dltime", "0000000000");
 	set_wan_unit_value(0, "bytes_rx", "00000000000000000000");
 	set_wan_unit_value(0, "bytes_tx", "00000000000000000000");
+	set_wan_unit_value(0, "ifname_t", "");
 	set_usb_modem_dev_wan(0, 0);
-	reset_wan_vars(1);
+	reset_wan_vars();
 
 	/* setup lan variables */
 	reset_lan_vars();
@@ -548,11 +567,13 @@ init_router(void)
 	mtk_esw_node();
 #endif
 
+	nvram_convert_old_params();
+
 	nvram_need_commit = nvram_restore_defaults();
 
 	get_eeprom_params();
 
-	convert_misc_values();
+	nvram_convert_misc_values();
 
 	if (nvram_need_commit)
 		nvram_commit();
@@ -598,7 +619,7 @@ init_router(void)
 #if defined (USE_IPV6)
 		ip6t_filter_default();
 #endif
-		start_wan(1);
+		start_wan();
 	}
 
 	start_services_once(is_ap_mode);
@@ -626,6 +647,7 @@ shutdown_router(void)
 
 	stop_wan();
 	stop_services_lan_wan();
+	set_ipv4_forward(0);
 #if defined (BOARD_GPIO_LED_WAN)
 	LED_CONTROL(BOARD_GPIO_LED_WAN, LED_OFF);
 #endif
@@ -955,14 +977,6 @@ handle_notifications(void)
 		{
 			reload_nat_modules();
 			restart_firewall();
-			
-			/* flush conntrack after NAT model changing */
-			int nf_nat_type = nvram_get_int("nf_nat_type");
-			if (nvram_nf_nat_type != nf_nat_type)
-			{
-				nvram_nf_nat_type = nf_nat_type;
-				flush_conntrack_caches();
-			}
 		}
 		else if (strcmp(entry->d_name, "restart_ntpc") == 0)
 		{
@@ -978,7 +992,16 @@ handle_notifications(void)
 		}
 		else if (strcmp(entry->d_name, "restart_sysctl") == 0)
 		{
+			int nf_nat_type = nvram_get_int("nf_nat_type");
+			
 			restart_all_sysctl();
+			
+			/* flush conntrack after NAT model changing */
+			if (nvram_nf_nat_type != nf_nat_type)
+			{
+				nvram_nf_nat_type = nf_nat_type;
+				flush_conntrack_caches();
+			}
 		}
 		else if (!strcmp(entry->d_name, "restart_wifi_wl"))
 		{
