@@ -134,6 +134,7 @@
 			{"di_time_fail", "", NULL, FALSE},
 			{"di_lost_delay", "", NULL, FALSE},
 			{"di_lost_action", "", NULL, FALSE},
+			{"di_recon_pause", "", NULL, FALSE},
 			{"di_addr0", "", NULL, RESTART_DI},
 			{"di_addr1", "", NULL, RESTART_DI},
 			{"di_addr2", "", NULL, RESTART_DI},
@@ -495,6 +496,7 @@
 			{"vpnc_mtu", "", NULL, RESTART_VPNCLI},
 			{"vpnc_mru", "", NULL, RESTART_VPNCLI},
 			{"vpnc_sfw", "", NULL, RESTART_FIREWALL},
+			{"vpnc_dgw", "", NULL, RESTART_VPNCLI},
 			{"vpnc_rnet", "", NULL, RESTART_VPNCLI},
 			{"vpnc_rmsk", "", NULL, RESTART_VPNCLI},
 #if defined(APP_OPENVPN)

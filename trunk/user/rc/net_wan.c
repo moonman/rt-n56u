@@ -577,11 +577,11 @@ start_wan(void)
 	/* Create links */
 	create_cb_links();
 
-	reload_nat_modules();
-
 	config_vinet_wan();
 	launch_viptv_wan();
 	config_apcli_wisp();
+
+	reload_nat_modules();
 
 	update_resolvconf(1, 0);
 
@@ -756,6 +756,8 @@ stop_wan_ppp(void)
 		NULL
 	};
 
+	nvram_set_int_temp("deferred_wanup_t", 0);
+
 	notify_pause_detect_internet();
 
 	stop_vpn_client();
@@ -796,6 +798,8 @@ stop_wan(void)
 	};
 
 	unit = 0;
+
+	nvram_set_int_temp("deferred_wanup_t", 0);
 
 	wan_proto = get_wan_proto(unit);
 	man_ifname = get_man_ifname(unit);
@@ -939,11 +943,11 @@ man_up(char *man_ifname, int unit, int is_static)
 	add_static_man_routes(man_ifname);
 
 	if (!is_static) {
-		/* and one supplied via DHCP */
+		/* and routes supplied via DHCP */
 		add_dhcp_routes_by_prefix("wanx_", man_ifname, 0);
 	}
 
-	/* and default route with metric 1 */
+	/* and default route (metric 2) */
 	add_man_gateway_routes(man_ifname, unit, 2);
 
 	if (!is_static) {
@@ -1001,19 +1005,21 @@ wan_up(char *wan_ifname, int unit, int is_static)
 	if (wan_gate && inet_addr_safe(wan_mask) != INADDR_BROADCAST && ppp_ifindex(wan_ifname) < 0) {
 		/* if the gateway is out of the subnet */
 		if (!is_same_subnet(wan_gate, wan_addr, wan_mask))
-			route_add(wan_ifname, 0, wan_gate, NULL, "255.255.255.255");
+			route_add(wan_ifname, 1, wan_gate, NULL, "255.255.255.255");
 	}
 
 	/* default route via default gateway */
 	if (wan_gate)
-		route_add(wan_ifname, 0, "0.0.0.0", wan_gate, "0.0.0.0");
+		route_add(wan_ifname, 1, "0.0.0.0", wan_gate, "0.0.0.0");
 
+#if 0
 	/* hack: avoid routing cycles, when both peer and server has the same IP (for PPTP or L2TP) */
 	if (!modem_unit_id && (wan_proto == IPV4_WAN_PROTO_PPTP || wan_proto == IPV4_WAN_PROTO_L2TP)) {
 		/* delete gateway route as it's no longer needed */
 		if (wan_gate)
 			route_del(wan_ifname, 0, wan_gate, "0.0.0.0", "255.255.255.255");
 	}
+#endif
 
 	/* Install interface dependent static routes */
 	add_static_wan_routes(wan_ifname);
@@ -1116,7 +1122,7 @@ wan_down(char *wan_ifname, int unit)
 	/* Remove default route to gateway if specified */
 	wan_gate = get_wan_unit_value(unit, "gateway");
 	if (is_valid_ipv4(wan_gate))
-		route_del(wan_ifname, 0, "0.0.0.0", wan_gate, "0.0.0.0");
+		route_del(wan_ifname, 1, "0.0.0.0", wan_gate, "0.0.0.0");
 
 	/* Remove interface dependent static routes */
 	del_static_wan_routes(wan_ifname);
@@ -1179,17 +1185,51 @@ full_restart_wan(void)
 }
 
 void
-try_wan_reconnect(int try_use_modem)
+try_wan_reconnect(int try_use_modem, long pause_in_seconds)
 {
 	if (get_ap_mode())
 		return;
 
 	stop_wan();
-
 	reset_wan_vars();
+
+	if (pause_in_seconds > 0) {
+		long deferred_up_time = uptime() + pause_in_seconds;
+		
+		if (deferred_up_time == 0)
+			deferred_up_time++;
+		nvram_set_int_temp("deferred_wanup_t", deferred_up_time);
+		
+		/* check watchdog started */
+		start_watchdog();
+		
+		logmessage(LOGNAME, "WAN up delay: %lds.", pause_in_seconds);
+		
+		return;
+	}
 
 	if (try_use_modem)
 		select_usb_modem_to_wan();
+
+	notify_reset_detect_link();
+
+	start_wan();
+
+	/* restore L2TP VPN server after L2TP WAN client closed */
+	if (nvram_match("l2tp_srv_t", "1"))
+		safe_start_xl2tpd();
+}
+
+void
+deferred_wan_connect(void)
+{
+	/* check wan already started */
+	if (check_if_file_exist(SCRIPT_UDHCPC_WAN))
+		return;
+
+	nvram_set_int_temp("deferred_wanup_t", 0);
+
+	select_usb_modem_to_wan();
 
 	notify_reset_detect_link();
 
@@ -1234,7 +1274,7 @@ manual_wan_reconnect(void)
 {
 	logmessage(LOGNAME, "Perform WAN %s %s", "manual", "reconnect");
 
-	try_wan_reconnect(1);
+	try_wan_reconnect(1, 0);
 }
 
 void
@@ -1242,7 +1282,15 @@ auto_wan_reconnect(void)
 {
 	logmessage(LOGNAME, "Perform WAN %s %s", "auto", "reconnect");
 
-	try_wan_reconnect(1);
+	try_wan_reconnect(1, 0);
+}
+
+void
+auto_wan_reconnect_pause(void)
+{
+	logmessage(LOGNAME, "Perform WAN %s %s", "auto", "reconnect");
+
+	try_wan_reconnect(1, nvram_get_int("di_recon_pause"));
 }
 
 void
@@ -1260,9 +1308,9 @@ notify_on_wan_ether_link_restored(void)
 	if (get_wan_wisp_active(NULL))
 		return;
 
-	logmessage(LOGNAME, "force WAN DHCP client renew...");
-
-	renew_udhcpc_wan(unit);
+	if (renew_udhcpc_wan(unit) == 0) {
+		logmessage(LOGNAME, "force WAN DHCP client renew...");
+	}
 }
 
 void
@@ -1279,7 +1327,7 @@ notify_on_internet_state_changed(int has_internet, long elapsed)
 			notify_rc("restart_reboot");
 			return;
 		case 2:
-			notify_rc("auto_wan_reconnect");
+			notify_rc("auto_wan_reconnect_pause");
 			break;
 #if (BOARD_NUM_USB_PORTS > 0)
 		case 3:
@@ -1489,7 +1537,7 @@ add_dhcp_routes(char *rt, char *rt_rfc, char *rt_ms, char *ifname, int metric)
 		ipaddr = strsep(&tmp, "/");
 		gateway = strsep(&tmp, " ");
 		if (gateway && is_valid_ipv4(ipaddr)) {
-			route_add(ifname, metric + 1, ipaddr, gateway, netmask);
+			route_add(ifname, metric, ipaddr, gateway, netmask);
 		}
 	}
 	free(routes);
@@ -1509,7 +1557,7 @@ add_dhcp_routes(char *rt, char *rt_rfc, char *rt_ms, char *ifname, int metric)
 		{
 			mask.s_addr = htonl(0xffffffff << (32 - bits));
 			strcpy(netmask, inet_ntoa(mask));
-			route_add(ifname, metric + 1, ipaddr, gateway, netmask);
+			route_add(ifname, metric, ipaddr, gateway, netmask);
 		}
 	}
 	free(routes);
@@ -1957,10 +2005,11 @@ udhcpc_viptv_bound(char *man_ifname, int is_renew_mode)
 			"%s (%s), IP: %s, GW: %s, lease time: %d", 
 			udhcpc_state, man_ifname, ip, gw, lease_dur);
 		
+		/* and routes supplied via DHCP */
 		if (*rt || *rt_rfc || *rt_ms)
 			add_dhcp_routes(rt, rt_rfc, rt_ms, man_ifname, 0);
 		
-		/* default route via default gateway (metric 2) */
+		/* default route via default gateway (metric 3) */
 		if (is_valid_ipv4(gw))
 			route_add(man_ifname, 3, "0.0.0.0", gw, "0.0.0.0");
 		
