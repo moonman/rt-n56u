@@ -95,27 +95,7 @@ uint32_t		PpeFoeTblSize = FOE_4TB_SIZ;
 struct net_device	*DstPort[MAX_IF_NUM];
 DEFINE_SPINLOCK(ppe_foe_lock);
 
-#ifdef HWNAT_DEBUG
-#if 0
-void skb_dump(struct sk_buff* sk) {
-	unsigned int i;
-
-	printk("\nskb_dump: from %s with len %d (%d) headroom=%d tailroom=%d\n",
-		sk->dev?sk->dev->name:"ip stack",sk->len,sk->truesize,
-		skb_headroom(sk),skb_tailroom(sk));
-
-	for(i=(unsigned int)sk->head;i<(unsigned int)sk->tail;i++) {
-		if((i % 16) == 0)
-			printk("\n");
-		if(i==(unsigned int)sk->head) printk("@h");
-		if(i==(unsigned int)sk->data) printk("@d");
-		if(i==(unsigned int)skb_mac_header(sk)) printk("*");
-		printk("%02X-",*((unsigned char*)i));
-	}
-	printk("\n");
-}
-#endif
-
+#if defined (CONFIG_RA_HW_NAT_DEBUG)
 static uint8_t *ShowCpuReason(struct sk_buff *skb)
 {
 	static uint8_t Buf[32];
@@ -162,6 +142,12 @@ static uint8_t *ShowCpuReason(struct sk_buff *skb)
 		return ("Hit bind and exceed MTU\n");
 	case HIT_BIND_MULTICAST_TO_CPU:
 		return ("Hit bind multicast packet to CPU\n");
+#if defined (CONFIG_RALINK_MT7621)
+	case HIT_BIND_MULTICAST_TO_GMAC_CPU:
+		return ("Hit bind multicast packet to GMAC & CPU\n");
+	case HIT_PRE_BIND:
+		return ("Pre bind\n");
+#endif
 #else
 	case TTL_0:		/* 0x80 */
 		return ("TTL=0\n");
@@ -301,7 +287,7 @@ uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
 
 	/* check dst interface exist */
 	if (skb->dev == NULL) {
-		NAT_PRINT("HNAT: RX: interface not exist, drop this packet.\n");
+		NAT_DEBUG("HNAT: %s, interface not exist, drop this packet.\n", __FUNCTION__);
 		kfree_skb(skb);
 		return 0;
 	}
@@ -417,7 +403,7 @@ uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
 	}
 #endif
 	else {
-		NAT_PRINT("HNAT: The interface %s is unknown\n", skb->dev->name);
+		NAT_DEBUG("HNAT: %s, unknown interface %s\n", __FUNCTION__, skb->dev->name);
 		return 1;
 	}
 
@@ -431,7 +417,7 @@ uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
 	skb = __vlan_put_tag(skb, VirIfIdx);
 #endif
 	if (unlikely(!skb)) {
-		NAT_PRINT("HNAT: not valid tag ? memleak ? (VirIfIdx=%d)\n", VirIfIdx);
+		NAT_DEBUG("HNAT: %s, unable tagging skb, memleak ? (VirIfIdx=%d)\n", __FUNCTION__, VirIfIdx);
 		return 0;
 	}
 
@@ -465,12 +451,12 @@ uint32_t PpeExtIfPingPongHandler(struct sk_buff * skb)
 
 	dev = DstPort[VirIfIdx];
 	if (!dev) {
-		NAT_PRINT("HNAT: Reentry packet interface (VirIfIdx=%d) not exist. Skip this packet!\n", VirIfIdx);
+		NAT_PRINT("HNAT: %s, reentry packet interface (VirIfIdx=%d) not exist!\n", __FUNCTION__, VirIfIdx);
 		return 1;
 	}
 
 	if (unlikely(!pskb_may_pull(skb, VLAN_HLEN))) {
-		NAT_PRINT("HNAT: No mem for remove tag or corrupted packet? (VirIfIdx=%d)\n", VirIfIdx);
+		NAT_DEBUG("HNAT: %s, no mem for remove tag! (VirIfIdx=%d)\n", __FUNCTION__, VirIfIdx);
 		return 1;
 	}
 
@@ -612,8 +598,14 @@ int PpeHitBindForceToCpuHandler(struct sk_buff *skb, struct FoeEntry *foe_entry)
 #endif
 #endif
 	if (!dev) {
-		NAT_PRINT("HNAT: PpeHitBindForceToCpuHandler, act_dp point to null!\n");
+		NAT_PRINT("HNAT: %s, dest interface not exist!\n", __FUNCTION__);
 		return 1;
+	}
+
+	if (!(dev->flags & IFF_UP)) {
+		/* wifi/ext interface is down, simple drop skb */
+		kfree_skb(skb);
+		return 0;
 	}
 
 	skb->dev = dev;
@@ -633,7 +625,7 @@ int PpeHitBindForceMcastToWiFiHandler(struct sk_buff *skb)
 
 	if (skb->protocol == __constant_htons(ETH_P_8021Q)) {
 		if (unlikely(!pskb_may_pull(skb, VLAN_HLEN))) {
-			NAT_PRINT("HNAT: No mem for remove tag!\n");
+			NAT_DEBUG("HNAT: %s, no mem for remove tag!\n", __FUNCTION__);
 			return 1;
 		}
 		
@@ -651,7 +643,7 @@ int PpeHitBindForceMcastToWiFiHandler(struct sk_buff *skb)
 
 	for (i = DP_RA0; i < MAX_WIFI_IF_NUM; i++) {
 		dev = DstPort[i];
-		if (dev) {
+		if (dev && (dev->flags & IFF_UP)) {
 			skb2 = skb_clone(skb, GFP_ATOMIC);
 			if (skb2) {
 				skb2->dev = dev;
@@ -739,11 +731,11 @@ int32_t PpeRxHandler(struct sk_buff * skb)
 
 	/* return truncated packets to normal path */
 	if (!skb || skb->len < ETH_HLEN) {
-		NAT_PRINT("HNAT: skb null or small len in rx path\n");
+		NAT_DEBUG("HNAT: %s, skb null or small len in RX path\n", __FUNCTION__);
 		return 1;
 	}
 
-#ifdef HWNAT_DEBUG
+#if defined (CONFIG_RA_HW_NAT_DEBUG)
 	if (DebugLevel >= 7) {
 		FoeDumpPkt(skb);
 	}
@@ -771,10 +763,18 @@ int32_t PpeRxHandler(struct sk_buff * skb)
 		/* It means the flow is already in binding state, just transfer to output interface */
 		return PpeHitBindForceToCpuHandler(skb, foe_entry);
 #if defined (CONFIG_HNAT_V2)
+
+#if defined (CONFIG_RALINK_MT7621)
+	} else if (((FOE_SP(skb) == 0) || (FOE_SP(skb) == 5)) &&
+			(foe_ai != HIT_BIND_KEEPALIVE_UC_OLD_HDR) &&
+			(foe_ai != HIT_BIND_KEEPALIVE_MC_NEW_HDR) &&
+			(foe_ai != HIT_BIND_KEEPALIVE_DUP_OLD_HDR)) {
+#else
 	} else if ((FOE_SP(skb) == 6) &&
 			(foe_ai != HIT_BIND_KEEPALIVE_UC_OLD_HDR) &&
 			(foe_ai != HIT_BIND_KEEPALIVE_MC_NEW_HDR) &&
 			(foe_ai != HIT_BIND_KEEPALIVE_DUP_OLD_HDR)) {
+#endif
 		/* handle the incoming packet which came back from PPE */
 #if defined (CONFIG_RA_HW_NAT_WIFI) || defined (CONFIG_RA_HW_NAT_PCI)
 		if (wifi_offload)
@@ -782,7 +782,8 @@ int32_t PpeRxHandler(struct sk_buff * skb)
 		else
 #endif
 		return 1;
-	} else if (foe_ai == HIT_BIND_MULTICAST_TO_CPU) {
+	} else if (foe_ai == HIT_BIND_MULTICAST_TO_CPU ||
+		   foe_ai == HIT_BIND_MULTICAST_TO_GMAC_CPU) {
 		return PpeHitBindForceMcastToWiFiHandler(skb);
 	} else if (foe_ai == HIT_BIND_KEEPALIVE_UC_OLD_HDR) {
 		return 1;
@@ -803,7 +804,7 @@ int32_t PpeRxHandler(struct sk_buff * skb)
 		return 1;
 	} else if (foe_ai == HIT_BIND_KEEPALIVE && DFL_FOE_KA == 0) {
 		if (!FOE_ENTRY_VALID(skb)) {
-			NAT_PRINT("HNAT: hit bind keepalive is not valid FoE entry!\n");
+			NAT_DEBUG("HNAT: %s, hit bind keepalive is not valid FoE entry!\n", __FUNCTION__);
 			return 1;
 		}
 		PpeKeepAliveHandler(skb, foe_entry, 1);
@@ -904,7 +905,7 @@ uint32_t PpeSetExtIfNum(struct sk_buff *skb, struct FoeEntry* foe_entry)
 	}
 #endif
 	else {
-		NAT_PRINT("HNAT: unknow interface %s\n", skb->dev->name);
+		NAT_DEBUG("HNAT: %s, unknown interface %s\n", __FUNCTION__, skb->dev->name);
 		return 1;
 	}
 
@@ -932,13 +933,10 @@ uint32_t PpeSetExtIfNum(struct sk_buff *skb, struct FoeEntry* foe_entry)
 static void PpeSetInfoBlk2(struct _info_blk2 *iblk2, uint32_t fpidx, uint32_t port_mg, uint32_t port_ag)
 {
 #if defined (CONFIG_RALINK_MT7621)
-	if (fpidx == 8 && port_ag == 1) { //LAN traffic
-		iblk2->dp = 1;
-	} else if (fpidx == 8 && port_ag == 2) { // WAN traffic
-		iblk2->dp = 2;
-	} else {
-		iblk2->dp = 0; //PDMA (0) or QDMA (5)
-	}
+	/* 0:PSE, 1:GSW, 2:GMAC, 4:PPE, 5:QDMA, 7:DROP */
+	iblk2->dp = (fpidx & 0x7);
+	/* need lookup another multicast table if this is multicast flow */
+	iblk2->mcast = (fpidx & 0x80) ? 1 : 0;
 #elif defined (CONFIG_RALINK_MT7620)
 	/* 6: force to CPU, 8: no force port */
 	iblk2->fpidx = fpidx;
@@ -1143,7 +1141,9 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 			if (!ipv6_offload)
 				return 1;
 			
+#if defined (CONFIG_RALINK_MT7620)
 			foe_entry.bfib1.drm = 1;		// switch will keep dscp
+#endif
 			foe_entry.bfib1.rmt = 1;		// remove outer IPv4 header
 			foe_entry.ipv4_dslite.iblk2.dscp = iph->tos;
 			
@@ -1171,7 +1171,9 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 #endif
 			{
 				/* fill L3 info */
+#if defined (CONFIG_RALINK_MT7620)
 				foe_entry.bfib1.drm = 1;		//switch will keep dscp
+#endif
 				foe_entry.ipv4_hnapt.new_sip = ntohl(iph->saddr);
 				foe_entry.ipv4_hnapt.new_dip = ntohl(iph->daddr);
 				foe_entry.ipv4_hnapt.iblk2.dscp = iph->tos;
@@ -1213,7 +1215,9 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 			foe_entry.bfib1.pkt_type = IPV4_DSLITE;
 			
 		} else {
+#if defined (CONFIG_RALINK_MT7620)
 			foe_entry.bfib1.drm = 1;		// switch will keep dscp
+#endif
 			foe_entry.ipv6_3t_route.iblk2.dscp = ((ip6h->priority << 4) | (ip6h->flow_lbl[0]>>4));
 			
 			if (foe_entry.bfib1.pkt_type != IPV6_6RD) {
@@ -1259,15 +1263,25 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 	
 	foe_entry.bfib1.psn = (pppoe_gap) ? 1 : 0;
 
+#if defined (CONFIG_RALINK_MT7621)
+	foe_entry.bfib1.vpm = 1; // 0x8100
+#else
 	/* we set VID and VPRI in foe entry already, so we have to inform switch of keeping VPRI */
 	foe_entry.bfib1.dvp = 1;
+#endif
 
 	/******************** DST ********************/
 
 #if defined (CONFIG_RA_HW_NAT_WIFI) || defined (CONFIG_RA_HW_NAT_PCI)
 	/* CPU need to handle traffic between WLAN/PCI and GMAC port */
 	if (gmac_no == 0) {
-		uint32_t fpidx = (is_mcast) ? 8 : 6; // (6: force to cpu, 8: no force port)
+#if defined (CONFIG_RALINK_MT7621)
+		uint32_t fpidx = 0; /* 0: to CPU */
+		if (is_mcast)
+			fpidx |= 0x80;
+#else
+		uint32_t fpidx = (is_mcast) ? 8 : 6; /* 6: force to CPU, 8: no force port */
+#endif
 		if (IS_IPV4_GRP(&foe_entry)) {
 			PpeSetInfoBlk2(&foe_entry.ipv4_hnapt.iblk2, fpidx, 0x3F, 0x3F);
 		}
@@ -1276,36 +1290,54 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 			PpeSetInfoBlk2(&foe_entry.ipv6_5t_route.iblk2, fpidx, 0x3F, 0x3F);
 		}
 #endif
-		/* set Pseudo Interface info in Foe entry */
+		/* set Pseudo Interface destination port in Foe entry */
 		if (PpeSetExtIfNum(skb, &foe_entry))
 			return 1;
 	} else
 #endif
 	{
-#if defined (CONFIG_RAETH_GMAC2)
-		uint32_t port_ag = (gmac_no == 2) ? 2 : 1;
+#if defined (CONFIG_RAETH_GMAC2) && defined (CONFIG_RALINK_MT7621)
 		/* MT7621 with 2xGMAC - assuming GMAC2=WAN and GMAC1=LAN */
+		uint32_t fpidx = (gmac_no == 2) ? 2 : 1;
+		uint32_t port_ag = fpidx;
+		if (is_mcast)
+			fpidx |= 0x80;
 		if (IS_IPV4_GRP(&foe_entry)) {
-			PpeSetInfoBlk2(&foe_entry.ipv4_hnapt.iblk2, 8, 0x3F, port_ag);
+			PpeSetInfoBlk2(&foe_entry.ipv4_hnapt.iblk2, fpidx, 0x3F, port_ag);
+			/* clear destination port for CPU */
+			foe_entry.ipv4_hnapt.act_dp = 0;
 		}
 #if defined (CONFIG_RA_HW_NAT_IPV6)
 		else if (IS_IPV6_GRP(&foe_entry)) {
-			PpeSetInfoBlk2(&foe_entry.ipv6_5t_route.iblk2, 8, 0x3F, port_ag);
+			PpeSetInfoBlk2(&foe_entry.ipv6_5t_route.iblk2, fpidx, 0x3F, port_ag);
+			/* clear destination port for CPU */
+			foe_entry.ipv6_5t_route.act_dp = 0;
 		}
 #endif
 #else
-		/* MT7620, or MT7621 with 1xGMAC+VLAN'S */
+		/* MT7620 or MT7621 with 1xGMAC+VLAN's */
+#if defined (CONFIG_RALINK_MT7621)
+		uint32_t fpidx = 1; /* 1: to GSW */
+		if (is_mcast)
+			fpidx |= 0x80;
+#else
+		uint32_t fpidx = 8; /* 8: no force port */
+#endif
 		uint32_t port_ag = 1;
 		if (IS_IPV4_GRP(&foe_entry)) {
 			if ((foe_entry.ipv4_hnapt.vlan1 & VLAN_VID_MASK) != lan_vid)
 				port_ag = 2;
-			PpeSetInfoBlk2(&foe_entry.ipv4_hnapt.iblk2, 8, 0x3F, port_ag);
+			PpeSetInfoBlk2(&foe_entry.ipv4_hnapt.iblk2, fpidx, 0x3F, port_ag);
+			/* clear destination port for CPU */
+			foe_entry.ipv4_hnapt.act_dp = 0;
 		}
 #if defined (CONFIG_RA_HW_NAT_IPV6)
 		else if (IS_IPV6_GRP(&foe_entry)) {
 			if ((foe_entry.ipv6_5t_route.vlan1 & VLAN_VID_MASK) != lan_vid)
 				port_ag = 2;
-			PpeSetInfoBlk2(&foe_entry.ipv6_5t_route.iblk2, 8, 0x3F, port_ag);
+			PpeSetInfoBlk2(&foe_entry.ipv6_5t_route.iblk2, fpidx, 0x3F, port_ag);
+			/* clear destination port for CPU */
+			foe_entry.ipv6_5t_route.act_dp = 0;
 		}
 #endif
 #endif
@@ -1334,9 +1366,9 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 	dma_cache_sync(NULL, foe_entry_ppe, sizeof(struct FoeEntry), DMA_TO_DEVICE);
 
 #if !defined (CONFIG_RA_HW_NAT_PREBIND)
-#ifdef HWNAT_DEBUG
+#if defined (CONFIG_RA_HW_NAT_DEBUG)
 	/* Dump Binding Entry */
-	if (DebugLevel >= 2) {
+	if (DebugLevel >= 3) {
 		FoeDumpEntry(FOE_ENTRY_NUM(skb));
 	}
 #endif
@@ -1522,7 +1554,7 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 	if (gmac_no == 0) {
 		foe_entry.ipv4_hnapt.iblk2.dp = 0;		/* -> CPU */
 		
-		/* set Pseudo Interface info in Foe entry */
+		/* set Pseudo Interface destination port in Foe entry */
 		if (PpeSetExtIfNum(skb, &foe_entry))
 			return 1;
 	} else
@@ -1541,7 +1573,8 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 		else
 			foe_entry.ipv4_hnapt.iblk2.dp = 1;	/* -> VirtualPort1 in GMAC1 */
 #endif
-		foe_entry.ipv4_hnapt.act_dp = 0;		/* clear destination port for CPU */
+		/* clear destination port for CPU */
+		foe_entry.ipv4_hnapt.act_dp = 0;
 	}
 
 	/******************** BIND ********************/
@@ -1565,9 +1598,9 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 	memcpy(foe_entry_ppe, &foe_entry, sizeof(struct FoeEntry));
 	dma_cache_sync(NULL, foe_entry_ppe, sizeof(struct FoeEntry), DMA_TO_DEVICE);
 
-#ifdef HWNAT_DEBUG
+#if defined (CONFIG_RA_HW_NAT_DEBUG)
 	/* Dump Binding Entry */
-	if (DebugLevel >= 2) {
+	if (DebugLevel >= 3) {
 		FoeDumpEntry(FOE_ENTRY_NUM(skb));
 	}
 #endif
@@ -1632,21 +1665,23 @@ int32_t PpeTxHandler(struct sk_buff *skb, int gmac_no)
 		/* check duplicate packet in keepalive new header mode, just drop it */
 		DO_FAST_CLEAR_FOE(skb);
 		return 0;
-#ifdef HWNAT_DEBUG
+#if defined (CONFIG_RA_HW_NAT_DEBUG)
 	} else if (foe_ai == HIT_UNBIND_RATE_REACH && FOE_ALG(skb) == 1) {
-		if (DebugLevel >= 3) {
-			NAT_PRINT ("FOE_ALG=1 (Entry=%d)\n", FOE_ENTRY_NUM(skb));
+		if (DebugLevel >= 4) {
+			NAT_DEBUG("FOE_ALG=1 (Entry=%d)\n", FOE_ENTRY_NUM(skb));
 		}
 #endif
 #if defined (CONFIG_RA_HW_NAT_PREBIND)
 	} else if (foe_ai == HIT_PRE_BIND) {
 		spin_lock_irqsave(&ppe_foe_lock, flags);
-		foe_entry->udib1.preb = 0;
-		foe_entry->bfib1.state = BIND;
+		if (foe_entry->udib1.preb) {
+			foe_entry->bfib1.state = BIND;
+			foe_entry->udib1.preb = 0;
+		}
 		spin_unlock_irqrestore(&ppe_foe_lock, flags);
-#ifdef HWNAT_DEBUG
+#if defined (CONFIG_RA_HW_NAT_DEBUG)
 		/* Dump Binding Entry */
-		if (DebugLevel >= 2) {
+		if (DebugLevel >= 3) {
 			FoeDumpEntry(FOE_ENTRY_NUM(skb));
 		}
 #endif
@@ -1687,10 +1722,15 @@ int32_t PpeSetMtrByteInfo(uint16_t MgrIdx, uint32_t TokenRate, uint32_t MaxBkSiz
 	uint32_t MtrEntry = 0;
 
 	MtrEntry = ((TokenRate << 3) | (MaxBkSize << 1));
+#if defined (CONFIG_RALINK_MT7620)
 	RegWrite(METER_BASE + MgrIdx * 4, MtrEntry);
-
-	printk("Meter Table Base=%08X Offset=%d\n", METER_BASE, MgrIdx * 4);
-        printk("%08X: %08X\n", METER_BASE + MgrIdx * 4, MtrEntry);
+	NAT_DEBUG("Meter Table Base=%08X Offset=%d\n", METER_BASE, MgrIdx * 4);
+	NAT_DEBUG("%08X: %08X\n", METER_BASE + MgrIdx * 4, MtrEntry);
+#elif defined (CONFIG_RALINK_MT7621)
+	RegWrite(METER_BASE + MgrIdx * 16 + 12, MtrEntry);
+	NAT_DEBUG("Meter Table Base=%08X Offset=%d\n", METER_BASE, MgrIdx * 16 + 12);
+	NAT_DEBUG("%08X: %08X\n", METER_BASE + MgrIdx * 12, MtrEntry);
+#endif
 
 	return 1;
 }
@@ -1713,8 +1753,8 @@ int32_t PpeSetMtrPktInfo(uint16_t MgrIdx, uint32_t MtrIntval, uint32_t MaxBkSize
 	MtrEntry = ((MtrIntval << 8) | (MaxBkSize << 1) | 1);
 	RegWrite(METER_BASE + MgrIdx * 4, MtrEntry);
 
-	printk("Meter Table Base=%08X Offset=%d\n", METER_BASE, MgrIdx * 4);
-	printk("%08X: %08X\n", METER_BASE + MgrIdx * 4, MtrEntry);
+	NAT_DEBUG("Meter Table Base=%08X Offset=%d\n", METER_BASE, MgrIdx * 4);
+	NAT_DEBUG("%08X: %08X\n", METER_BASE + MgrIdx * 4, MtrEntry);
 
 	return 1;
 }
@@ -1944,6 +1984,17 @@ static void PpeSetFoeGloCfgEbl(uint32_t Ebl)
 #elif defined (CONFIG_RALINK_MT7621)
 		/* PPE Engine Enable */
 		RegModifyBits(PPE_GLO_CFG, 1, 0, 1);
+
+#if defined (CONFIG_RA_HW_NAT_MCAST)
+		/* Enable multicast table lookup */
+		RegModifyBits(PPE_GLO_CFG, 1, 7, 1);
+		RegModifyBits(PPE_MCAST_PPSE, 0, 0, 4);  // multicast port0 map to PDMA
+		RegModifyBits(PPE_MCAST_PPSE, 1, 4, 4);  // multicast port1 map to GMAC1
+		RegModifyBits(PPE_MCAST_PPSE, 2, 8, 4);  // multicast port2 map to GMAC2
+		RegModifyBits(PPE_MCAST_PPSE, 5, 12, 4); // multicast port3 map to QDMA
+#endif
+		/* default CPU port is port0 (PDMA) */
+		RegWrite(PPE_DFT_CPORT, 0);
 #else
 		/* PPE Engine Enable */
 		RegModifyBits(PPE_GLO_CFG, 1, 0, 1);
@@ -1966,11 +2017,6 @@ static void PpeSetFoeGloCfgEbl(uint32_t Ebl)
 		/* Enable use ACL force priority for hit unbind 
 		 * and rate reach packet in CPU reason */
 		RegModifyBits(PPE_GLO_CFG, DFL_ACL_PRI_EN, 14, 1);
-		
-#if defined (CONFIG_RAETH_SPECIAL_TAG)
-		/* Set EXT_SW_EN = 1 */
-		RegModifyBits(FE_COS_MAP, 0x1, 30, 1);
-#endif
 #endif
 		/* PPE Packet with TTL=0 */
 		RegModifyBits(PPE_GLO_CFG, DFL_TTL0_DRP, 4, 1);
@@ -1992,18 +2038,9 @@ static void PpeSetFoeGloCfgEbl(uint32_t Ebl)
 
 		/* Enable SA Learning */
 		RegModifyBits(PSC_P7, 0, 4, 1);
-
-#elif defined (CONFIG_RALINK_MT7621)
-		/* PPE Engine Disable */
-		RegModifyBits(PPE_GLO_CFG, 0, 0, 1);
 #else
 		/* PPE Engine Disable */
 		RegModifyBits(PPE_GLO_CFG, 0, 0, 1);
-		
-#if defined (CONFIG_RAETH_SPECIAL_TAG)
-		/* Remove EXT_SW_EN = 1 */
-		RegModifyBits(FE_COS_MAP, 0x0, 30, 1);
-#endif
 #endif
 	}
 }
@@ -2352,7 +2389,7 @@ uint32_t SetGdmaFwd(uint32_t Ebl)
 #if defined (CONFIG_HNAT_V2)
 static void PpeSetCacheEbl(void)
 {
-	//clear cache table before enabling cache
+	/* clear cache table before enabling cache */
 	RegModifyBits(CAH_CTRL, 1, 9, 1);
 	RegModifyBits(CAH_CTRL, 0, 9, 1);
 

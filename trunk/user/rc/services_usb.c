@@ -116,6 +116,10 @@ safe_remove_usb_device(int port, const char *dev_name)
 				umount_ejected();
 				if (count_sddev_mountpoint())
 					start_usb_apps();
+#if defined(APP_NFSD)
+				else
+					unload_nfsd();
+#endif
 			}
 			free_disk_data(disks_info);
 		}
@@ -129,6 +133,9 @@ safe_remove_usb_device(int port, const char *dev_name)
 		free_disk_data(disks_info);
 		umount_sddev_all();
 		umount_ejected();
+#if defined(APP_NFSD)
+		unload_nfsd();
+#endif
 	}
 
 	return 0;
@@ -714,6 +721,14 @@ void write_nfsd_exports()
 	fclose(fp);
 }
 
+void unload_nfsd(void)
+{
+	module_smart_unload("nfsd", 0);
+	module_smart_unload("exportfs", 0);
+	module_smart_unload("lockd", 0);
+	module_smart_unload("sunrpc", 0);
+}
+
 void stop_nfsd(void)
 {
 	eval("/usr/bin/nfsd.sh", "stop");
@@ -721,7 +736,7 @@ void stop_nfsd(void)
 
 void run_nfsd()
 {
-	if (nvram_invmatch("nfsd_enable", "1")) 
+	if (nvram_invmatch("nfsd_enable", "1"))
 		return;
 
 	// always update nfsd exports

@@ -175,6 +175,13 @@ function validForm(){
 function done_validating(action){
 }
 
+function textarea_enabled(v){
+	inputCtrl(document.form['ovpncli.ca.crt'], v);
+	inputCtrl(document.form['ovpncli.client.crt'], v);
+	inputCtrl(document.form['ovpncli.client.key'], v);
+	inputCtrl(document.form['ovpncli.ta.key'], v);
+}
+
 function change_vpnc_enabled() {
 	var v = (rcheck(document.form.vpnc_enable) == "0") ? 0 : 1;
 
@@ -184,6 +191,7 @@ function change_vpnc_enabled() {
 	if (v == 0){
 		showhide_div('tab_ssl_certs', 0);
 		showhide_div('tbl_vpnc_route', 0);
+		textarea_enabled(0);
 	}else{
 		change_vpnc_type();
 	}
@@ -210,6 +218,8 @@ function change_vpnc_type() {
 		showhide_div('row_vpnc_ov_conf', 1);
 		showhide_div('tab_ssl_certs', 1);
 		
+		textarea_enabled(1);
+		
 		change_vpnc_ov_auth();
 		change_vpnc_ov_atls();
 		change_vpnc_ov_mode();
@@ -231,6 +241,8 @@ function change_vpnc_type() {
 		showhide_div('row_vpnc_mtu', 1);
 		showhide_div('row_vpnc_mru', 1);
 		showhide_div('tbl_vpnc_route', 1);
+		
+		textarea_enabled(0);
 	}
 
 	showhide_div('col_vpnc_state', (vpnc_state_last == '1') ? 1 : 0);
@@ -246,7 +258,10 @@ function change_vpnc_ov_auth() {
 }
 
 function change_vpnc_ov_atls() {
-	showhide_div('row_ta_key', (document.form.vpnc_ov_atls.value == "1") ? 1 : 0);
+	var v = (document.form.vpnc_ov_atls.value == "1") ? 1 : 0;
+
+	showhide_div('row_ta_key', v);
+	inputCtrl(document.form['ovpncli.ta.key'], v);
 }
 
 function change_vpnc_ov_mode() {
@@ -513,12 +528,20 @@ function change_vpnc_ov_mode() {
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th style="padding-bottom: 0px;"><#VPNC_DGW#></th>
-                                    <td style="padding-bottom: 0px;">
+                                    <th><#VPNC_DGW#></th>
+                                    <td>
                                         <select name="vpnc_dgw" class="input">
                                             <option value="0" <% nvram_match_x("", "vpnc_dgw", "0","selected"); %>><#checkbox_No#></option>
                                             <option value="1" <% nvram_match_x("", "vpnc_dgw", "1","selected"); %>><#checkbox_Yes#></option>
                                         </select>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-bottom: 0px;">
+                                        <a href="javascript:spoiler_toggle('spoiler_script')"><span><#RunPostVPNC#></span></a>
+                                        <div id="spoiler_script" style="display:none;">
+                                            <textarea rows="16" wrap="off" spellcheck="false" maxlength="8192" class="span12" name="scripts.vpnc_server_script.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.vpnc_server_script.sh",""); %></textarea>
+                                        </div>
                                     </td>
                                 </tr>
                             </table>
@@ -531,14 +554,6 @@ function change_vpnc_ov_mode() {
                                     <td>
                                         <input type="text" maxlength="15" size="14" name="vpnc_rnet" style="width: 94px;" value="<% nvram_get_x("", "vpnc_rnet"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);" />&nbsp;/
                                         <input type="text" maxlength="15" size="14" name="vpnc_rmsk" style="width: 94px;" value="<% nvram_get_x("", "vpnc_rmsk"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);" />
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td colspan="2" style="padding-bottom: 0px;">
-                                        <a href="javascript:spoiler_toggle('spoiler_script')"><span><#RunPostVPNC#></span></a>
-                                        <div id="spoiler_script" style="display:none;">
-                                            <textarea rows="16" wrap="off" spellcheck="false" maxlength="8192" class="span12" name="scripts.vpnc_server_script.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.vpnc_server_script.sh",""); %></textarea>
-                                        </div>
                                     </td>
                                 </tr>
                             </table>
