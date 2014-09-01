@@ -235,7 +235,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	/* Get the HEAD */
 	skb = kmem_cache_alloc_node(cache, gfp_mask & ~__GFP_DMA, node);
 	if (!skb)
-		goto out;
+		return NULL;
 	prefetchw(skb);
 
 	/* We do our best to align skb_shared_info on a separate cache
@@ -246,8 +246,10 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	size = SKB_DATA_ALIGN(size);
 	size += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 	data = kmalloc_node_track_caller(size, gfp_mask, node);
-	if (!data)
-		goto nodata;
+	if (!data) {
+		kmem_cache_free(cache, skb);
+		return NULL;
+	}
 	/* kmalloc(size) might give us more room than requested.
 	 * Put skb_shared_info exactly at the end of allocated zone,
 	 * to allow max possible filling before reallocation.
@@ -296,12 +298,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 #endif
 #endif
 
-out:
 	return skb;
-nodata:
-	kmem_cache_free(cache, skb);
-	skb = NULL;
-	goto out;
 }
 EXPORT_SYMBOL(__alloc_skb);
 
@@ -450,6 +447,7 @@ static void skb_release_data(struct sk_buff *skb)
 				skb_frag_unref(skb, i);
 		}
 
+#if IS_ENABLED(CONFIG_MACVTAP)
 		/*
 		 * If skb buf is from userspace, we need to notify the caller
 		 * the lower device DMA has done;
@@ -461,6 +459,7 @@ static void skb_release_data(struct sk_buff *skb)
 			if (uarg->callback)
 				uarg->callback(uarg);
 		}
+#endif
 
 		if (skb_has_frag_list(skb))
 			skb_drop_fraglist(skb);
@@ -626,7 +625,7 @@ EXPORT_SYMBOL(consume_skb);
  * 	function does any necessary reference count dropping, and
  * 	cleans up the skbuff as if it just came from __alloc_skb().
  */
-void skb_recycle(struct sk_buff *skb)
+inline void skb_recycle(struct sk_buff *skb)
 {
 	struct skb_shared_info *shinfo;
 
@@ -640,7 +639,6 @@ void skb_recycle(struct sk_buff *skb)
 	skb->data = skb->head + NET_SKB_PAD;
 	skb_reset_tail_pointer(skb);
 }
-EXPORT_SYMBOL(skb_recycle);
 
 /**
  *	skb_recycle_check - check if skb can be reused for receive
@@ -676,7 +674,9 @@ static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 	new->rxhash		= old->rxhash;
 	new->ooo_okay		= old->ooo_okay;
 	new->l4_rxhash		= old->l4_rxhash;
+#if IS_ENABLED(CONFIG_NET_VENDOR_INTEL)
 	new->no_fcs		= old->no_fcs;
+#endif
 #ifdef CONFIG_XFRM
 	new->sp			= secpath_get(old->sp);
 #endif
@@ -761,6 +761,7 @@ struct sk_buff *skb_morph(struct sk_buff *dst, struct sk_buff *src)
 }
 EXPORT_SYMBOL_GPL(skb_morph);
 
+#if IS_ENABLED(CONFIG_MACVTAP)
 /*	skb_copy_ubufs	-	copy userspace skb frags buffers to kernel
  *	@skb: the skb to modify
  *	@gfp_mask: allocation priority
@@ -820,6 +821,7 @@ int skb_copy_ubufs(struct sk_buff *skb, gfp_t gfp_mask)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(skb_copy_ubufs);
+#endif
 
 /**
  *	skb_clone	-	duplicate an sk_buff
@@ -839,10 +841,12 @@ struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 {
 	struct sk_buff *n;
 
+#if IS_ENABLED(CONFIG_MACVTAP)
 	if (skb_shinfo(skb)->tx_flags & SKBTX_DEV_ZEROCOPY) {
 		if (skb_copy_ubufs(skb, gfp_mask))
 			return NULL;
 	}
+#endif
 
 	n = skb + 1;
 	if (skb->fclone == SKB_FCLONE_ORIG &&
@@ -946,7 +950,7 @@ struct sk_buff *__pskb_copy(struct sk_buff *skb, int headroom, gfp_t gfp_mask)
 	struct sk_buff *n = alloc_skb(size, gfp_mask);
 
 	if (!n)
-		goto out;
+		return NULL;
 
 	/* Set the data pointer */
 	skb_reserve(n, headroom);
@@ -962,13 +966,14 @@ struct sk_buff *__pskb_copy(struct sk_buff *skb, int headroom, gfp_t gfp_mask)
 	if (skb_shinfo(skb)->nr_frags) {
 		int i;
 
+#if IS_ENABLED(CONFIG_MACVTAP)
 		if (skb_shinfo(skb)->tx_flags & SKBTX_DEV_ZEROCOPY) {
 			if (skb_copy_ubufs(skb, gfp_mask)) {
 				kfree_skb(n);
-				n = NULL;
-				goto out;
+				return NULL;
 			}
 		}
+#endif
 		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 			skb_shinfo(n)->frags[i] = skb_shinfo(skb)->frags[i];
 			skb_frag_ref(skb, i);
@@ -982,7 +987,6 @@ struct sk_buff *__pskb_copy(struct sk_buff *skb, int headroom, gfp_t gfp_mask)
 	}
 
 	copy_skb_header(n, skb);
-out:
 	return n;
 }
 EXPORT_SYMBOL(__pskb_copy);
@@ -1050,7 +1054,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 	data = kmalloc(size + SKB_DATA_ALIGN(sizeof(struct skb_shared_info)),
 		       gfp_mask);
 	if (!data)
-		goto nodata;
+		return -ENOMEM;
 	size = SKB_WITH_OVERHEAD(ksize(data));
 
 	/* Copy only real data... and, alas, header. This should be
@@ -1072,11 +1076,15 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 	if (fastpath) {
 		kfree(skb->head);
 	} else {
+#if IS_ENABLED(CONFIG_MACVTAP)
 		/* copy this zero copy skb frags */
 		if (skb_shinfo(skb)->tx_flags & SKBTX_DEV_ZEROCOPY) {
-			if (skb_copy_ubufs(skb, gfp_mask))
-				goto nofrags;
+			if (skb_copy_ubufs(skb, gfp_mask)) {
+				kfree(data);
+				return -ENOMEM;
+			}
 		}
+#endif
 		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++)
 			skb_frag_ref(skb, i);
 
@@ -1110,11 +1118,6 @@ adjust_others:
 	skb->nohdr    = 0;
 	atomic_set(&skb_shinfo(skb)->dataref, 1);
 	return 0;
-
-nofrags:
-	kfree(data);
-nodata:
-	return -ENOMEM;
 }
 EXPORT_SYMBOL(pskb_expand_head);
 
@@ -1574,7 +1577,7 @@ int skb_copy_bits(const struct sk_buff *skb, int offset, void *to, int len)
 	int i, copy;
 
 	if (offset > (int)skb->len - len)
-		goto fault;
+		return -EFAULT;
 
 	/* Copy header. */
 	if ((copy = start - offset) > 0) {
@@ -1623,7 +1626,7 @@ int skb_copy_bits(const struct sk_buff *skb, int offset, void *to, int len)
 			if (copy > len)
 				copy = len;
 			if (skb_copy_bits(frag_iter, offset - start, to, copy))
-				goto fault;
+				return -EFAULT;
 			if ((len -= copy) == 0)
 				return 0;
 			offset += copy;
@@ -1635,7 +1638,6 @@ int skb_copy_bits(const struct sk_buff *skb, int offset, void *to, int len)
 	if (!len)
 		return 0;
 
-fault:
 	return -EFAULT;
 }
 EXPORT_SYMBOL(skb_copy_bits);
@@ -1884,7 +1886,7 @@ int skb_store_bits(struct sk_buff *skb, int offset, const void *from, int len)
 	int i, copy;
 
 	if (offset > (int)skb->len - len)
-		goto fault;
+		return -EFAULT;
 
 	if ((copy = start - offset) > 0) {
 		if (copy > len)
@@ -1931,9 +1933,8 @@ int skb_store_bits(struct sk_buff *skb, int offset, const void *from, int len)
 		if ((copy = end - offset) > 0) {
 			if (copy > len)
 				copy = len;
-			if (skb_store_bits(frag_iter, offset - start,
-					   from, copy))
-				goto fault;
+			if (skb_store_bits(frag_iter, offset - start, from, copy))
+				return -EFAULT;
 			if ((len -= copy) == 0)
 				return 0;
 			offset += copy;
@@ -1944,7 +1945,6 @@ int skb_store_bits(struct sk_buff *skb, int offset, const void *from, int len)
 	if (!len)
 		return 0;
 
-fault:
 	return -EFAULT;
 }
 EXPORT_SYMBOL(skb_store_bits);
@@ -2877,9 +2877,10 @@ struct sk_buff *skb_segment(struct sk_buff *skb, netdev_features_t features)
 						 skb_put(nskb, hsize), hsize);
 
 		while (pos < offset + len && i < nfrags) {
+#if IS_ENABLED(CONFIG_MACVTAP)
 			if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
 				goto err;
-
+#endif
 			*frag = skb_shinfo(skb)->frags[i];
 			__skb_frag_ref(frag);
 			size = skb_frag_size(frag);
@@ -3335,6 +3336,7 @@ void skb_tstamp_tx(struct sk_buff *orig_skb,
 }
 EXPORT_SYMBOL_GPL(skb_tstamp_tx);
 
+#if IS_ENABLED(CONFIG_MAC80211)
 void skb_complete_wifi_ack(struct sk_buff *skb, bool acked)
 {
 	struct sock *sk = skb->sk;
@@ -3354,6 +3356,7 @@ void skb_complete_wifi_ack(struct sk_buff *skb, bool acked)
 		kfree_skb(skb);
 }
 EXPORT_SYMBOL_GPL(skb_complete_wifi_ack);
+#endif
 
 
 /**
