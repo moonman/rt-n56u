@@ -52,11 +52,11 @@ export CFLAGS="$HOSTCFLAGS"
 
 EXT_OPT="--disable-sanity-checks --disable-werror"
 EXT_OPT="$EXT_OPT --disable-lto --enable-ld=yes --enable-gold=no"
-if [ "$GCCVER" = "4.6.4" ] || [ "$GCCVER" = "4.7.4" ] || [ "$GCCVER" = "4.8.3" ]; then
+if [ "$GCCVER" = "4.6.4" ] || [ "$GCCVER" = "4.7.4" ] || [ "$GCCVER" = "4.8.3" ] || [ "$GCCVER" = "4.8-20140828" ] || [ "$GCCVER" = "4.9.1" ]; then
     EXT_OPT="$EXT_OPT --disable-biendian --disable-softfloat"
     EXT_OPT="$EXT_OPT --disable-libquadmath --disable-libquadmath-support"
 fi
-if [ "$GCCVER" = "4.8.3" ]; then
+if [ "$GCCVER" = "4.8.3" ] || [ "$GCCVER" = "4.8-20140828" ] || [ "$GCCVER" = "4.9.1" ]; then
     EXT_OPT="$EXT_OPT --disable-libatomic --with-pic"
 fi
 
