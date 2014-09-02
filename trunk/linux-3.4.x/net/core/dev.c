@@ -2634,16 +2634,11 @@ static inline void ____napi_schedule(struct softnet_data *sd,
 	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
 }
 
-#if IS_ENABLED(CONFIG_NET_CLS_FLOW)
-static
-#else
+#if !IS_ENABLED(CONFIG_NET_CLS_FLOW)
 static inline
 #endif
 bool skb_flow_dissect(const struct sk_buff *skb, struct flow_keys *flow)
 {
-	BUILD_BUG_ON(offsetof(typeof(*flow), dst) !=
-		     offsetof(typeof(*flow), src) + sizeof(flow->src));
-
 	int poff, nhoff = skb_network_offset(skb);
 	u8 ip_proto;
 	__be16 proto = skb->protocol;
@@ -2659,13 +2654,13 @@ ip:
 		iph = skb_header_pointer(skb, nhoff, sizeof(_iph), &_iph);
 		if (!iph || iph->ihl < 5)
 			return false;
+		nhoff += iph->ihl * 4;
 
+		ip_proto = iph->protocol;
 		if (ip_is_fragment(iph))
 			ip_proto = 0;
-		else
-			ip_proto = iph->protocol;
+
 		memcpy(&flow->src, &iph->saddr, sizeof(flow->src) + sizeof(flow->dst));
-		nhoff += iph->ihl * 4;
 		break;
 	}
 	case __constant_htons(ETH_P_IPV6): {
@@ -2745,7 +2740,11 @@ ipv6:
 		break;
 	}
 	case IPPROTO_IPIP:
-		goto again;
+		proto = __constant_htons(ETH_P_IP);
+		goto ip;
+	case IPPROTO_IPV6:
+		proto = __constant_htons(ETH_P_IPV6);
+		goto ipv6;
 	default:
 		break;
 	}
