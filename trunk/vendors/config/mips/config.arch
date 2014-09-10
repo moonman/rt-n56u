@@ -161,7 +161,7 @@ CFLAGS += $(call check-gcc-nowarn,unused-but-set-variable,)
 CFLAGS += $(call check-gcc-flag,-fno-tree-slsr,)
 
 # disable new loop optimization mode in gcc >= 4.8.x (fix loop regressions)
-#CFLAGS += $(call check-gcc-flag,-fno-aggressive-loop-optimizations,)
+CFLAGS += $(call check-gcc-flag,-fno-aggressive-loop-optimizations,)
 
 ############################################################################
 #

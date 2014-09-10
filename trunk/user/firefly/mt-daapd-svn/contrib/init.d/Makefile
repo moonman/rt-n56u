@@ -59,9 +59,9 @@ AUTOMAKE = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run 
 AVAHI_CFLAGS = 
 AVAHI_LIBS = 
 AWK = gawk
-CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec
+CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=74kc -mtune=74kc
 CCDEPMODE = depmode=gcc3
-CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -Wno-pointer-sign
+CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -fno-aggressive-loop-optimizations -Wno-pointer-sign
 COND_FFMPEG_FALSE = #
 COND_FFMPEG_TRUE = 
 COND_FLAC_FALSE = #
@@ -90,12 +90,12 @@ COND_SSL_FALSE =
 COND_SSL_TRUE = #
 COND_UPNP_FALSE = 
 COND_UPNP_TRUE = #
-CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec -E
+CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=74kc -mtune=74kc -E
 CPPFLAGS =  -g -Wall -DFLAC -DHAVE_SQL -DHOST='"mipsel-unknown-linux-gnu"' -DNOT_HAVE_SA_LEN -DUSES_NETLINK -DHAVE_LINUX -I/root/rt-n56u/trunk/stage/include -I/root/rt-n56u/trunk/stage/include -I/root/rt-n56u/trunk/stage/include
-CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec
-CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec -E
+CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=74kc -mtune=74kc
+CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=74kc -mtune=74kc -E
 CXXDEPMODE = depmode=gcc3
-CXXFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr 
+CXXFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -fno-aggressive-loop-optimizations 
 CYGPATH_W = echo
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
