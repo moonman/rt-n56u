@@ -171,16 +171,17 @@ static int isBranchInstr(mips_instruction * i)
  * In the Linux kernel, we support selection of FPR format on the
  * basis of the Status.FR bit.  If an FPU is not present, the FR bit
  * is hardwired to zero, which would imply a 32-bit FPU even for
- * 64-bit CPUs.  For 64-bit kernels with no FPU we use TIF_32BIT_REGS
- * as a proxy for the FR bit so that a 64-bit FPU is emulated.  In any
- * case, for a 32-bit kernel which uses the O32 MIPS ABI, only the
- * even FPRs are used (Status.FR = 0).
+ * 64-bit CPUs so we rather look at TIF_32BIT_REGS.
+ * FPU emu is slow and bulky and optimizing this function offers fairly
+ * sizeable benefits so we try to be clever and make this function return
+ * a constant whenever possible, that is on 64-bit kernels without O32
+ * compatibility enabled and on 32-bit kernels.
  */
 static inline int cop1_64bit(struct pt_regs *xcp)
 {
-	if (cpu_has_fpu)
-		return xcp->cp0_status & ST0_FR;
-#ifdef CONFIG_64BIT
+#if defined(CONFIG_64BIT) && !defined(CONFIG_MIPS32_O32)
+	return 1;
+#elif defined(CONFIG_64BIT) && defined(CONFIG_MIPS32_O32)
 	return !test_thread_flag(TIF_32BIT_REGS);
 #else
 	return 0;
@@ -194,6 +195,10 @@ static inline int cop1_64bit(struct pt_regs *xcp)
 			cop1_64bit(xcp) || !(x & 1) ? \
 			ctx->fpr[x & ~1] >> 32 << 32 | (u32)(si) : \
 			ctx->fpr[x & ~1] << 32 >> 32 | (u64)(si) << 32)
+
+#define SIFROMHREG(si, x)	((si) = (int)(ctx->fpr[x] >> 32))
+#define SITOHREG(si, x)		(ctx->fpr[x] = \
+				ctx->fpr[x] << 32 >> 32 | (u64)(si) << 32)
 
 #define DIFROMREG(di, x) ((di) = ctx->fpr[x & ~(cop1_64bit(xcp) == 0)])
 #define DITOREG(di, x)	(ctx->fpr[x & ~(cop1_64bit(xcp) == 0)] = (di))
@@ -373,6 +378,25 @@ static int cop1Emulate(struct pt_regs *xcp, struct mips_fpu_struct *ctx,
 			DITOREG(xcp->regs[MIPSInst_RT(ir)], MIPSInst_RD(ir));
 			break;
 #endif
+
+		case mfhc_op:
+			if (!cpu_has_mips_r2)
+				goto sigill;
+
+			/* copregister rd -> gpr[rt] */
+			if (MIPSInst_RT(ir) != 0) {
+				SIFROMHREG(xcp->regs[MIPSInst_RT(ir)],
+					MIPSInst_RD(ir));
+			}
+			break;
+
+		case mthc_op:
+			if (!cpu_has_mips_r2)
+				goto sigill;
+
+			/* copregister rd <- gpr[rt] */
+			SITOHREG(xcp->regs[MIPSInst_RT(ir)], MIPSInst_RD(ir));
+			break;
 
 		case mfc_op:
 			/* copregister rd -> gpr[rt] */
@@ -569,6 +593,7 @@ static int cop1Emulate(struct pt_regs *xcp, struct mips_fpu_struct *ctx,
 #endif
 
 	default:
+sigill:
 		return SIGILL;
 	}
 

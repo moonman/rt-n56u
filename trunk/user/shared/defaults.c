@@ -616,6 +616,7 @@ struct nvram_pair router_defaults[] = {
 	{ "vpns_mru", "1450" },
 	{ "vpns_vuse", "0" },
 	{ "vpns_vnet", "10.8.0.0" },
+	{ "vpns_actl", "0" },
 	{ "vpns_cli0", "245" },
 	{ "vpns_cli1", "254" },
 	{ "vpns_num_x", "0" },
@@ -635,9 +636,13 @@ struct nvram_pair router_defaults[] = {
 	{ "vpnc_mru", "1450" },
 	{ "vpnc_sfw", "0" },
 	{ "vpnc_dgw", "0" },
+
 	{ "vpns_ov_mode", "1" },
 	{ "vpns_ov_prot", "0" },
 	{ "vpns_ov_port", "1194" },
+	{ "vpns_ov_mdig", "1" },
+	{ "vpns_ov_ciph", "3" },
+	{ "vpns_ov_clzo", "2" },
 	{ "vpns_ov_atls", "0" },
 	{ "vpns_ov_rdgw", "0" },
 	{ "vpnc_ov_mode", "1" },
@@ -645,6 +650,9 @@ struct nvram_pair router_defaults[] = {
 	{ "vpnc_ov_prot", "0" },
 	{ "vpnc_ov_port", "1194" },
 	{ "vpnc_ov_auth", "0" },
+	{ "vpnc_ov_mdig", "1" },
+	{ "vpnc_ov_ciph", "3" },
+	{ "vpnc_ov_clzo", "2" },
 	{ "vpnc_ov_atls", "0" },
 
 	{ 0, 0 }

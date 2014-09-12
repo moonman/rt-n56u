@@ -791,7 +791,7 @@ ez_action_usb_saferemoval(void)
 #if (BOARD_NUM_USB_PORTS > 0)
 	logmessage("watchdog", "Perform ez-button %s...", "safe-removal USB");
 
-	safe_remove_usb_device(0, NULL);
+	safe_remove_usb_device(0, NULL, 1);
 #endif
 }
 
@@ -1239,16 +1239,19 @@ watchdog_main(int argc, char *argv[])
 		exit(errno);
 	}
 
-	reset_ntpc_tries();
-	nvram_set_int_temp("wd_notify_id", 0);
-
 	pid = getpid();
+
+	/* never invoke oom killer */
+	oom_score_adjust(pid, OOM_SCORE_ADJ_MIN);
 
 	/* write pid */
 	if ((fp = fopen(WD_PID_FILE, "w")) != NULL) {
 		fprintf(fp, "%d", pid);
 		fclose(fp);
 	}
+
+	reset_ntpc_tries();
+	nvram_set_int_temp("wd_notify_id", 0);
 
 #if defined (BOARD_GPIO_BTN_WPS)
 	cpu_gpio_irq_set(BOARD_GPIO_BTN_WPS, 0, 1, pid);

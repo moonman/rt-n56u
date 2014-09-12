@@ -21,6 +21,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <linux/oom.h>
 
 #include <ralink_boards.h>
 #include <netutils.h>
@@ -57,6 +58,15 @@
 #define VPN_CLIENT_PPPD_OPTIONS		"/tmp/ppp/options.vpnc"
 #define VPN_CLIENT_UPDOWN_SCRIPT	"/etc/storage/vpnc_server_script.sh"
 
+#define IPT_CHAIN_NAME_VPN_LIST		"vpnlist"
+#define IPT_CHAIN_NAME_MAC_LIST		"maclist"
+#define IPT_CHAIN_NAME_URL_LIST		"urllist"
+#define IPT_CHAIN_NAME_BFP_LIMIT	"bfplimit"
+#define IPT_CHAIN_NAME_DOS_LIMIT	"doslimit"
+#define IPT_CHAIN_NAME_LOG_ACCEPT	"logaccept"
+#define IPT_CHAIN_NAME_LOG_DROP		"logdrop"
+#define IPT_CHAIN_NAME_VSERVER		"vserver"
+
 #define MODEM_NODE_DIR			"/tmp/modem"
 #define PPP_PEERS_DIR			"/tmp/ppp/peers"
 
@@ -77,10 +87,10 @@
 
 #define MAX_CLIENTS_NUM			(50)
 
-#define MINIUPNPD_CHAIN_IP4_NAT		"UPNP"
-#define MINIUPNPD_CHAIN_IP4_NAT_PEER	"UPNP-PEER"
-#define MINIUPNPD_CHAIN_IP4_FORWARD	"UPNP"
-#define MINIUPNPD_CHAIN_IP6_FORWARD	"UPNP"
+#define MINIUPNPD_CHAIN_IP4_NAT		"upnp"
+#define MINIUPNPD_CHAIN_IP4_NAT_PEER	"upnp-peer"
+#define MINIUPNPD_CHAIN_IP4_FORWARD	"upnp"
+#define MINIUPNPD_CHAIN_IP6_FORWARD	"upnp"
 
 // for log message title
 #define LOGNAME				BOARD_NAME
@@ -90,7 +100,7 @@
 void setenv_tz(void);
 void setkernel_tz(void);
 void init_router(void);
-void shutdown_router(void);
+void shutdown_router(int use_reboot);
 void handle_notifications(void);
 void LED_CONTROL(int gpio_led, int flag);
 void storage_save_time(time_t delta);
@@ -120,13 +130,14 @@ char *mac_conv2(char *mac_name, int idx, char *buf);
 void get_eeprom_params(void);
 void char_to_ascii(char *output, char *input);
 unsigned int get_param_int_hex(const char *param);
-void load_user_config(FILE *fp, const char *dir_name, const char *file_name);
+void load_user_config(FILE *fp, const char *dir_name, const char *file_name, const char **forbid_list);
 int is_module_loaded(char *module_name);
 int get_module_refcount(char *module_name);
 int module_smart_load(char *module_name, char *module_param);
 int module_smart_unload(char *module_name, int recurse_unload);
 int module_param_get(char *module_name, char *module_param, char *param_value, size_t param_value_size);
 int module_param_set_int(char *module_name, char *module_param, int param_value);
+void oom_score_adjust(pid_t pid, int oom_score_adj);
 void kill_services(char* svc_name[], int wtimeout, int forcekill);
 int kill_process_pidfile(char *pidfile, int wtimeout, int forcekill);
 int create_file(const char *fn);
@@ -150,7 +161,7 @@ void start_xupnpd(char *wan_ifname);
 void stop_igmpproxy(char *wan_ifname);
 void start_igmpproxy(char *wan_ifname);
 void restart_iptv(void);
-void flush_conntrack_caches(void);
+void flush_conntrack_table(char *ip);
 void flush_route_caches(void);
 void clear_if_route4(char *ifname);
 int  is_hwnat_allow(void);
@@ -181,7 +192,7 @@ void update_hosts_ap(void);
 void start_lan(int is_ap_mode);
 void stop_lan(int is_ap_mode);
 void lan_up_manual(char *lan_ifname);
-void update_lan_status(int isup);
+void update_lan_status(int is_auto);
 void full_restart_lan(void);
 void init_loopback(void);
 void init_bridge(void);
@@ -325,7 +336,6 @@ void ip6t_filter_default(void);
 int start_vpn_server(void);
 void stop_vpn_server(void);
 void restart_vpn_server(void);
-void vpns_firewall_permission(char *ifname, int add);
 void vpns_route_to_remote_lan(const char *cname, char *ifname, char *gw, int add);
 int ipup_vpns_main(int argc, char **argv);
 int ipdown_vpns_main(int argc, char **argv);
@@ -512,8 +522,7 @@ void stop_aria(void);
 void run_aria(void);
 void restart_aria(void);
 #endif
-int safe_remove_usb_device(int port, const char *dev_name);
-void stop_usb(void);
+int safe_remove_usb_device(int port, const char *dev_name, int do_spindown);
 void restart_usb_printer_spoolers(void);
 void stop_usb_printer_spoolers(void);
 void on_deferred_hotplug_usb(void);

@@ -71,7 +71,7 @@ start_vpn_client(void)
 		return 1;
 
 	vpnc_peer = nvram_safe_get("vpnc_peer");
-	if (!(*vpnc_peer)) {
+	if (strlen(vpnc_peer) < 1) {
 		logmessage(VPNC_LOG_NAME, "Unable to start - remote server host is not defined!");
 		return 1;
 	}
@@ -230,7 +230,7 @@ stop_vpn_client(void)
 	unlink(VPNC_PPP_DW_SCRIPT);
 }
 
-static void 
+static void
 stop_vpn_client_force(void)
 {
 	if (get_xl2tpd_vpnc_active()) {
@@ -240,7 +240,7 @@ stop_vpn_client_force(void)
 	}
 }
 
-void 
+void
 restart_vpn_client(void)
 {
 	xl2tpd_killed_vpnc = 0;
@@ -250,6 +250,7 @@ restart_vpn_client(void)
 
 	restore_dns_from_vpnc();
 
+	sleep(1);
 	start_vpn_client();
 
 	restart_firewall();
@@ -270,23 +271,23 @@ restore_dns_from_vpnc(void)
 }
 
 static void
-vpnc_route_dgw(char *ifname, char *gate, int add)
+vpnc_route_dgw(char *ifname, char *gw, int add)
 {
 	if (nvram_match("vpnc_dgw", "1")) {
-		if (strlen(ifname) > 0 && gate) {
+		if (strlen(ifname) > 0 && gw) {
 			if (add) {
-				route_add(ifname, 0, "0.0.0.0", gate, "128.0.0.0");
-				route_add(ifname, 0, "128.0.0.0", gate, "128.0.0.0");
+				route_add(ifname, 0, "0.0.0.0", gw, "128.0.0.0");
+				route_add(ifname, 0, "128.0.0.0", gw, "128.0.0.0");
 			} else {
-				route_del(ifname, 0, "0.0.0.0", gate, "128.0.0.0");
-				route_del(ifname, 0, "128.0.0.0", gate, "128.0.0.0");
+				route_del(ifname, 0, "0.0.0.0", gw, "128.0.0.0");
+				route_del(ifname, 0, "128.0.0.0", gw, "128.0.0.0");
 			}
 		}
 	}
 }
 
 static void
-vpnc_route_to_remote_lan(char *ifname, char *gate, int add)
+vpnc_route_to_remote_lan(char *ifname, char *gw, int add)
 {
 	char *rnet = nvram_safe_get("vpnc_rnet");
 	char *rmsk = nvram_safe_get("vpnc_rmsk");
@@ -296,9 +297,9 @@ vpnc_route_to_remote_lan(char *ifname, char *gate, int add)
 		char *lmsk = nvram_safe_get("lan_netmask");
 		if (strlen(ifname) > 0 && !is_same_subnet2(rnet, lnet, rmsk, lmsk)) {
 			if (add)
-				route_add(ifname, 0, rnet, gate, rmsk);
+				route_add(ifname, 0, rnet, gw, rmsk);
 			else
-				route_del(ifname, 0, rnet, gate, rmsk);
+				route_del(ifname, 0, rnet, gw, rmsk);
 		}
 	}
 }
@@ -309,12 +310,12 @@ ipup_vpnc_main(int argc, char **argv)
 	char buf[256];
 	char *script_name = VPN_CLIENT_UPDOWN_SCRIPT;
 	char *ifname = safe_getenv("IFNAME");
-	char *gate = getenv("IPREMOTE");
+	char *gw = getenv("IPREMOTE");
 
 	umask(0000);
 
-	vpnc_route_to_remote_lan(ifname, gate, 1);
-	vpnc_route_dgw(ifname, gate, 1);
+	vpnc_route_to_remote_lan(ifname, gw, 1);
+	vpnc_route_dgw(ifname, gw, 1);
 
 	nvram_set_int_temp("vpnc_state_t", 1);
 
@@ -347,12 +348,12 @@ ipdown_vpnc_main(int argc, char **argv)
 {
 	char *script_name = VPN_CLIENT_UPDOWN_SCRIPT;
 	char *ifname = safe_getenv("IFNAME");
-	char *gate = getenv("IPREMOTE");
+	char *gw = getenv("IPREMOTE");
 
 	umask(0000);
 
-	vpnc_route_dgw(ifname, gate, 0);
-	vpnc_route_to_remote_lan(ifname, gate, 0);
+	vpnc_route_dgw(ifname, gw, 0);
+	vpnc_route_to_remote_lan(ifname, gw, 0);
 
 	nvram_set_int_temp("vpnc_state_t", 0);
 
