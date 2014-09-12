@@ -25,7 +25,7 @@ BUILD_FIRMWARE_CF=(\
 # $1 - config file
 change_version()
 {
-  sed -i "s/\(CONFIG_FIRMWARE_BUILDS_VER\=\"[0-9]*-moonman-\).*/\1$MY_VERSION\"/" $1
+  sed -i "s/\(FIRMWARE_BUILDS_VER\=\"[0-9]*-moonman-\).*/\1$MY_VERSION\"/" $1
 }
 
 
@@ -75,11 +75,11 @@ then
 
   cd ../trunk
   ./clear_tree
+  #Replace version number to new
+  ./change_version ./versions.inc
 
   for fw in ${BUILD_FIRMWARE_CF[@]}; do
-    cp ./configs/$fw ./.config
-    #Replace version number to new
-    change_version ./.config
+    cp ./configs/templates/$fw ./.config
 
     ./build_firmware || exit 1
 
@@ -92,9 +92,6 @@ then
     else
       cp ./images/RT-N* ../images/$_path
     fi
-
-    #if build successful, change version in the reference config too
-    change_version ./configs/$fw
 
     ./clear_tree
   done
