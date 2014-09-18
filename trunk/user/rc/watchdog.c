@@ -26,7 +26,6 @@
 #include <stdarg.h>
 
 #include <syslog.h>
-#include <nvram/bcmnvram.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <math.h>
@@ -481,8 +480,12 @@ ntpc_handler(void)
 {
 	int ntp_period = nvram_get_int("ntp_period");
 
-	if (ntp_period < 1) ntp_period = 1;
-	if (ntp_period > 336) ntp_period = 336; // two weeks
+	if (ntp_period < 1)
+		return;
+
+	if (ntp_period > 336)
+		ntp_period = 336; // max two weeks
+
 	ntp_period = ntp_period * 360;
 
 	// update ntp every period time
@@ -506,8 +509,6 @@ ntpc_handler(void)
 			ntpc_tries = 0;
 		}
 	}
-
-	setkernel_tz();
 }
 
 static void
@@ -1143,6 +1144,9 @@ watchdog_on_timer(void)
 		dnsmasq_process_check();
 
 	inet_handler(is_ap_mode);
+
+	/* update kernel timezone daylight */
+	setkernel_tz();
 
 	storage_save_time(10);
 }
