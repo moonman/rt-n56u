@@ -52,14 +52,14 @@ ACLOCAL = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run a
 AMDEP_FALSE = #
 AMDEP_TRUE = 
 AMTAR = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run tar
-AR = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ar
+AR = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-ar
 AUTOCONF = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run autoconf
 AUTOHEADER = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run autoheader
 AUTOMAKE = ${SHELL} /root/rt-n56u/trunk/user/firefly/mt-daapd-svn/missing --run automake-1.9
 AVAHI_CFLAGS = 
 AVAHI_LIBS = 
 AWK = gawk
-CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=74kc -mtune=74kc
+CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec
 CCDEPMODE = depmode=gcc3
 CFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -fno-aggressive-loop-optimizations -Wno-pointer-sign
 COND_FFMPEG_FALSE = #
@@ -90,10 +90,10 @@ COND_SSL_FALSE =
 COND_SSL_TRUE = #
 COND_UPNP_FALSE = 
 COND_UPNP_TRUE = #
-CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-gcc -march=74kc -mtune=74kc -E
+CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec -E
 CPPFLAGS =  -g -Wall -DFLAC -DHAVE_SQL -DHOST='"mipsel-unknown-linux-gnu"' -DNOT_HAVE_SA_LEN -DUSES_NETLINK -DHAVE_LINUX -I/root/rt-n56u/trunk/stage/include -I/root/rt-n56u/trunk/stage/include -I/root/rt-n56u/trunk/stage/include
-CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=74kc -mtune=74kc
-CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-g++ -march=74kc -mtune=74kc -E
+CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec
+CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec -E
 CXXDEPMODE = depmode=gcc3
 CXXFLAGS = -Os -fomit-frame-pointer -pipe  -Dlinux -D__linux__ -Dunix -DEMBED -I/root/rt-n56u/trunk/stage/include -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -fno-aggressive-loop-optimizations 
 CYGPATH_W = echo
@@ -129,10 +129,10 @@ PACKAGE_TARNAME =
 PACKAGE_VERSION = 
 PATH_SEPARATOR = :
 PKG_CONFIG = /usr/bin/pkg-config
-RANLIB = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-ranlib
+RANLIB = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-ranlib
 SET_MAKE = 
 SHELL = /bin/bash
-STRIP = /root/rt-n56u/toolchain-rt3883/toolchain-3.0.x/bin/mipsel-linux-uclibc-strip
+STRIP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-strip
 TAGLIB_CONFIG = 
 VERSION = svn-1696
 V_NETLIBS = 
