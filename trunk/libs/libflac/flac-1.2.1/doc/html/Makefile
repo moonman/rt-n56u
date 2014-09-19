@@ -64,17 +64,17 @@ AUTOCONF = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run au
 AUTOHEADER = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run autoheader
 AUTOMAKE = ${SHELL} /root/rt-n56u/trunk/libs/libflac/flac-1.2.1/missing --run automake-1.7
 AWK = gawk
-CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -march=74kc -mtune=74kc
+CC = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec
 CCAS = $(CC)
 CCASFLAGS = $(CFLAGS)
 CCDEPMODE = depmode=gcc3
-CFLAGS = -O3 -funroll-loops -finline-functions -Wall -W -Winline -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security    -Wno-pointer-sign -ffunction-sections -fdata-sections
-CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -march=74kc -mtune=74kc -E
+CFLAGS = -O3 -funroll-loops -finline-functions -Wall -W -Winline -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -fno-aggressive-loop-optimizations -Wno-pointer-sign -ffunction-sections -fdata-sections
+CPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc -march=24kec -mtune=24kec -E
 CPPFLAGS = -DFLaC__INLINE=__inline__ -DNDEBUG -I$(top_builddir) -I$(srcdir)/include -I$(top_srcdir)/include -I/root/rt-n56u/trunk/stage/include
-CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-g++ -march=74kc -mtune=74kc
-CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-g++ -march=74kc -mtune=74kc -E
+CXX = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec
+CXXCPP = /root/rt-n56u/toolchain-rt3883/toolchain-3.4.x/bin/mipsel-linux-uclibc-g++ -march=24kec -mtune=24kec -E
 CXXDEPMODE = depmode=gcc3
-CXXFLAGS = -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security    
+CXXFLAGS = -Os -fomit-frame-pointer -pipe  -DEMBED -I/root/rt-n56u/trunk/stage/include -Dlinux -D__linux__ -Dunix -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-format-security -Wno-unused-but-set-variable -fno-tree-slsr -fno-aggressive-loop-optimizations 
 CYGPATH_W = echo
 DEBUG_FALSE = 
 DEBUG_TRUE = #

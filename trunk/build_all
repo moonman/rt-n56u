@@ -15,17 +15,17 @@ BUILD_FIRMWARE="YES"
 ## Only used if BUILD_FIRMWARE="YES"##
 ## Comment out the lines containing configs you don't want to build.
 BUILD_FIRMWARE_CF=(\
-#		   n56u_qos_k3.0.config \
+		   n56u_qos_k3.0.config \
 		   n56u_qos.config \
-#		   n65u_qos_full.config \
-#		   n14u_qos_full.config \
+		   n65u_qos_full.config \
+		   n14u_qos_full.config \
 		   )
 ################################################
 
 # $1 - config file
 change_version()
 {
-  sed -i "s/\(FIRMWARE_BUILDS_VER\=\"[0-9]*-moonman-\).*/\1$MY_VERSION\"/" $1
+  sed -i "s/\(FIRMWARE_BUILDS_VER\=[0-9]*-moonman-\).*/\1$MY_VERSION/" $1
 }
 
 
@@ -76,7 +76,7 @@ then
   cd ../trunk
   ./clear_tree
   #Replace version number to new
-  ./change_version ./versions.inc
+  change_version ./versions.inc
 
   for fw in ${BUILD_FIRMWARE_CF[@]}; do
     cp ./configs/templates/$fw ./.config
