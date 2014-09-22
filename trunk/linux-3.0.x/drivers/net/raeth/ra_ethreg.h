@@ -35,8 +35,8 @@
 /*
      FE_INT_STATUS
 */
-#if defined (CONFIG_RALINK_RT5350) || defined (CONFIG_RALINK_RT6855) || defined(CONFIG_RALINK_RT6855A) || \
-    defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
+#if defined (CONFIG_RALINK_RT5350) || defined (CONFIG_RALINK_MT7620) || \
+    defined (CONFIG_RALINK_MT7621)
 
 #define RX_COHERENT			BIT(31)
 #define RX_DLY_INT			BIT(30)
@@ -77,8 +77,7 @@
 /* ESW Registers */
 #define _ESW_REG(x)			(*((volatile u32 *)(RALINK_ETH_SW_BASE + x)))
 
-#if defined (CONFIG_RALINK_RT6855) || defined(CONFIG_RALINK_RT6855A) || \
-    defined (CONFIG_RALINK_MT7620)
+#if defined (CONFIG_RALINK_MT7620)
 
 #define REG_ESW_PFC			0x04
 #define REG_ESW_AISR			0x08
@@ -222,8 +221,8 @@
 #if defined (CONFIG_RALINK_RT5350)
 #define RASDM_OFFSET			0x0C00
 #endif
-#if defined (CONFIG_RALINK_RT5350) || defined (CONFIG_RALINK_RT6855) || defined (CONFIG_RALINK_RT6855A) || \
-    defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
+#if defined (CONFIG_RALINK_RT5350) || defined (CONFIG_RALINK_MT7620) || \
+    defined (CONFIG_RALINK_MT7621)
 #define RAPDMA_OFFSET			0x0800
 #else
 #define RAPDMA_OFFSET			0x0100
@@ -296,8 +295,7 @@
 #define SDM_RBCNT			(RALINK_FRAME_ENGINE_BASE+RASDM_OFFSET+0x10C) //Switch DMA rx byte count
 #define SDM_CS_ERR			(RALINK_FRAME_ENGINE_BASE+RASDM_OFFSET+0x110) //Switch DMA rx checksum error count
 
-#elif defined (CONFIG_RALINK_RT6855) || defined(CONFIG_RALINK_RT6855A) || \
-      defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
+#elif defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
 
 /* Old FE with New PDMA */
 #define PDMA_RELATED			0x0800
@@ -686,7 +684,7 @@
 #define RSTCTL_RSTENET1			(1<<19)
 #define RSTCTL_RSTENET2			(1<<20)
 
-#define INIT_VALUE_OF_RT2883_PSE_FQ_CFG	0xff908000
+#define INIT_VALUE_OF_RT3883_PSE_FQ_CFG	0xff908000
 #define INIT_VALUE_OF_PSE_FQFC_CFG	0x80504000
 #define INIT_VALUE_OF_FORCE_100_FD	0x1001BC01
 #if defined (CONFIG_RTL8367) || defined (CONFIG_RTL8367_MODULE)
@@ -815,8 +813,7 @@ struct PDMA_txdesc {
 
 /* proc definition */
 
-#if !defined (CONFIG_RALINK_RT6855) && !defined (CONFIG_RALINK_RT6855A) && \
-    !defined (CONFIG_RALINK_MT7620) && !defined (CONFIG_RALINK_MT7621)
+#if !defined (CONFIG_RALINK_MT7620) && !defined (CONFIG_RALINK_MT7621)
 #define CDMA_OQ_STA			(RALINK_FRAME_ENGINE_BASE+RAPSE_OFFSET+0x4c)
 #define GDMA1_OQ_STA			(RALINK_FRAME_ENGINE_BASE+RAPSE_OFFSET+0x50)
 #define PPE_OQ_STA			(RALINK_FRAME_ENGINE_BASE+RAPSE_OFFSET+0x54)
