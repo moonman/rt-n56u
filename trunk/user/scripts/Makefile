@@ -7,6 +7,7 @@ romfs:
 	$(ROMFSINST) /sbin/dev_init.sh
 	$(ROMFSINST) /sbin/reset_ss.sh
 	$(ROMFSINST) /sbin/mtd_storage.sh
+	$(ROMFSINST) /sbin/qos.sh
 ifdef CONFIG_USB_SUPPORT
 	$(ROMFSINST) /sbin/automount.sh
 	$(ROMFSINST) /sbin/hddtune.sh
