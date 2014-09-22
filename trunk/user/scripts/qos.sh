@@ -8,7 +8,7 @@
 [ -f /etc/storage/qos.conf ] && . /etc/storage/qos.conf
 
 # If no interface defined, use WAN interface
-[ "$QOS_IF" ] || QOS_IF=$(nvram get wan_ifname)
+[ "$QOS_IF" ] || QOS_IF=$(nvram get wan0_ifname_t)
 
 if [ "$QOS_ENABLED" = "YES" ]; then
   # Length of burst buffers in ms (must be larger than kernel jiffy of 10ms)
