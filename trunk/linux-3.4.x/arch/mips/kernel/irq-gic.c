@@ -1,5 +1,11 @@
-#undef DEBUG
-
+/*
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * Copyright (C) 2008 Ralf Baechle (ralf@linux-mips.org)
+ * Copyright (C) 2012 MIPS Technologies, Inc.  All rights reserved.
+ */
 #include <linux/bitmap.h>
 #include <linux/init.h>
 #include <linux/smp.h>
@@ -11,29 +17,25 @@
 #include <linux/hardirq.h>
 #include <asm-generic/bitops/find.h>
 
+unsigned long _gic_base;
+unsigned int gic_irq_base;
+unsigned int gic_irq_flags[GIC_NUM_INTRS];
 
-static unsigned long _gic_base;
-static unsigned int _irqbase;
-static unsigned int gic_irq_flags[GIC_NUM_INTRS];
-#define GIC_IRQ_FLAG_EDGE      0x0001
-
-struct gic_pcpu_mask pcpu_masks[NR_CPUS];
+static struct gic_pcpu_mask pcpu_masks[NR_CPUS];
 static struct gic_pending_regs pending_regs[NR_CPUS];
 static struct gic_intrmask_regs intrmask_regs[NR_CPUS];
 
 void gic_send_ipi(unsigned int intr)
 {
-	pr_debug("CPU%d: %s status %08x\n", smp_processor_id(), __func__,
-		 read_c0_status());
 	GICWRITE(GIC_REG(SHARED, GIC_SH_WEDGE), 0x80000000 | intr);
 }
 
-/* This is Malta specific and needs to be exported */
 static void __init vpe_local_setup(unsigned int numvpes)
 {
-	int i;
-	unsigned long timer_interrupt = 5, perf_interrupt = 5;
+	unsigned long timer_interrupt = GIC_INT_TMR;
+	unsigned long perf_interrupt = GIC_INT_PERFCTR;
 	unsigned int vpe_ctl;
+	int i;
 
 	/*
 	 * Setup the default performance counter timer interrupts
@@ -80,51 +82,30 @@ unsigned int gic_get_int(void)
 	bitmap_and(pending, pending, intrmask, GIC_NUM_INTRS);
 	bitmap_and(pending, pending, pcpu_mask, GIC_NUM_INTRS);
 
-	i = find_first_bit(pending, GIC_NUM_INTRS);
-
-	pr_debug("CPU%d: %s pend=%d\n", smp_processor_id(), __func__, i);
-
-	return i;
-}
-
-static void gic_irq_ack(struct irq_data *d)
-{
-	unsigned int irq = d->irq - _irqbase;
-
-	pr_debug("CPU%d: %s: irq%d\n", smp_processor_id(), __func__, irq);
-	GIC_CLR_INTR_MASK(irq);
-
-	if (gic_irq_flags[irq] & GIC_IRQ_FLAG_EDGE)
-		GICWRITE(GIC_REG(SHARED, GIC_SH_WEDGE), irq);
+	return find_first_bit(pending, GIC_NUM_INTRS);
 }
 
 static void gic_mask_irq(struct irq_data *d)
 {
-	unsigned int irq = d->irq - _irqbase;
-	pr_debug("CPU%d: %s: irq%d\n", smp_processor_id(), __func__, irq);
-	GIC_CLR_INTR_MASK(irq);
+	GIC_CLR_INTR_MASK(d->irq - gic_irq_base);
 }
 
 static void gic_unmask_irq(struct irq_data *d)
 {
-	unsigned int irq = d->irq - _irqbase;
-	pr_debug("CPU%d: %s: irq%d\n", smp_processor_id(), __func__, irq);
-	GIC_SET_INTR_MASK(irq);
+	GIC_SET_INTR_MASK(d->irq - gic_irq_base);
 }
 
 #ifdef CONFIG_SMP
-
 static DEFINE_SPINLOCK(gic_lock);
 
 static int gic_set_affinity(struct irq_data *d, const struct cpumask *cpumask,
 			    bool force)
 {
-	unsigned int irq = d->irq - _irqbase;
+	unsigned int irq = (d->irq - gic_irq_base);
 	cpumask_t	tmp = CPU_MASK_NONE;
 	unsigned long	flags;
 	int		i;
 
-	pr_debug("%s(%d) called\n", __func__, irq);
 	cpumask_and(&tmp, cpumask, cpu_online_mask);
 	if (cpus_empty(tmp))
 		return -1;
@@ -153,7 +134,7 @@ static struct irq_chip gic_irq_controller = {
 	.irq_mask		=	gic_mask_irq,
 	.irq_mask_ack		=	gic_mask_irq,
 	.irq_unmask		=	gic_unmask_irq,
-	.irq_eoi		=	gic_unmask_irq,
+	.irq_eoi		=	gic_finish_irq,
 #ifdef CONFIG_SMP
 	.irq_set_affinity	=	gic_set_affinity,
 #endif
@@ -165,11 +146,13 @@ static void __init gic_setup_intr(unsigned int intr, unsigned int cpu,
 {
 	/* Setup Intr to Pin mapping */
 	if (pin & GIC_MAP_TO_NMI_MSK) {
+		int i;
+
 		GICWRITE(GIC_REG_ADDR(SHARED, GIC_SH_MAP_TO_PIN(intr)), pin);
 		/* FIXME: hack to route NMI to all cpu's */
-		for (cpu = 0; cpu < NR_CPUS; cpu += 32) {
+		for (i = 0; i < NR_CPUS; i += 32) {
 			GICWRITE(GIC_REG_ADDR(SHARED,
-					  GIC_SH_MAP_TO_VPE_REG_OFF(intr, cpu)),
+					  GIC_SH_MAP_TO_VPE_REG_OFF(intr, i)),
 				 0xffffffff);
 		}
 	} else {
@@ -187,13 +170,14 @@ static void __init gic_setup_intr(unsigned int intr, unsigned int cpu,
 
 	/* Init Intr Masks */
 	GIC_CLR_INTR_MASK(intr);
+
 	/* Initialise per-cpu Interrupt software masks */
 	if (flags & GIC_FLAG_IPI)
 		set_bit(intr, pcpu_masks[cpu].pcpu_mask);
 	if (flags & GIC_FLAG_TRANSPARENT)
 		GIC_SET_INTR_MASK(intr);
 	if (trigtype == GIC_TRIG_EDGE)
-		gic_irq_flags[intr] |= GIC_IRQ_FLAG_EDGE;
+		gic_irq_flags[intr] |= GIC_TRIG_EDGE;
 }
 
 static void __init gic_basic_init(int numintrs, int numvpes,
@@ -226,9 +210,6 @@ static void __init gic_basic_init(int numintrs, int numvpes,
 	}
 
 	vpe_local_setup(numvpes);
-
-	for (i = _irqbase; i < (_irqbase + numintrs); i++)
-		irq_set_chip(i, &gic_irq_controller);
 }
 
 void __init gic_init(unsigned long gic_base_addr,
@@ -241,7 +222,7 @@ void __init gic_init(unsigned long gic_base_addr,
 
 	_gic_base = (unsigned long) ioremap_nocache(gic_base_addr,
 						    gic_addrspace_size);
-	_irqbase = irqbase;
+	gic_irq_base = irqbase;
 
 	GICREAD(GIC_REG(SHARED, GIC_SH_CONFIG), gicconfig);
 	numintrs = (gicconfig & GIC_SH_CONFIG_NUMINTRS_MSK) >>
@@ -250,8 +231,9 @@ void __init gic_init(unsigned long gic_base_addr,
 
 	numvpes = (gicconfig & GIC_SH_CONFIG_NUMVPES_MSK) >>
 		  GIC_SH_CONFIG_NUMVPES_SHF;
-
-	pr_debug("%s called\n", __func__);
+	numvpes = numvpes + 1;
 
 	gic_basic_init(numintrs, numvpes, intr_map, intr_map_size);
+
+	gic_platform_init(numintrs, &gic_irq_controller);
 }

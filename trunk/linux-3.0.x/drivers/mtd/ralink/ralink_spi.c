@@ -30,6 +30,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/flash.h>
 
+#include <linux/ralink_gpio.h>
 #include "ralink_spi.h"
 #include "ralink-flash.h"
 #include "ralink-flash-map.h"
@@ -81,7 +82,7 @@ extern u32 get_surfboard_sysclk(void);
 #define SR_EPE			0x20	/* Erase/Program error */
 #define SR_SRWD			0x80	/* SR write protect */
 
-#if defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
+#if defined (CONFIG_RALINK_MT7620)
 
 #define COMMAND_MODE
 #define SPI_FIFO_SIZE		16
@@ -261,8 +262,8 @@ static int spic_write(const u8 *cmd, size_t n_cmd, const u8 *txbuf, size_t n_tx)
 
 int spic_init(void)
 {
-	// GPIO-SPI mode
-	ra_and(RALINK_REG_GPIOMODE, ~(1 << 1)); //use normal(SPI) mode instead of GPIO mode
+	/* use normal SPI mode instead of GPIO mode */
+	ra_and(RALINK_REG_GPIOMODE, ~(RALINK_GPIOMODE_SPI));
 
 	/* reset spi block */
 	ra_or(RT2880_RSTCTRL_REG, RSTCTRL_SPI_RESET);
@@ -293,8 +294,8 @@ int spic_init(void)
 	return 0;
 }
 
-
 /****************************************************************************/
+
 struct chip_info {
 	char		*name;
 	u8		id;
@@ -306,11 +307,34 @@ struct chip_info {
 
 static struct chip_info chips_data [] = {
 	/* REVISIT: fill in JEDEC ids, for parts that have them */
-	{ "AT25DF321",		0x1f, 0x47000000, 64 * 1024, 64,  0 },
-	{ "AT26DF161",		0x1f, 0x46000000, 64 * 1024, 32,  0 },
-
 	{ "FL016AIF",		0x01, 0x02140000, 64 * 1024, 32,  0 },
 	{ "FL064AIF",		0x01, 0x02160000, 64 * 1024, 128, 0 },
+
+	{ "S25FL032P",		0x01, 0x02154D00, 64 * 1024, 64,  0 },
+	{ "S25FL064P",		0x01, 0x02164D00, 64 * 1024, 128, 0 },
+	{ "S25FL128P",		0x01, 0x20180301, 64 * 1024, 256, 0 },
+	{ "S25FL129P",		0x01, 0x20184D01, 64 * 1024, 256, 0 },
+	{ "S25FL256S",		0x01, 0x02194D01, 64 * 1024, 512, 1 },
+
+	{ "S25FL116K",		0x01, 0x40150140, 64 * 1024, 32,  0 },
+	{ "S25FL132K",		0x01, 0x40160140, 64 * 1024, 64,  0 },
+	{ "S25FL164K",		0x01, 0x40170140, 64 * 1024, 128, 0 },
+
+	{ "EN25F16",		0x1c, 0x31151c31, 64 * 1024, 32,  0 },
+	{ "EN25F32",		0x1c, 0x31161c31, 64 * 1024, 64,  0 },
+	{ "EN25Q32B",		0x1c, 0x30161c30, 64 * 1024, 64,  0 },
+	{ "EN25F64",		0x1c, 0x20171c20, 64 * 1024, 128, 0 }, // EN25P64
+	{ "EN25Q64",		0x1c, 0x30171c30, 64 * 1024, 128, 0 },
+
+	{ "AT26DF161",		0x1f, 0x46000000, 64 * 1024, 32,  0 },
+	{ "AT25DF321",		0x1f, 0x47000000, 64 * 1024, 64,  0 },
+
+	{ "N25Q032A",		0x20, 0xba161000, 64 * 1024, 64,  0 },
+	{ "N25Q064A",		0x20, 0xba171000, 64 * 1024, 128, 0 },
+	{ "N25Q128A",		0x20, 0xba181000, 64 * 1024, 256, 0 },
+
+	{ "F25L32QA",		0x8c, 0x41168c41, 64 * 1024, 64,  0 }, // ESMT
+	{ "F25L64QA",		0x8c, 0x41170000, 64 * 1024, 128, 0 }, // ESMT
 
 	{ "MX25L1605D",		0xc2, 0x2015c220, 64 * 1024, 32,  0 },
 	{ "MX25L3205D",		0xc2, 0x2016c220, 64 * 1024, 64,  0 },
@@ -318,20 +342,9 @@ static struct chip_info chips_data [] = {
 	{ "MX25L12805D",	0xc2, 0x2018c220, 64 * 1024, 256, 0 },
 	{ "MX25L25635E",	0xc2, 0x2019c220, 64 * 1024, 512, 1 },
 
-	{ "S25FL256S",		0x01, 0x02194D01, 64 * 1024, 512, 1 },
-	{ "S25FL128P",		0x01, 0x20180301, 64 * 1024, 256, 0 },
-	{ "S25FL129P",		0x01, 0x20184D01, 64 * 1024, 256, 0 },
-	{ "S25FL032P",		0x01, 0x02154D00, 64 * 1024, 64,  0 },
-	{ "S25FL064P",		0x01, 0x02164D00, 64 * 1024, 128, 0 },
-	{ "S25FL116K",		0x01, 0x40150140, 64 * 1024, 32,  0 },
-
-	{ "EN25Q32B",		0x1c, 0x30161c30, 64 * 1024, 64,  0 },
-	{ "EN25F16",		0x1c, 0x31151c31, 64 * 1024, 32,  0 },
-	{ "EN25F32",		0x1c, 0x31161c31, 64 * 1024, 64,  0 },
-	{ "EN25F64",		0x1c, 0x20171c20, 64 * 1024, 128, 0 }, // EN25P64
-	{ "EN25Q64",		0x1c, 0x30171c30, 64 * 1024, 128, 0 },
-
-	{ "F25L64QA",		0x8c, 0x41170000, 64 * 1024, 128, 0 }, // ESMT
+	{ "GD25Q32B",		0xc8, 0x40160000, 64 * 1024, 64,  0 },
+	{ "GD25Q64B",		0xc8, 0x40170000, 64 * 1024, 128, 0 },
+	{ "GD25Q128C",		0xc8, 0x40180000, 64 * 1024, 256, 0 },
 
 	{ "W25X32VS",		0xef, 0x30160000, 64 * 1024, 64,  0 },
 	{ "W25Q32BV",		0xef, 0x40160000, 64 * 1024, 64,  0 },
@@ -343,7 +356,7 @@ static struct chip_info chips_data [] = {
 };
 
 struct flash_info {
-	struct mutex	lock;
+	struct mutex		lock;
 	struct mtd_info		mtd;
 	struct chip_info	*chip;
 	u8			command[5];
@@ -351,6 +364,7 @@ struct flash_info {
 
 struct flash_info *flash;
 static inline int raspi_write_enable(void);
+
 /****************************************************************************/
 
 #if defined (COMMAND_MODE)
@@ -420,6 +434,8 @@ static int raspi_cmd(const u8 cmd, const u32 addr, const u8 mode, u8 *buf, const
 		retval = -1;
 	}
 
+	// de-assert CS before change SPIENMODE to HW control
+	ra_or (RT2880_SPICTL_REG, (SPICTL_SPIENA_HIGH));
 	ra_and(RT2880_SPICFG_REG, ~(SPICFG_SPIENMODE | SPICFG_RXENVDIS));
 
 	return retval;
@@ -602,20 +618,15 @@ static int raspi_wait_ready(int sleep_ms)
 	int count;
 	int sr = 0;
 
-	/*int timeout = sleep_ms * HZ / 1000;
-	while (timeout) 
-		timeout = schedule_timeout (timeout);*/
-
 	/* one chip guarantees max 5 msec wait here after page writes,
 	 * but potentially three seconds (!) after page erase.
 	 */
-	for (count = 0;  count < ((sleep_ms+1)*1000); count++) {
+	for (count = 0;  count < ((sleep_ms+1)*1000*10); count++) {
 		if ((raspi_read_sr((u8 *)&sr)) < 0)
 			break;
 		else if (!(sr & SR_WIP))
 			return 0;
 		udelay(5);
-		/* REVISIT sometimes sleeping would be best */
 	}
 
 	printk("%s: read_sr fail: %x\n", __func__, sr);
@@ -630,12 +641,12 @@ static int raspi_wait_sleep_ready(int sleep_ms)
 	/* one chip guarantees max 5 msec wait here after page writes,
 	 * but potentially three seconds (!) after page erase.
 	 */
-	for (count = 0;  count < ((sleep_ms+1)*100); count++) {
+	for (count = 0;  count < ((sleep_ms+1)*1000); count++) {
 		if ((raspi_read_sr((u8 *)&sr)) < 0)
 			break;
 		else if (!(sr & SR_WIP))
 			return 0;
-		usleep(100);
+		usleep(50);
 	}
 
 	printk("%s: read_sr fail: %x\n", __func__, sr);
@@ -653,14 +664,14 @@ static int raspi_4byte_mode(int enable)
 		if (enable)
 		{
 			br = 0x81;
-#if defined (CONFIG_RALINK_RT6855) || defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
+#if defined (CONFIG_RALINK_MT7620)
 			ra_or(RT2880_SPICFG_REG, SPICFG_ADDRMODE);
 #endif
 		}
 		else
 		{
 			br = 0x0;
-#if defined (CONFIG_RALINK_RT6855) || defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
+#if defined (CONFIG_RALINK_MT7620)
 			ra_and(RT2880_SPICFG_REG, ~(SPICFG_ADDRMODE));
 #endif
 		}
@@ -681,14 +692,14 @@ static int raspi_4byte_mode(int enable)
 		if (enable)
 		{
 			code = 0xB7; /* EN4B, enter 4-byte mode */
-#if defined (CONFIG_RALINK_RT6855) || defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
+#if defined (CONFIG_RALINK_MT7620)
 			ra_or(RT2880_SPICFG_REG, SPICFG_ADDRMODE);
 #endif
 		}
 		else
 		{
 			code = 0xE9; /* EX4B, exit 4-byte mode */
-#if defined (CONFIG_RALINK_RT6855) || defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621)
+#if defined (CONFIG_RALINK_MT7620)
 			ra_and(RT2880_SPICFG_REG, ~(SPICFG_ADDRMODE));
 #endif
 		}
@@ -1168,7 +1179,6 @@ struct chip_info *chip_prob(void)
 	return match;
 }
 
-
 /*
  * board specific setup should have ensured the SPI clock used here
  * matches what the READ command supports, at least until this driver
@@ -1189,10 +1199,10 @@ static int raspi_probe(void)
 	} hdr;
 #endif
 
-	spic_init();
-
 	if (ra_check_flash_type() != BOOT_FROM_SPI)
 		return 0;
+
+	spic_init();
 
 	chip = chip_prob();
 
@@ -1269,9 +1279,8 @@ static int __init raspi_init(void)
 
 static void __exit raspi_exit(void)
 {
-	mtd_device_unregister(&flash->mtd);
-
 	if (flash) {
+		mtd_device_unregister(&flash->mtd);
 		kfree(flash);
 		flash = NULL;
 	}
@@ -1282,4 +1291,4 @@ module_exit(raspi_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Steven Liu");
-MODULE_DESCRIPTION("MTD SPI driver for Ralink flash chips");
+MODULE_DESCRIPTION("Ralink MTD SPI driver for flash chips");
