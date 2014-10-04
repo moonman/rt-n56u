@@ -83,12 +83,13 @@ MODULE_PARM_DESC(wan_vid, "VLAN ID for WAN traffic");
 
 uint32_t DebugLevel = 1;
 
+extern u32 ralink_asic_rev_id;
+
 extern int (*ra_sw_nat_hook_rx) (struct sk_buff * skb);
 extern int (*ra_sw_nat_hook_tx) (struct sk_buff * skb, int gmac_no);
 extern int (*ra_sw_nat_hook_rs) (struct net_device *dev, int hold);
 
 static int		ppe_udp_bug = 0;
-static uint32_t		chip_rev_id;
 
 struct FoeEntry		*PpeFoeBase = NULL;
 uint32_t		PpeFoeTblSize = FOE_4TB_SIZ;
@@ -412,7 +413,8 @@ uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
 	skb_reset_network_header(skb);
 	skb_push(skb, ETH_HLEN);	//pointer to layer2 header before calling hard_start_xmit
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
-	skb = __vlan_put_tag(skb, __constant_htons(ETH_P_8021Q), VirIfIdx);
+	skb->vlan_proto = __constant_htons(ETH_P_8021Q);
+	skb = __vlan_put_tag(skb, skb->vlan_proto, VirIfIdx);
 #else
 	skb = __vlan_put_tag(skb, VirIfIdx);
 #endif
@@ -502,8 +504,11 @@ void PpeKeepAliveHandler(struct sk_buff* skb, struct FoeEntry* foe_entry, int re
 	 * just use SMAC as DMAC and set Multicast address as SMAC.
 	 */
 	if (recover_header) {
-		FoeGetMacInfo(eth->h_dest, eth->h_source);
-		FoeGetMacInfo(eth->h_source, eth->h_dest);
+		unsigned char tmp[8];
+		
+		memcpy(tmp, eth->h_dest, ETH_ALEN);
+		memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+		memcpy(eth->h_source, tmp, ETH_ALEN);
 	}
 
 	eth->h_source[0] = 0x1;	//change to multicast packet, make bridge not learn this packet
@@ -1148,8 +1153,10 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 			foe_entry.ipv4_dslite.iblk2.dscp = iph->tos;
 			
 			/* fill L2 info (80B) */
-			FoeSetMacInfo(foe_entry.ipv4_dslite.dmac_hi, eth->h_dest);
-			FoeSetMacInfo(foe_entry.ipv4_dslite.smac_hi, eth->h_source);
+			FoeSetMacHiInfo(foe_entry.ipv4_dslite.dmac_hi, eth->h_dest);
+			FoeSetMacLoInfo(foe_entry.ipv4_dslite.dmac_lo, eth->h_dest);
+			FoeSetMacHiInfo(foe_entry.ipv4_dslite.smac_hi, eth->h_source);
+			FoeSetMacLoInfo(foe_entry.ipv4_dslite.smac_lo, eth->h_source);
 			foe_entry.ipv4_dslite.pppoe_id = ppp_sid;
 			foe_entry.ipv4_dslite.vlan1 = vlan1_id;
 			foe_entry.ipv4_dslite.vlan2 = vlan2_id;
@@ -1161,8 +1168,10 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 #if defined (CONFIG_RA_HW_NAT_IPV6)
 			if (iph->protocol == IPPROTO_IPV6) {
 				/* fill L2 info (80B) */
-				FoeSetMacInfo(foe_entry.ipv6_6rd.dmac_hi, eth->h_dest);
-				FoeSetMacInfo(foe_entry.ipv6_6rd.smac_hi, eth->h_source);
+				FoeSetMacHiInfo(foe_entry.ipv6_6rd.dmac_hi, eth->h_dest);
+				FoeSetMacLoInfo(foe_entry.ipv6_6rd.dmac_lo, eth->h_dest);
+				FoeSetMacHiInfo(foe_entry.ipv6_6rd.smac_hi, eth->h_source);
+				FoeSetMacLoInfo(foe_entry.ipv6_6rd.smac_lo, eth->h_source);
 				foe_entry.ipv6_6rd.pppoe_id = ppp_sid;
 				foe_entry.ipv6_6rd.vlan1 = vlan1_id;
 				foe_entry.ipv6_6rd.vlan2 = vlan2_id;
@@ -1179,8 +1188,10 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 				foe_entry.ipv4_hnapt.iblk2.dscp = iph->tos;
 				
 				/* fill L2 info (64B) */
-				FoeSetMacInfo(foe_entry.ipv4_hnapt.dmac_hi, eth->h_dest);
-				FoeSetMacInfo(foe_entry.ipv4_hnapt.smac_hi, eth->h_source);
+				FoeSetMacHiInfo(foe_entry.ipv4_hnapt.dmac_hi, eth->h_dest);
+				FoeSetMacLoInfo(foe_entry.ipv4_hnapt.dmac_lo, eth->h_dest);
+				FoeSetMacHiInfo(foe_entry.ipv4_hnapt.smac_hi, eth->h_source);
+				FoeSetMacLoInfo(foe_entry.ipv4_hnapt.smac_lo, eth->h_source);
 				foe_entry.ipv4_hnapt.pppoe_id = ppp_sid;
 				foe_entry.ipv4_hnapt.vlan1 = vlan1_id;
 				foe_entry.ipv4_hnapt.vlan2 = vlan2_id;
@@ -1218,31 +1229,33 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 #if defined (CONFIG_RALINK_MT7620)
 			foe_entry.bfib1.drm = 1;		// switch will keep dscp
 #endif
-			foe_entry.ipv6_3t_route.iblk2.dscp = ((ip6h->priority << 4) | (ip6h->flow_lbl[0]>>4));
+			foe_entry.ipv6_5t_route.iblk2.dscp = ((ip6h->priority << 4) | (ip6h->flow_lbl[0]>>4));
 			
 			if (foe_entry.bfib1.pkt_type != IPV6_6RD) {
 				/* fill in ipv6 (3T/5T) routing entry */
-				foe_entry.ipv6_3t_route.ipv6_sip0 = ntohl(ip6h->saddr.s6_addr32[0]);
-				foe_entry.ipv6_3t_route.ipv6_sip1 = ntohl(ip6h->saddr.s6_addr32[1]);
-				foe_entry.ipv6_3t_route.ipv6_sip2 = ntohl(ip6h->saddr.s6_addr32[2]);
-				foe_entry.ipv6_3t_route.ipv6_sip3 = ntohl(ip6h->saddr.s6_addr32[3]);
+				foe_entry.ipv6_5t_route.ipv6_sip0 = ntohl(ip6h->saddr.s6_addr32[0]);
+				foe_entry.ipv6_5t_route.ipv6_sip1 = ntohl(ip6h->saddr.s6_addr32[1]);
+				foe_entry.ipv6_5t_route.ipv6_sip2 = ntohl(ip6h->saddr.s6_addr32[2]);
+				foe_entry.ipv6_5t_route.ipv6_sip3 = ntohl(ip6h->saddr.s6_addr32[3]);
 				
-				foe_entry.ipv6_3t_route.ipv6_dip0 = ntohl(ip6h->daddr.s6_addr32[0]);
-				foe_entry.ipv6_3t_route.ipv6_dip1 = ntohl(ip6h->daddr.s6_addr32[1]);
-				foe_entry.ipv6_3t_route.ipv6_dip2 = ntohl(ip6h->daddr.s6_addr32[2]);
-				foe_entry.ipv6_3t_route.ipv6_dip3 = ntohl(ip6h->daddr.s6_addr32[3]);
+				foe_entry.ipv6_5t_route.ipv6_dip0 = ntohl(ip6h->daddr.s6_addr32[0]);
+				foe_entry.ipv6_5t_route.ipv6_dip1 = ntohl(ip6h->daddr.s6_addr32[1]);
+				foe_entry.ipv6_5t_route.ipv6_dip2 = ntohl(ip6h->daddr.s6_addr32[2]);
+				foe_entry.ipv6_5t_route.ipv6_dip3 = ntohl(ip6h->daddr.s6_addr32[3]);
 			} else {
 				foe_entry.bfib1.rmt = 1;	// remove outer IPv6 header
 			}
 		}
 		
 		/* fill L2 info (80B) */
-		FoeSetMacInfo(foe_entry.ipv6_3t_route.dmac_hi, eth->h_dest);
-		FoeSetMacInfo(foe_entry.ipv6_3t_route.smac_hi, eth->h_source);
-		foe_entry.ipv6_3t_route.pppoe_id = ppp_sid;
-		foe_entry.ipv6_3t_route.vlan1 = vlan1_id;
-		foe_entry.ipv6_3t_route.vlan2 = vlan2_id;
-		foe_entry.ipv6_3t_route.etype = vlan_tag;
+		FoeSetMacHiInfo(foe_entry.ipv6_5t_route.dmac_hi, eth->h_dest);
+		FoeSetMacLoInfo(foe_entry.ipv6_5t_route.dmac_lo, eth->h_dest);
+		FoeSetMacHiInfo(foe_entry.ipv6_5t_route.smac_hi, eth->h_source);
+		FoeSetMacLoInfo(foe_entry.ipv6_5t_route.smac_lo, eth->h_source);
+		foe_entry.ipv6_5t_route.pppoe_id = ppp_sid;
+		foe_entry.ipv6_5t_route.vlan1 = vlan1_id;
+		foe_entry.ipv6_5t_route.vlan2 = vlan2_id;
+		foe_entry.ipv6_5t_route.etype = vlan_tag;
 #endif
 	} else {
 		/* packet format is not supported */
@@ -1316,6 +1329,7 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 #endif
 #else
 		/* MT7620 or MT7621 with 1xGMAC+VLAN's */
+		uint32_t port_ag = 1;
 #if defined (CONFIG_RALINK_MT7621)
 		uint32_t fpidx = 1; /* 1: to GSW */
 		if (is_mcast)
@@ -1323,7 +1337,6 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 #else
 		uint32_t fpidx = 8; /* 8: no force port */
 #endif
-		uint32_t port_ag = 1;
 		if (IS_IPV4_GRP(&foe_entry)) {
 			if ((foe_entry.ipv4_hnapt.vlan1 & VLAN_VID_MASK) != lan_vid)
 				port_ag = 2;
@@ -1518,8 +1531,10 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 	/******************** L2 ********************/
 
 	/* Set MAC Info */
-	FoeSetMacInfo(foe_entry.ipv4_hnapt.dmac_hi, eth->h_dest);
-	FoeSetMacInfo(foe_entry.ipv4_hnapt.smac_hi, eth->h_source);
+	FoeSetMacHiInfo(foe_entry.ipv4_hnapt.dmac_hi, eth->h_dest);
+	FoeSetMacLoInfo(foe_entry.ipv4_hnapt.dmac_lo, eth->h_dest);
+	FoeSetMacHiInfo(foe_entry.ipv4_hnapt.smac_hi, eth->h_source);
+	FoeSetMacLoInfo(foe_entry.ipv4_hnapt.smac_lo, eth->h_source);
 
 	/*
 	 * PPE support SMART VLAN/PPPoE Tag Push/PoP feature
@@ -1563,11 +1578,11 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 #if defined (CONFIG_RAETH_GMAC2)
 		/* RT3883 with 2xGMAC - assuming GMAC2=WAN and GMAC1=LAN */
 		foe_entry.ipv4_hnapt.iblk2.dp = (gmac_no == 2) ? 2 : 1;
-#elif defined (CONFIG_RALINK_RT2880) || defined (CONFIG_RALINK_RT3883)
-		/* RT2880, RT3883 (1xGMAC mode), always send to GMAC1 */
+#elif defined (CONFIG_RALINK_RT3883)
+		/* RT3883 (1xGMAC mode), always send to GMAC1 */
 		foe_entry.ipv4_hnapt.iblk2.dp = 1;		/* -> GMAC 1 */
 #else
-		/*  RT3052, RT335x */
+		/* RT3052, RT335x */
 		if ((foe_entry.ipv4_hnapt.vlan1 & VLAN_VID_MASK) != lan_vid)
 			foe_entry.ipv4_hnapt.iblk2.dp = 2;	/* -> VirtualPort2 in GMAC1 */
 		else
@@ -2465,25 +2480,6 @@ static void PpeSetIpProt(void)
  */
 static int __init PpeInitMod(void)
 {
-	char chip_id[8];
-
-	*(uint32_t *)&chip_id[0] = RegRead(CHIPID);
-	*(uint32_t *)&chip_id[4] = RegRead(CHIPID + 0x4);
-	chip_id[6] = '\0';
-
-	chip_rev_id = RegRead(REVID);
-
-#if defined (CONFIG_RALINK_MT7620)
-	if (chip_rev_id & 0x10000)
-		chip_id[6] = 'A';
-	else
-		chip_id[6] = 'N';
-	
-	chip_id[7] = '\0';
-#endif
-
-	chip_rev_id &= 0xFFFF;
-
 #if defined (CONFIG_RALINK_RT3052)
 	/* RT3052 with RF_REG0 > 0x53 has no bug UDP w/o checksum */
 	uint32_t phy_val = 0;
@@ -2491,13 +2487,13 @@ static int __init PpeInitMod(void)
 	ppe_udp_bug = ((phy_val & 0xFF) > 0x53) ? 0 : 1;
 #elif defined (CONFIG_RALINK_RT3352)
 	/* RT3352 rev 0105 has no bug UDP w/o checksum */
-	ppe_udp_bug = (chip_rev_id < 0x0105) ? 1 : 0;
-#elif defined (CONFIG_RALINK_RT2880) || defined (CONFIG_RALINK_RT3883)
+	ppe_udp_bug = ((ralink_asic_rev_id & 0xFFFF) < 0x0105) ? 1 : 0;
+#elif defined (CONFIG_RALINK_RT3883)
 	/* RT3883/RT3662 at least rev 0105 has bug UDP w/o checksum :-( */
 	ppe_udp_bug = 1;
 #elif defined (CONFIG_RALINK_MT7620)
 	/* MT7620 rev 0205 has no bug UDP w/o checksum */
-	ppe_udp_bug = ((chip_rev_id & 0xF) < 5) ? 1 : 0;
+	ppe_udp_bug = ((ralink_asic_rev_id & 0xF) < 5) ? 1 : 0;
 #endif
 
 	/* Set PPE FOE Hash Mode */
@@ -2536,10 +2532,7 @@ static int __init PpeInitMod(void)
 	ra_sw_nat_hook_rs = PpeRsHandler;
 
 #if defined (CONFIG_RALINK_MT7620)
-	if ((chip_rev_id & 0xF) < 5) {
-//		SetAclFwd(1); // wdf?
-		;
-	} else {
+	if ((ralink_asic_rev_id & 0xF) >= 5) {
 		/* Turn On UDP Control */
 		uint32_t reg = RegRead(RALINK_PPE_BASE + 0x380);
 		reg &= ~(0x1 << 30);
@@ -2550,8 +2543,8 @@ static int __init PpeInitMod(void)
 	/* Set GMAC forwards packet to PPE */
 	SetGdmaFwd(1);
 
-	printk("Ralink HW NAT %s Module Enabled, ASIC: %s, REV: %04X, FoE Size: %d\n",
-		HW_NAT_MODULE_VER, chip_id, chip_rev_id, PpeFoeTblSize);
+	printk("Ralink HW NAT %s Module Enabled, FoE Size: %d\n",
+		HW_NAT_MODULE_VER, PpeFoeTblSize);
 
 	return 0;
 }
