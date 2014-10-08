@@ -712,20 +712,17 @@ start_wan(void)
 			/* re-build iptables rules (final stage for IPoE static) */
 			start_firewall_ex();
 			
-			if (wan_proto == IPV4_WAN_PROTO_IPOE_STATIC) {
-				/* update UPnP forwards from lease file */
-				update_upnp();
-			}
-			
 			/* Start eapol authenticator */
 			wan_auth_mode = get_wan_unit_value_int(unit, "auth_mode");
 			if (wan_auth_mode > 1)
 				start_auth_eapol(wan_ifname, unit, wan_auth_mode - 2);
 			
 			/* We are done configuration */
-			if (wan_proto == IPV4_WAN_PROTO_IPOE_STATIC)
+			if (wan_proto == IPV4_WAN_PROTO_IPOE_STATIC) {
 				wan_up(wan_ifname, unit, 1);
-			else
+				/* update UPnP forwards from lease file (after wan up) */
+				update_upnp();
+			} else
 				start_udhcpc_wan(wan_ifname, unit, 0);
 #if defined (USE_IPV6)
 			if (is_wan_ipv6_type_sit() == 0)
@@ -813,8 +810,7 @@ stop_wan(void)
 
 	kill_services(svcs_ppp, 6, 1);
 
-	if (pids("udhcpc"))
-	{
+	if (pids("udhcpc")) {
 		doSystem("killall %s %s", "-SIGUSR2", "udhcpc");
 		usleep(300000);
 	}
@@ -827,7 +823,7 @@ stop_wan(void)
 
 	if (wan_proto == IPV4_WAN_PROTO_IPOE_STATIC &&
 	    strcmp(man_ifname, get_wan_unit_value(unit, "ifname_t")) == 0)
-		wan_down(man_ifname, unit);
+		wan_down(man_ifname, unit, 1);
 
 	/* Bring down WAN interfaces */
 	ifconfig(man_ifname, 0, "0.0.0.0", NULL);
@@ -1084,7 +1080,7 @@ wan_up(char *wan_ifname, int unit, int is_static)
 }
 
 void
-wan_down(char *wan_ifname, int unit)
+wan_down(char *wan_ifname, int unit, int is_static)
 {
 	char *wan_addr, *wan_gate;
 	const char *script_postw = SCRIPT_POST_WAN;
@@ -1096,7 +1092,8 @@ wan_down(char *wan_ifname, int unit)
 
 	/* deferred stop static VPN client (prevent rebuild resolv.conf) */
 	nvram_set_temp("vpnc_dns_t", "");
-	notify_rc("stop_vpn_client");
+	if (!is_static)
+		notify_rc("stop_vpn_client");
 
 #if defined (USE_IPV6)
 	if (is_wan_ipv6_type_sit() == 1)
@@ -1323,7 +1320,7 @@ notify_on_internet_state_changed(int has_internet, long elapsed)
 		{
 		case 1:
 			logmessage(LOGNAME, "Perform router auto-reboot on %s event", "Internet lost");
-			notify_rc("restart_reboot");
+			notify_rc(RCN_RESTART_REBOOT);
 			return;
 		case 2:
 			notify_rc("auto_wan_reconnect_pause");
@@ -1814,7 +1811,7 @@ udhcpc_deconfig(char *wan_ifname, int is_zcip)
 	if (is_man)
 		man_down(wan_ifname, unit);
 	else
-		wan_down(wan_ifname, unit);
+		wan_down(wan_ifname, unit, 0);
 
 	return 0;
 }

@@ -143,17 +143,20 @@ void control_if_ipv6_privacy(char *ifname, int enable)
 
 void clear_if_addr6(char *ifname)
 {
-	doSystem("ip -6 addr flush dev %s scope global", ifname);
+	if (is_interface_exist(ifname))
+		doSystem("ip -6 addr flush dev %s scope global", ifname);
 }
 
 void clear_if_route6(char *ifname)
 {
-	doSystem("ip -6 route flush dev %s", ifname);
+	if (is_interface_exist(ifname))
+		doSystem("ip -6 route flush dev %s", ifname);
 }
 
 void clear_if_neigh6(char *ifname)
 {
-	doSystem("ip -6 neigh flush dev %s", ifname);
+	if (is_interface_exist(ifname))
+		doSystem("ip -6 neigh flush dev %s", ifname);
 }
 
 void clear_all_addr6(void)
@@ -176,6 +179,7 @@ void full_restart_ipv6(int ipv6_type_old)
 		stop_httpd();
 	}
 
+	stop_upnp();
 	stop_radvd();
 	stop_dhcp6c();
 	stop_dns_dhcpd();
@@ -192,8 +196,7 @@ void full_restart_ipv6(int ipv6_type_old)
 		update_resolvconf(0, 1);
 		restart_firewall();
 		start_dns_dhcpd(0);
-	}
-	else {
+	} else {
 		control_if_ipv6_all(1);
 		clear_all_route6();
 		clear_all_addr6();
