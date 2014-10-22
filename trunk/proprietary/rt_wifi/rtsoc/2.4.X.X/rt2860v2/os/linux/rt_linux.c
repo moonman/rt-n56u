@@ -235,19 +235,6 @@ NDIS_STATUS os_free_mem(
 
 
 #if defined(RTMP_RBUS_SUPPORT) || defined (RTMP_FLASH_SUPPORT)
-/* The flag "CONFIG_RALINK_FLASH_API" is used for APSoC Linux SDK */
-#ifdef CONFIG_RALINK_FLASH_API
-
-int32_t FlashRead(uint32_t *dst, uint32_t *src, uint32_t count);
-int32_t FlashWrite(uint16_t *source, uint16_t *destination, uint32_t numBytes);
-#define NVRAM_OFFSET                            0x30000
-#if defined (CONFIG_RT2880_FLASH_32M)
-#define RF_OFFSET                               0x1FE0000
-#else
-#define RF_OFFSET                               0x40000
-#endif
-
-#else // CONFIG_RALINK_FLASH_API //
 
 #ifdef RA_MTD_RW_BY_NUM
 #if defined (CONFIG_RT2880_FLASH_32M)
@@ -262,32 +249,22 @@ extern int ra_mtd_write_nm(char *name, loff_t to, size_t len, const u_char *buf)
 extern int ra_mtd_read_nm(char *name, loff_t from, size_t len, u_char *buf);
 #endif
 
-#endif // CONFIG_RALINK_FLASH_API //
-
 void RtmpFlashRead(UCHAR * p, ULONG a, ULONG b)
 {
-#ifdef CONFIG_RALINK_FLASH_API
-	FlashRead((uint32_t *)p, (uint32_t *)a, (uint32_t)b);
-#else
 #ifdef RA_MTD_RW_BY_NUM
 	ra_mtd_read(MTD_NUM_FACTORY, 0, (size_t)b, p);
 #else
 	ra_mtd_read_nm("Factory", 0, (size_t)b, p);
 #endif
-#endif // CONFIG_RALINK_FLASH_API //
 }
 
 void RtmpFlashWrite(UCHAR * p, ULONG a, ULONG b)
 {
-#ifdef CONFIG_RALINK_FLASH_API
-	FlashWrite((uint16_t *)p, (uint16_t *)a, (uint32_t)b);
-#else
 #ifdef RA_MTD_RW_BY_NUM
 	ra_mtd_write(MTD_NUM_FACTORY, 0, (size_t)b, p);
 #else
 	ra_mtd_write_nm("Factory", 0, (size_t)b, p);
 #endif
-#endif // CONFIG_RALINK_FLASH_API //
 }
 #endif // defined(RTMP_RBUS_SUPPORT) || defined (RTMP_FLASH_SUPPORT) //
 
@@ -324,7 +301,6 @@ PNDIS_PACKET RTMP_AllocateFragPacketBuffer(
 	if (pkt)
 	{
 		MEM_DBG_PKT_ALLOC_INC(pAd);
-		RTMP_SET_PACKET_SOURCE(OSPKT_TO_RTPKT(pkt), PKTSRC_NDIS);
 	}
 
 	return (PNDIS_PACKET) pkt;
@@ -408,7 +384,6 @@ NDIS_STATUS RTMPAllocateNdisPacket(
 	// 3. update length of packet
  	skb_put(GET_OS_PKT_TYPE(pPacket), HeaderLen+DataLen);
 
-	RTMP_SET_PACKET_SOURCE(pPacket, PKTSRC_NDIS);
 //	printk("%s : pPacket = %p, len = %d\n", __FUNCTION__, pPacket, GET_OS_PKT_LEN(pPacket));
 	*ppPacket = pPacket;
 	return NDIS_STATUS_SUCCESS;
@@ -776,19 +751,13 @@ void announce_802_3_packet(
 	IN	PRTMP_ADAPTER	pAd, 
 	IN	PNDIS_PACKET	pPacket)
 {
-
-	struct sk_buff	*pRxPkt;
-#ifdef INF_PPA_SUPPORT
-        int             ret = 0;
-        unsigned int ppa_flags = 0; /* reserved for now */
-#endif // INF_PPA_SUPPORT //
-
+	struct sk_buff *pRxPkt;
 
 	ASSERT(pPacket);
-
 	MEM_DBG_PKT_FREE_INC(pAd);
 
 	pRxPkt = RTPKT_TO_OSPKT(pPacket);
+
 #ifdef CONFIG_AP_SUPPORT
 #ifdef APCLI_SUPPORT
 	IF_DEV_CONFIG_OPMODE_ON_AP(pAd)
@@ -805,44 +774,36 @@ void announce_802_3_packet(
     /* Push up the protocol stack */
 #ifdef IKANOS_VX_1X0
 	IKANOS_DataFrameRx(pAd, pRxPkt->dev, pRxPkt, pRxPkt->len);
-#else
-
-// mark for bridge fast path, 2009/06/22
-//	pRxPkt->protocol = eth_type_trans(pRxPkt, pRxPkt->dev);
+	return;
+#endif
 
 #ifdef INF_PPA_SUPPORT
 	if (ppa_hook_directpath_send_fn && pAd->PPAEnable==TRUE ) 
 	{
-		pRxPkt->protocol = eth_type_trans(pRxPkt, pRxPkt->dev);
+		int ret = 0;
+		unsigned int ppa_flags = 0; /* reserved for now */
 
+		pRxPkt->protocol = eth_type_trans(pRxPkt, pRxPkt->dev);
 		memset(pRxPkt->head,0,pRxPkt->data-pRxPkt->head-14);
 		DBGPRINT(RT_DEBUG_TRACE, ("ppa_hook_directpath_send_fn rx :ret:%d headroom:%d dev:%s pktlen:%d<===\n",ret,skb_headroom(pRxPkt)
 			,pRxPkt->dev->name,pRxPkt->len));
 		hex_dump("rx packet", pRxPkt->data, 32);
 		ret = ppa_hook_directpath_send_fn(pAd->g_if_id, pRxPkt, pRxPkt->len, ppa_flags);
-		pRxPkt=NULL;
 		return;
 
-	}	  	
+	}
 #endif // INF_PPA_SUPPORT //
 
 //#ifdef CONFIG_5VT_ENHANCE
 //	*(int*)(pRxPkt->cb) = BRIDGE_TAG; 
 //#endif
 
-#ifdef RTMP_RBUS_SUPPORT
 #ifdef CONFIG_RT2880_BRIDGING_ONLY
 	pRxPkt->cb[22]=0xa8;
 #endif // CONFIG_RT2880_BRIDGING_ONLY //
 
-#if defined(CONFIG_RA_CLASSIFIER)||defined(CONFIG_RA_CLASSIFIER_MODULE)
-	if(ra_classifier_hook_rx!= NULL)
-	{
-		ra_classifier_hook_rx(pRxPkt, classifier_cur_cycle);
-	}
-#endif // CONFIG_RA_CLASSIFIER //
-
-#if !defined(CONFIG_RA_NAT_NONE)
+#if defined (CONFIG_RA_HW_NAT) || defined (CONFIG_RA_HW_NAT_MODULE)
+#if !defined (CONFIG_RA_NAT_NONE)
 	/*
 	 * ra_sw_nat_hook_rx return 1 --> continue
 	 * ra_sw_nat_hook_rx return 0 --> FWD & without netif_rx
@@ -856,23 +817,21 @@ void announce_802_3_packet(
 			FOE_AI(pRxPkt) = UN_HIT;
 			netif_rx(pRxPkt);
 		}
+		
+		return;
 	}
-	else
-#endif // !defined(CONFIG_RA_NAT_NONE) // 
-#endif // RTMP_RBUS_SUPPORT //
-	{
+#endif
+#endif
+
 #ifdef CONFIG_AP_SUPPORT
 #ifdef BG_FT_SUPPORT
-		if (BG_FTPH_PacketFromApHandle(pRxPkt) == 0)
-			return;
+	if (BG_FTPH_PacketFromApHandle(pRxPkt) == 0)
+		return;
 #endif // BG_FT_SUPPORT //
 #endif // CONFIG_AP_SUPPORT //
 
-		pRxPkt->protocol = eth_type_trans(pRxPkt, pRxPkt->dev);
-		netif_rx(pRxPkt);
-	}
-
-#endif // IKANOS_VX_1X0 //
+	pRxPkt->protocol = eth_type_trans(pRxPkt, pRxPkt->dev);
+	netif_rx(pRxPkt);
 }
 
 

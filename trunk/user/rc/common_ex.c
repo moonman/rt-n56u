@@ -36,11 +36,11 @@
 
 #include "rc.h"
 
-
 #define XSTR(s) STR(s)
 #define STR(s) #s
 
-long uptime(void)
+long
+uptime(void)
 {
 	struct sysinfo info;
 	sysinfo(&info);
@@ -48,7 +48,8 @@ long uptime(void)
 	return info.uptime;
 }
 
-int rand_seed_by_time(void)
+int
+rand_seed_by_time(void)
 {
 	time_t atime;
 
@@ -60,7 +61,8 @@ int rand_seed_by_time(void)
 }
 
 /* convert mac address format from XXXXXXXXXXXX to XX:XX:XX:XX:XX:XX */
-char *mac_conv(char *mac_name, int idx, char *buf)
+char *
+mac_conv(char *mac_name, int idx, char *buf)
 {
 	char *mac, name[32];
 	int i, j;
@@ -91,7 +93,8 @@ char *mac_conv(char *mac_name, int idx, char *buf)
 }
 
 /* convert mac address format from XX:XX:XX:XX:XX:XX to XXXXXXXXXXXX */
-char *mac_conv2(char *mac_name, int idx, char *buf)
+char *
+mac_conv2(char *mac_name, int idx, char *buf)
 {
 	char *mac, name[32];
 	int i, j;
@@ -119,7 +122,8 @@ char *mac_conv2(char *mac_name, int idx, char *buf)
 	return(buf);
 }
 
-int valid_subver(char subfs)
+int
+valid_subver(char subfs)
 {
 	printf("validate subfs: %c\n", subfs);	// tmp test
 	if(((subfs >= 'a') && (subfs <= 'z' )) || ((subfs >= 'A') && (subfs <= 'Z' )))
@@ -128,9 +132,10 @@ int valid_subver(char subfs)
 		return 0;
 }
 
-void get_eeprom_params(void)
+void
+get_eeprom_params(void)
 {
-	int i_offset, i_ret;
+	int i, i_offset, i_ret;
 	unsigned char buffer[32];
 	unsigned char ea[ETHER_ADDR_LEN];
 	char macaddr_wl[]  = "00:11:22:33:44:55";
@@ -138,6 +143,7 @@ void get_eeprom_params(void)
 	char macaddr_lan[] = "00:11:22:33:44:55";
 	char macaddr_wan[] = "00:11:22:33:44:56";
 	char country_code[4];
+	char regspec_code[8];
 	char wps_pin[12];
 	char productid[16];
 	char fwver[8], fwver_sub[32], blver[32];
@@ -162,7 +168,7 @@ void get_eeprom_params(void)
 	if (buffer[0] != 0xff)
 		ether_etoa(buffer, macaddr_rt);
 
-#if defined (BOARD_N14U)
+#if defined (BOARD_N14U) || defined (BOARD_N11P)
 	i_offset = 0x4018E; // wdf?
 #else
 	i_offset = OFFSET_MAC_GMAC0;
@@ -180,7 +186,7 @@ void get_eeprom_params(void)
 		ether_etoa(buffer, macaddr_lan);
 	}
 
-#if defined (BOARD_N14U)
+#if defined (BOARD_N14U) || defined (BOARD_N11P)
 	buffer[5] |= 0x03; // last 2 bits reserved by ASUS for MBSSID, use 0x03 for WAN (ra1: 0x01, apcli0: 0x02)
 	ether_etoa(buffer, macaddr_wan);
 #else
@@ -201,43 +207,65 @@ void get_eeprom_params(void)
 	}
 #endif
 
-	nvram_set("il0macaddr", macaddr_lan); // LAN
-	nvram_set("il1macaddr", macaddr_wan); // WAN
-	nvram_set("wl_macaddr", macaddr_wl);  // 5 GHz
-	nvram_set("rt_macaddr", macaddr_rt);  // 2.4 GHZ
+	nvram_set_temp("il0macaddr", macaddr_lan); // LAN
+	nvram_set_temp("il1macaddr", macaddr_wan); // WAN
+	nvram_set_temp("wl_macaddr", macaddr_wl);  // 5 GHz
+	nvram_set_temp("rt_macaddr", macaddr_rt);  // 2.4 GHZ
 
 	/* reserved for Ralink. used as ASUS country code. */
 	memset(country_code, 0, sizeof(country_code));
-	if (FRead(country_code, OFFSET_COUNTRY_CODE, 2)<0) {
-		dbg("READ ASUS country code: Out of scope\n");
+	if (FRead(country_code, OFFSET_COUNTRY_CODE, 2) < 0) {
 		strcpy(country_code, "GB");
 	} else {
 		country_code[2] = 0;
-		if ((unsigned char)country_code[0]==0xff)
+		for (i = 1; i >= 0; i--) {
+			if ((unsigned char)country_code[i] > 0x7f)
+				country_code[i] = 0;
+		}
+		if (country_code[0] == 0)
 			strcpy(country_code, "GB");
 	}
-	
+
 	if (strlen(nvram_safe_get("rt_country_code")) == 0)
 		nvram_set("rt_country_code", country_code);
-	
+
 	if (strlen(nvram_safe_get("wl_country_code")) == 0)
 		nvram_set("wl_country_code", country_code);
-	
-	if (!strcasecmp(nvram_safe_get("wl_country_code"), "BR"))
-		nvram_set("wl_country_code", "UZ");
+
+	/* reserved for Ralink. used as ASUS RegSpec code. */
+	memset(regspec_code, 0, sizeof(regspec_code));
+	if (FRead(regspec_code, OFFSET_REGSPEC_CODE, 4) < 0) {
+		strcpy(regspec_code, "CE");
+	} else {
+		regspec_code[4] = 0;
+		for (i = 3; i >= 0; i--) {
+			if ((unsigned char)regspec_code[i] > 0x7f)
+				regspec_code[i] = 0;
+		}
+		if (strcasecmp(regspec_code, "CE") &&
+		    strcasecmp(regspec_code, "SG") &&
+		    strcasecmp(regspec_code, "AU") &&
+		    strcasecmp(regspec_code, "FCC") &&
+		    strcasecmp(regspec_code, "NCC"))
+			strcpy(regspec_code, "CE");
+	}
+	nvram_set_temp("regspec_code", regspec_code);
 
 	/* reserved for Ralink. used as ASUS pin code. */
 	memset(wps_pin, 0, sizeof(wps_pin));
-	if (FRead(wps_pin, OFFSET_PIN_CODE, 8)<0) {
-		dbg("READ ASUS pin code: Out of scope\n");
+	if (FRead(wps_pin, OFFSET_PIN_CODE, 8) < 0) {
 		strcpy(wps_pin, "12345670");
 	} else {
 		wps_pin[8] = 0;
-		if ((unsigned char)wps_pin[0]==0xff)
+		for (i = 7; i >= 0; i--) {
+			if ((unsigned char)wps_pin[i] < 0x30 ||
+			    (unsigned char)wps_pin[i] > 0x39)
+				wps_pin[i] = 0;
+		}
+		if (wps_pin[0] == 0)
 			strcpy(wps_pin, "12345670");
 	}
-
-	nvram_set("secret_code", wps_pin);
+	nvram_set_temp("secret_code", wps_pin);
 
 #if defined(USE_RT3352_MII)
  #define EEPROM_INIC_SIZE (512)
@@ -262,9 +290,8 @@ void get_eeprom_params(void)
 	snprintf(productid, sizeof(productid), "%s", BOARD_PID);
 	memset(buffer, 0, sizeof(buffer));
 	if (FRead(buffer, 0x50020, 32)<0) {
-		dbg("READ firmware header: Out of scope\n");
-		nvram_set("productid", "unknown");
-		nvram_set("firmver", "unknown");
+		nvram_set_temp("productid", "unknown");
+		nvram_set_temp("firmver", "unknown");
 	} else {
 		strncpy(productid, buffer + 4, 12);
 		productid[12] = 0;
@@ -280,14 +307,14 @@ void get_eeprom_params(void)
 #if defined(FWBLDSTR)
 	snprintf(fwver_sub, sizeof(fwver_sub), "%s-%s", fwver_sub, FWBLDSTR);
 #endif
-	nvram_set("productid", trim_r(productid));
-	nvram_set("firmver", trim_r(fwver));
-	nvram_set("firmver_sub", trim_r(fwver_sub));
+	nvram_set_temp("productid", trim_r(productid));
+	nvram_set_temp("firmver", trim_r(fwver));
+	nvram_set_temp("firmver_sub", trim_r(fwver_sub));
 
 	memset(buffer, 0, 4);
 	FRead(buffer, OFFSET_BOOT_VER, 4);
 	sprintf(blver, "%s-0%c-0%c-0%c-0%c", trim_r(productid), buffer[0], buffer[1], buffer[2], buffer[3]);
-	nvram_set("blver", trim_r(blver));
+	nvram_set_temp("blver", trim_r(blver));
 
 #if 0
 	// TXBF, not used yet
@@ -312,7 +339,8 @@ void get_eeprom_params(void)
 #endif
 }
 
-void update_router_mode(void)
+void
+update_router_mode(void)
 {
 	if (nvram_get_int("sw_mode") != 3)
 	{
@@ -323,7 +351,8 @@ void update_router_mode(void)
 	}
 }
 
-void set_pagecache_reclaim(void)
+void
+set_pagecache_reclaim(void)
 {
 	int pagecache_ratio = 100;
 	int pagecache_reclaim = nvram_get_int("pcache_reclaim");
@@ -336,7 +365,8 @@ void set_pagecache_reclaim(void)
 	fput_int("/proc/sys/vm/pagecache_ratio", pagecache_ratio);
 }
 
-void restart_all_sysctl(void)
+void
+restart_all_sysctl(void)
 {
 	if (!get_ap_mode()) {
 		set_nf_conntrack();
@@ -346,7 +376,8 @@ void restart_all_sysctl(void)
 	}
 }
 
-void char_to_ascii(char *output, char *input)
+void
+char_to_ascii(char *output, char *input)
 {
 	int i;
 	char tmp[10];
@@ -377,7 +408,8 @@ void char_to_ascii(char *output, char *input)
 	*(ptr) = '\0';
 }
 
-int fput_string(const char *name, const char *value)
+int
+fput_string(const char *name, const char *value)
 {
 	FILE *fp;
 
@@ -391,14 +423,16 @@ int fput_string(const char *name, const char *value)
 	}
 }
 
-int fput_int(const char *name, int value)
+int
+fput_int(const char *name, int value)
 {
 	char svalue[32];
 	sprintf(svalue, "%d", value);
 	return fput_string(name, svalue);
 }
 
-unsigned int get_param_int_hex(const char *param)
+unsigned int
+get_param_int_hex(const char *param)
 {
 	unsigned int retVal = 0;
 
@@ -422,7 +456,8 @@ is_param_forbidden(char *line, const char **forbid_list)
 	return 0;
 }
 
-void load_user_config(FILE *fp, const char *dir_name, const char *file_name, const char **forbid_list)
+void
+load_user_config(FILE *fp, const char *dir_name, const char *file_name, const char **forbid_list)
 {
 	FILE *fp_user;
 	char line[256], real_path[128];
@@ -449,7 +484,8 @@ void load_user_config(FILE *fp, const char *dir_name, const char *file_name, con
 	}
 }
 
-int is_module_loaded(char *module_name)
+int
+is_module_loaded(char *module_name)
 {
 	DIR *dir_to_open = NULL;
 	char sys_path[128];
@@ -465,7 +501,8 @@ int is_module_loaded(char *module_name)
 	return 0;
 }
 
-int get_module_refcount(char *module_name)
+int
+get_module_refcount(char *module_name)
 {
 	FILE *fp;
 	char mod_path[64], mod_refval[16];
@@ -486,7 +523,8 @@ int get_module_refcount(char *module_name)
 	return refcount;
 }
 
-int module_smart_load(char *module_name, char *module_param)
+int
+module_smart_load(char *module_name, char *module_param)
 {
 	int ret;
 
@@ -501,7 +539,8 @@ int module_smart_load(char *module_name, char *module_param)
 	return (ret == 0) ? 1 : 0;
 }
 
-int module_smart_unload(char *module_name, int recurse_unload)
+int
+module_smart_unload(char *module_name, int recurse_unload)
 {
 	int ret;
 	int refcount = get_module_refcount(module_name);
@@ -522,7 +561,8 @@ int module_smart_unload(char *module_name, int recurse_unload)
 	return (ret == 0) ? 1 : 0;
 }
 
-int module_param_get(char *module_name, char *module_param, char *param_value, size_t param_value_size)
+int
+module_param_get(char *module_name, char *module_param, char *param_value, size_t param_value_size)
 {
 	FILE *fp;
 	char mod_path[256];
@@ -545,7 +585,8 @@ int module_param_get(char *module_name, char *module_param, char *param_value, s
 	return 0;
 }
 
-int module_param_set_int(char *module_name, char *module_param, int param_value)
+int
+module_param_set_int(char *module_name, char *module_param, int param_value)
 {
 	char mod_path[256];
 
@@ -564,7 +605,8 @@ oom_score_adjust(pid_t pid, int oom_score_adj)
 	fput_int(proc_path, oom_score_adj);
 }
 
-void kill_services(char* svc_name[], int wtimeout, int forcekill)
+void
+kill_services(char* svc_name[], int wtimeout, int forcekill)
 {
 	int i, k, i_waited, i_killed;
 	
@@ -602,7 +644,8 @@ void kill_services(char* svc_name[], int wtimeout, int forcekill)
 	}
 }
 
-int kill_process_pidfile(char *pidfile, int wtimeout, int forcekill)
+int
+kill_process_pidfile(char *pidfile, int wtimeout, int forcekill)
 {
 	int i, result = -1;
 
@@ -624,7 +667,8 @@ int kill_process_pidfile(char *pidfile, int wtimeout, int forcekill)
 	return result;
 }
 
-int create_file(const char *fn)
+int
+create_file(const char *fn)
 {
 	int fd = open(fn, O_RDWR | O_CREAT, 0666);
 	if (fd >= 0) {
@@ -730,7 +774,6 @@ if_dircase_exist(const char *dir, const char *subdir)
 				return strdup(oldpath);
 			}
 		}
-
 		closedir(dirp);
 	}
 

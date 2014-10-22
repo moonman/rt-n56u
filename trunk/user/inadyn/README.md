@@ -41,15 +41,18 @@ DDNS plugin.  See below for configuration examples.
 * http://www.changeip.com
 * http://www.zerigo.com
 * http://www.dhis.org
-* http://www.duckdns.org
 * https://nsupdate.info
+* https://duckdns.org
+* https://www.loopia.com
+* https://www.namecheap.com
 
 Some of these services are free of charge for non-commercial use, others
 take a small fee, but also provide more domains to choose from.
 
-Inadyn v1.99.8 and later support HTTPS (v1.99.11 and later also support SNI),
-for DDNS providers that support this (you must check this yourself).
-Tested are DynDNS, FreeDNS and nsupdate.info.
+Inadyn v1.99.8 and later support HTTPS (v1.99.11 and later also support
+SNI), for DDNS providers that support this (you must check this
+yourself).  Tested are DynDNS, FreeDNS, nsupdate.info, and Loopia.
+
 Using HTTPS is recommended since it protects your credentials from being
 snooped and further reduces the risk of someone hijacking your account.
 
@@ -123,6 +126,21 @@ this:
         username myuser
         password mypass
         alias myalias.dd-dns.de
+
+For Namecheap DDNS:
+
+    system custom@http_srv_basic_auth
+        ssl
+        server-name dynamicdns.park-your-domain.com
+        server-url /update?domain=YOURDOMAIN.TLD&password=NAMECHEAP-PROVIDED-DDNS-PASSWORD&host=
+        alias myalias
+        username your-username
+        password namecheap-provided-ddns-password
+
+Leave `server-name` as is, and change `myalias` if you wish to use a
+subdomain if you wish to use one. Username is your Namecheap username, and
+password would be the one given to you in the Dynamic DNS panel from
+Namecheap.
 
 When using the generic plugin you should first inspect the response from
 the DDNS provider.  Inadyn currently looks for a 200 HTTP response OK

@@ -201,7 +201,7 @@ static inline int ip_finish_output2(struct sk_buff *skb)
 		}
 		if (skb->sk)
 			skb_set_owner_w(skb2, skb->sk);
-		kfree_skb(skb);
+		consume_skb(skb);
 		skb = skb2;
 	}
 
@@ -697,7 +697,7 @@ slow_path:
 
 		IP_INC_STATS(dev_net(dev), IPSTATS_MIB_FRAGCREATES);
 	}
-	kfree_skb(skb);
+	consume_skb(skb);
 	IP_INC_STATS(dev_net(dev), IPSTATS_MIB_FRAGOKS);
 	return err;
 
@@ -824,7 +824,7 @@ static int __ip_append_data(struct sock *sk,
 
 	if (cork->length + length > 0xFFFF - fragheaderlen) {
 		ip_local_error(sk, EMSGSIZE, fl4->daddr, inet->inet_dport,
-			       mtu-exthdrlen);
+			       mtu - (opt ? opt->optlen : 0));
 		return -EMSGSIZE;
 	}
 
@@ -1158,7 +1158,8 @@ ssize_t	ip_append_page(struct sock *sk, struct flowi4 *fl4, struct page *page,
 	maxfraglen = ((mtu - fragheaderlen) & ~7) + fragheaderlen;
 
 	if (cork->length + size > 0xFFFF - fragheaderlen) {
-		ip_local_error(sk, EMSGSIZE, fl4->daddr, inet->inet_dport, mtu);
+		ip_local_error(sk, EMSGSIZE, fl4->daddr, inet->inet_dport,
+			       mtu - (opt ? opt->optlen : 0));
 		return -EMSGSIZE;
 	}
 
@@ -1339,11 +1340,11 @@ struct sk_buff *__ip_make_skb(struct sock *sk,
 	iph->ihl = 5;
 	iph->tos = inet->tos;
 	iph->frag_off = df;
-	ip_select_ident(skb, sk);
 	iph->ttl = ttl;
 	iph->protocol = sk->sk_protocol;
 	iph->saddr = fl4->saddr;
 	iph->daddr = fl4->daddr;
+	ip_select_ident(skb, sk);
 
 	if (opt) {
 		iph->ihl += opt->optlen>>2;

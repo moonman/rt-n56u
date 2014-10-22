@@ -684,6 +684,7 @@ static const struct inadyn_system_t {
 	{ "WWW.SITELUTIONS.COM",  "default@sitelutions.com"    },
 	{ "WWW.ZERIGO.COM",       "default@zerigo.com"         },
 	{ "WWW.DHIS.ORG",         "default@dhis.org"           },
+	{ "WWW.NIC.RU",           "default@nic.ru"             },
 	{ "WWW.DUCKDNS.ORG",      "default@duckdns.org"        },
 	{ "WWW.TUNNELBROKER.NET", "ipv6tb@he.net"              },
 	{ "DNS.HE.NET",           "dyndns@he.net"              },
@@ -763,7 +764,7 @@ write_inadyn_conf(const char *conf_file, int use_delay)
 		char mac_str[16] = {0};
 		unsigned char mac_bin[ETHER_ADDR_LEN] = {0};
 		
-#if defined (BOARD_N14U)
+#if defined (BOARD_N14U) || defined (BOARD_N11P)
 		/* use original MAC from EEPROM */
 		ether_atoe(nvram_safe_get("il0macaddr"), mac_bin);
 #else
@@ -906,7 +907,7 @@ manual_ddns_hostname_check(void)
 
 	stop_ddns();
 
-#if defined (BOARD_N14U)
+#if defined (BOARD_N14U) || defined (BOARD_N11P)
 	/* use original MAC from EEPROM */
 	ether_atoe(nvram_safe_get("il0macaddr"), mac_bin);
 #else
