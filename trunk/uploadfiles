@@ -1,0 +1,7 @@
+#!/bin/bash
+
+## Just a simple example of how to upload to mediafire from a script
+## Either copy this file to a location in PATH or change build_all to
+## to call this script from this folder i.e. ./uploadfiles
+
+plowup --folder=$1 -b <email>:<password> mediafire $2
