@@ -90,7 +90,8 @@ then
       ## For obvious reasons it is not included.
       uploadfiles  "${_path: -4}" "./images/RT-N*"
     else
-      cp ./images/RT-N* ../images/$_path
+      mkdir -p ../images/$_path
+      cp ./images/RT-N* ../images/$_path/
     fi
 
     ./clear_tree
