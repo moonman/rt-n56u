@@ -247,30 +247,6 @@ NDIS_STATUS os_free_mem(
 }
 
 #if defined(RTMP_RBUS_SUPPORT) || defined (RTMP_FLASH_SUPPORT)
-/* The flag "CONFIG_RALINK_FLASH_API" is used for APSoC Linux SDK */
-#ifdef CONFIG_RALINK_FLASH_API
-
-int32_t FlashRead(
-	uint32_t *dst,
-	uint32_t *src,
-	uint32_t count);
-
-int32_t FlashWrite(
-	uint16_t *source,
-	uint16_t *destination,
-	uint32_t numBytes);
-#define NVRAM_OFFSET                            0x30000
-#if defined (CONFIG_RT2880_FLASH_32M)
-#define RF_OFFSET                               0x1FE0000
-#else
-#ifdef RTMP_FLASH_SUPPORT
-#define RF_OFFSET                               0x48000
-#else
-#define RF_OFFSET                               0x40000
-#endif /* RTMP_FLASH_SUPPORT */
-#endif
-
-#else /* CONFIG_RALINK_FLASH_API */
 
 #ifdef RA_MTD_RW_BY_NUM
 #if defined (CONFIG_RT2880_FLASH_32M)
@@ -303,22 +279,16 @@ extern int ra_mtd_read_nm(
 	u_char *buf);
 #endif
 
-#endif /* CONFIG_RALINK_FLASH_API */
-
 void RtmpFlashRead(
 	UCHAR * p,
 	ULONG a,
 	ULONG b)
 {
-#ifdef CONFIG_RALINK_FLASH_API
-	FlashRead((uint32_t *) p, (uint32_t *) a, (uint32_t) b);
-#else
 #ifdef RA_MTD_RW_BY_NUM
 	ra_mtd_read(MTD_NUM_FACTORY, 0, (size_t) b, p);
 #else
 	ra_mtd_read_nm("Factory", a&0xFFFF, (size_t) b, p);
 #endif
-#endif /* CONFIG_RALINK_FLASH_API */
 }
 
 void RtmpFlashWrite(
@@ -326,15 +296,11 @@ void RtmpFlashWrite(
 	ULONG a,
 	ULONG b)
 {
-#ifdef CONFIG_RALINK_FLASH_API
-	FlashWrite((uint16_t *) p, (uint16_t *) a, (uint32_t) b);
-#else
 #ifdef RA_MTD_RW_BY_NUM
 	ra_mtd_write(MTD_NUM_FACTORY, 0, (size_t) b, p);
 #else
 	ra_mtd_write_nm("Factory", a&0xFFFF, (size_t) b, p);
 #endif
-#endif /* CONFIG_RALINK_FLASH_API */
 }
 #endif /* defined(RTMP_RBUS_SUPPORT) || defined (RTMP_FLASH_SUPPORT) */
 
@@ -366,7 +332,6 @@ PNDIS_PACKET RTMP_AllocateFragPacketBuffer(
 
 	if (pkt) {
 		MEM_DBG_PKT_ALLOC_INC(pkt);
-		RTMP_SET_PACKET_SOURCE(OSPKT_TO_RTPKT(pkt), PKTSRC_NDIS);
 	}
 
 	return (PNDIS_PACKET) pkt;
@@ -410,7 +375,6 @@ NDIS_STATUS RTMPAllocateNdisPacket(
 	/* 3. update length of packet */
 	skb_put(GET_OS_PKT_TYPE(pPacket), HeaderLen + DataLen);
 
-	RTMP_SET_PACKET_SOURCE(pPacket, PKTSRC_NDIS);
 /*	printk(KERN_ERR "%s : pPacket = %p, len = %d\n", __FUNCTION__,
 	pPacket, GET_OS_PKT_LEN(pPacket));*/
 	*ppPacket = pPacket;
@@ -2343,25 +2307,6 @@ char *RtmpOsGetNetDevName(IN VOID *pDev) {
 	return ((PNET_DEV) pDev)->name;
 }
 
-/*
-========================================================================
-Routine Description:
-	Assign protocol to the packet.
-
-Arguments:
-	pPkt			- the packet
-
-Return Value:
-	None
-
-Note:
-========================================================================
-*/
-VOID RtmpOsPktProtocolAssign(IN PNDIS_PACKET pNetPkt) {
-	struct sk_buff *pRxPkt = RTPKT_TO_OSPKT(pNetPkt);
-	pRxPkt->protocol = eth_type_trans(pRxPkt, pRxPkt->dev);
-}
-
 BOOLEAN RtmpOsStatsAlloc(IN VOID **ppStats,
 			 IN VOID **ppIwStats) {
 	os_alloc_mem(NULL, (UCHAR **) ppStats,
@@ -2380,27 +2325,6 @@ BOOLEAN RtmpOsStatsAlloc(IN VOID **ppStats,
 #endif
 
 	return TRUE;
-}
-
-/*
-========================================================================
-Routine Description:
-	Pass the received packet to OS.
-
-Arguments:
-	pPkt			- the packet
-
-Return Value:
-	None
-
-Note:
-========================================================================
-*/
-VOID RtmpOsPktRcvHandle(IN PNDIS_PACKET pNetPkt) {
-	struct sk_buff *pRxPkt = RTPKT_TO_OSPKT(pNetPkt);
-
-
-	netif_rx(pRxPkt);
 }
 
 VOID RtmpOsTaskPidInit(IN RTMP_OS_PID *pPid) {
@@ -2478,29 +2402,6 @@ PNDIS_PACKET RtmpOsPktIappMakeUp(IN PNET_DEV pNetDev,
 	return pNetBuf;
 }
 #endif /* IAPP_SUPPORT */
-
-VOID RtmpOsPktNatMagicTag(IN PNDIS_PACKET pNetPkt) {
-#ifdef RTMP_RBUS_SUPPORT
-#if !defined(CONFIG_RA_NAT_NONE)
-#if defined (CONFIG_RA_HW_NAT)  || defined (CONFIG_RA_HW_NAT_MODULE)
-	struct sk_buff *pRxPkt = RTPKT_TO_OSPKT(pNetPkt);
-	FOE_MAGIC_TAG(pRxPkt) = FOE_MAGIC_EXTIF;
-#endif /* CONFIG_RA_HW_NAT || CONFIG_RA_HW_NAT_MODULE */
-#endif /* CONFIG_RA_NAT_NONE */
-#endif /* RTMP_RBUS_SUPPORT */
-}
-
-VOID RtmpOsPktNatNone(IN PNDIS_PACKET pNetPkt) {
-#ifdef RTMP_RBUS_SUPPORT
-#if !defined(CONFIG_RA_NAT_NONE)
-#if defined (CONFIG_RA_HW_NAT)  || defined (CONFIG_RA_HW_NAT_MODULE)
-	struct sk_buff *pRxPkt = RTPKT_TO_OSPKT(pNetPkt);
-	FOE_AI(pRxPkt) = UN_HIT;
-#endif /* CONFIG_RA_HW_NAT || CONFIG_RA_HW_NAT_MODULE */
-#endif /* CONFIG_RA_NAT_NONE */
-#endif /* RTMP_RBUS_SUPPORT */
-}
-
 
 #ifdef RT_CFG80211_SUPPORT
 /* all available channels */
@@ -4962,7 +4863,6 @@ VOID RtmpOsPktBodyCopy(IN PNET_DEV pNetDev,
 		       IN PUCHAR pData) {
 	memcpy(skb_put(pNetPkt, ThisFrameLen), pData, ThisFrameLen);
 	SET_OS_PKT_NETDEV(pNetPkt, pNetDev);
-	RTMP_SET_PACKET_SOURCE(OSPKT_TO_RTPKT(pNetPkt), PKTSRC_NDIS);
 }
 
 /*
