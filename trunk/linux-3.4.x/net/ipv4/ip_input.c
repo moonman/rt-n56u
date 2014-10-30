@@ -241,9 +241,11 @@ static int ip_local_deliver_finish(struct sk_buff *skb)
 					icmp_send(skb, ICMP_DEST_UNREACH,
 						  ICMP_PROT_UNREACH, 0);
 				}
-			} else
+				kfree_skb(skb);
+			} else {
 				IP_INC_STATS_BH(net, IPSTATS_MIB_INDELIVERS);
-			kfree_skb(skb);
+				consume_skb(skb);
+			}
 		}
 	}
  out:
@@ -339,13 +341,7 @@ static int ip_rcv_finish(struct sk_buff *skb)
 		int err = ip_route_input_noref(skb, iph->daddr, iph->saddr,
 					       iph->tos, skb->dev);
 		if (unlikely(err)) {
-			if (err == -EHOSTUNREACH)
-				IP_INC_STATS_BH(dev_net(skb->dev),
-						IPSTATS_MIB_INADDRERRORS);
-			else if (err == -ENETUNREACH)
-				IP_INC_STATS_BH(dev_net(skb->dev),
-						IPSTATS_MIB_INNOROUTES);
-			else if (err == -EXDEV)
+			if (err == -EXDEV)
 				NET_INC_STATS_BH(dev_net(skb->dev),
 						 LINUX_MIB_IPRPFILTER);
 			goto drop;

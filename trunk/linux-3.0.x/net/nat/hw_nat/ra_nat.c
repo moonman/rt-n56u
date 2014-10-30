@@ -88,10 +88,12 @@ extern u32 ralink_asic_rev_id;
 extern int (*ra_sw_nat_hook_rx) (struct sk_buff * skb);
 extern int (*ra_sw_nat_hook_tx) (struct sk_buff * skb, int gmac_no);
 extern int (*ra_sw_nat_hook_rs) (struct net_device *dev, int hold);
+extern int (*ra_sw_nat_hook_ec) (int engine_init);
 
 static int		ppe_udp_bug = 0;
 
 struct FoeEntry		*PpeFoeBase = NULL;
+dma_addr_t		PpeFoeBasePhy = 0;
 uint32_t		PpeFoeTblSize = FOE_4TB_SIZ;
 struct net_device	*DstPort[MAX_IF_NUM];
 DEFINE_SPINLOCK(ppe_foe_lock);
@@ -423,6 +425,10 @@ uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
 		NAT_DEBUG("HNAT: %s, unknown interface %s\n", __FUNCTION__, skb->dev->name);
 		return 1;
 	}
+
+	/* check GMAC1 interface exist and open */
+	if (!DstPort[DP_GMAC1] || !(DstPort[DP_GMAC1]->flags & IFF_UP))
+		return 1;
 
 	/* set pointer to L2 header before call dev_queue_xmit */
 	skb_reset_network_header(skb);
@@ -919,14 +925,6 @@ uint32_t PpeSetExtIfNum(struct sk_buff *skb, struct FoeEntry* foe_entry)
 		offset = DP_NIC1;
 	}
 #endif
-	else if (skb->dev == DstPort[DP_GMAC1]) {
-		offset = DP_GMAC1;
-	}
-#if defined (CONFIG_RAETH_GMAC2)
-	else if (skb->dev == DstPort[DP_GMAC2]) {
-		offset = DP_GMAC2;
-	}
-#endif
 	else {
 		NAT_DEBUG("HNAT: %s, unknown interface %s\n", __FUNCTION__, skb->dev->name);
 		return 1;
@@ -1310,8 +1308,11 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 		uint32_t fpidx = 0; /* 0: to CPU */
 		if (is_mcast)
 			fpidx |= 0x80;
-#else
-		uint32_t fpidx = (is_mcast) ? 8 : 6; /* 6: force to CPU, 8: no force port */
+#endif
+#if defined (CONFIG_RALINK_MT7620)
+		uint32_t fpidx = 6; /* 6: force to P6 */
+		if (is_mcast)
+			fpidx = 8; /* 8: no force port */
 #endif
 		if (IS_IPV4_GRP(&foe_entry)) {
 			PpeSetInfoBlk2(&foe_entry.ipv4_hnapt.iblk2, fpidx, 0x3F, 0x3F);
@@ -1352,8 +1353,15 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry_ppe, int gm
 		uint32_t fpidx = 1; /* 1: to GSW */
 		if (is_mcast)
 			fpidx |= 0x80;
+#endif
+#if defined (CONFIG_RALINK_MT7620)
+#if defined (CONFIG_RAETH_HAS_PORT5) && !defined (CONFIG_RAETH_HAS_PORT4) && !defined (CONFIG_RAETH_ESW)
+		uint32_t fpidx = 5; /* 5: force P5 */
+#elif defined (CONFIG_RAETH_HAS_PORT4) && !defined (CONFIG_RAETH_HAS_PORT5) && !defined (CONFIG_RAETH_ESW)
+		uint32_t fpidx = 4; /* 4: force P4 */
 #else
-		uint32_t fpidx = 8; /* 8: no force port */
+		uint32_t fpidx = 8; /* 8: no force port (use DA) */
+#endif
 #endif
 		if (IS_IPV4_GRP(&foe_entry)) {
 			if ((foe_entry.ipv4_hnapt.vlan1 & VLAN_VID_MASK) != lan_vid)
@@ -1835,15 +1843,8 @@ void PpeSetFoeEbl(uint32_t FoeEbl)
 	RegWrite(PPE_FLOW_SET, PpeFlowSet);
 }
 
-static int PpeSetFoeHashMode(uint32_t HashMode)
+static void PpeSetFoeHashMode(uint32_t HashMode)
 {
-	dma_addr_t PpeFoeBasePhy = 0;
-
-	/* Get allocated FoE table from raeth */
-	PpeFoeBase = get_foe_table(&PpeFoeBasePhy, &PpeFoeTblSize);
-	if (!PpeFoeBase)
-		return -ENOMEM;
-
 	memset(PpeFoeBase, 0, PpeFoeTblSize * sizeof(struct FoeEntry));
 
 	RegWrite(PPE_FOE_BASE, PpeFoeBasePhy);
@@ -1885,8 +1886,6 @@ static int PpeSetFoeHashMode(uint32_t HashMode)
 
 	/* Set action for FOE search miss */
 	RegModifyBits(PPE_FOE_CFG, FWD_CPU_BUILD_ENTRY, 4, 2);
-
-	return 0;
 }
 
 static void PpeSetAgeOut(void)
@@ -1999,11 +1998,16 @@ static void PpeSetFoeGloCfgEbl(uint32_t Ebl)
 		tpf |= (IPV6_PPE_MC | IPV6_PPE_IPM);
 #endif
 #endif
+
+#if defined (CONFIG_RAETH_ESW)
 		RegWrite(TPF0, tpf);
 		RegWrite(TPF1, tpf);
 		RegWrite(TPF2, tpf);
 		RegWrite(TPF3, tpf);
+#endif
+#if defined (CONFIG_RAETH_HAS_PORT4) || defined (CONFIG_RAETH_ESW)
 		RegWrite(TPF4, tpf);
+#endif
 #if defined (CONFIG_RAETH_HAS_PORT5)
 		RegWrite(TPF5, tpf);
 #endif
@@ -2068,9 +2072,6 @@ static void PpeSetFoeGloCfgEbl(uint32_t Ebl)
 
 		/* Forced Port7 link down */
 		RegWrite(PMCR_P7, 0x5e330);
-
-		/* Enable SA Learning */
-		RegModifyBits(PSC_P7, 0, 4, 1);
 #else
 		/* PPE Engine Disable */
 		RegModifyBits(PPE_GLO_CFG, 0, 0, 1);
@@ -2194,6 +2195,15 @@ static int32_t PpeEngStart(void)
 
 	/* which protocol type should be handle by HNAT not HNAPT */
 	PpeSetHNATProtoType();
+
+#if defined (CONFIG_RALINK_MT7620)
+	/* Turn On UDP Control */
+	if ((ralink_asic_rev_id & 0xF) >= 5) {
+		uint32_t reg = RegRead(RALINK_PPE_BASE + 0x380);
+		reg &= ~(0x1 << 30);
+		RegWrite(RALINK_PPE_BASE + 0x380, reg);
+	}
+#endif
 
 	return 0;
 }
@@ -2422,6 +2432,7 @@ static void PpeSetCacheEbl(void)
 static void PpeSetSwitchVlanChk(int Ebl)
 {
 #if defined (CONFIG_RALINK_MT7620)
+#if defined (CONFIG_RAETH_ESW) || (defined (CONFIG_RAETH_HAS_PORT5) && defined (CONFIG_RAETH_HAS_PORT4))
 	uint32_t reg_p6, reg_p7;
 
 	reg_p6 = (RegRead(RALINK_ETH_SW_BASE + 0x2604)) & ~0xff0003;
@@ -2429,33 +2440,39 @@ static void PpeSetSwitchVlanChk(int Ebl)
 
 	/* port6&7: fall back mode / same port matrix group */
 	if (Ebl) {
-		reg_p6 |= 0xff0003;
-		reg_p7 |= 0xff0003;
+		reg_p6 |= 0xc00003;
+		reg_p7 |= 0xc00003;
+#if defined (CONFIG_RAETH_ESW)
+		reg_p6 |= 0x0f0000;
+		reg_p7 |= 0x0f0000;
+#endif
+#if defined (CONFIG_RAETH_HAS_PORT4) || defined (CONFIG_RAETH_ESW)
+		reg_p6 |= 0x100000;
+		reg_p7 |= 0x100000;
+#endif
+#if defined (CONFIG_RAETH_HAS_PORT5)
+		reg_p6 |= 0x200000;
+		reg_p7 |= 0x200000;
+#endif
 	} else {
 		reg_p6 |= 0xc00001;
 		reg_p7 |= 0xc00001;
 	}
 
-#if !defined (CONFIG_RAETH_HAS_PORT5)
-	reg_p6 &= ~0x200000;
-	reg_p7 &= ~0x200000;
-#endif
-
 	RegWrite(RALINK_ETH_SW_BASE + 0x2604, reg_p6);
 	RegWrite(RALINK_ETH_SW_BASE + 0x2704, reg_p7);
+#endif
 #endif
 }
 
 static void PpeSetFpBMAP(void)
 {
-#if defined (CONFIG_RALINK_MT7621)
-	/*TODO*/
-#else
-	/* index 0 = force port 0 
-	 * index 1 = force port 1 
+#if defined (CONFIG_RALINK_MT7620)
+	/* index 0 = force port 0
+	 * index 1 = force port 1
 	 * ...........
 	 * index 7 = force port 7
-	 * index 8 = no force port 
+	 * index 8 = no force port
 	 * index 9 = force to all ports
 	 */
 	RegWrite(PPE_FP_BMAP_0, 0x00020001);
@@ -2481,6 +2498,56 @@ static void PpeSetIpProt(void)
 }
 #endif
 
+int PpeEcHandler(int engine_init)
+{
+	if (engine_init) {
+		/* Set PPE FOE Hash Mode */
+		PpeSetFoeHashMode(DFL_FOE_HASH_MODE);
+		
+#if !defined (CONFIG_HNAT_V2)
+		PpeSetRuleSize(PRE_ACL_SIZE, PRE_MTR_SIZE, PRE_AC_SIZE, POST_MTR_SIZE, POST_AC_SIZE);
+		
+		/* 0~63 Accounting group */
+		PpeSetAGInfo(1, lan_vid);	// AG Index1=VLAN1
+		PpeSetAGInfo(2, wan_vid);	// AG Index2=VLAN2
+#else
+		PpeSetFpBMAP();
+		PpeSetIpProt();
+		PpeSetCacheEbl();
+		PpeSetSwitchVlanChk(0);
+		
+		/* 0~63 Metering group */
+//		PpeSetMtrByteInfo(1, 500, 3);	// TokenRate=500=500KB/s, MaxBkSize= 3 (32K-1B)
+//		PpeSetMtrPktInfo(1, 5, 3);	// 1 pkts/sec, MaxBkSize=3 (32K-1B)
+#endif
+		/* Initialize PPE related register */
+		PpeEngStart();
+		
+		/* Register RX/TX hook point */
+		ra_sw_nat_hook_tx = PpeTxHandler;
+		ra_sw_nat_hook_rx = PpeRxHandler;
+		
+		/* Set GMAC forwards packet to PPE */
+		SetGdmaFwd(1);
+	} else {
+		/* Set GMAC forwards packet to CPU */
+		SetGdmaFwd(0);
+		
+		/* Unregister RX/TX hook point */
+		ra_sw_nat_hook_rx = NULL;
+		ra_sw_nat_hook_tx = NULL;
+		
+		/* Restore PPE related register */
+		PpeEngStop();
+		
+#if defined (CONFIG_HNAT_V2)
+		PpeSetSwitchVlanChk(1);
+#endif
+	}
+
+	return 0;
+}
+
 /*
  * PPE Enabled: GMAC<->PPE<->CPU
  * PPE Disabled: GMAC<->CPU
@@ -2503,52 +2570,30 @@ static int __init PpeInitMod(void)
 	ppe_udp_bug = ((ralink_asic_rev_id & 0xF) < 5) ? 1 : 0;
 #endif
 
-	/* Set PPE FOE Hash Mode */
-	if (PpeSetFoeHashMode(DFL_FOE_HASH_MODE) != 0)
+	memset(DstPort, 0, sizeof(DstPort));
+
+	/* Get allocated FoE table from raeth */
+	PpeFoeBase = get_foe_table(&PpeFoeBasePhy, &PpeFoeTblSize);
+	if (!PpeFoeBase)
 		return -ENOMEM;
 
-	/* Get net_device structure of Dest Port */
-	memset(DstPort, 0, sizeof(DstPort));
+	/* Hold net_device structure of Dest Port */
 	PpeSetDstPort(1);
+
+	/* Engine Start */
+	PpeEcHandler(1);
 
 	/* Register ioctl handler */
 	PpeRegIoctlHandler();
-
 #if !defined (CONFIG_HNAT_V2)
-	PpeSetRuleSize(PRE_ACL_SIZE, PRE_MTR_SIZE, PRE_AC_SIZE, POST_MTR_SIZE, POST_AC_SIZE);
 	AclRegIoctlHandler();
 	AcRegIoctlHandler();
 	MtrRegIoctlHandler();
-	
-	/* 0~63 Accounting group */
-	PpeSetAGInfo(1, lan_vid);	// AG Index1=VLAN1
-	PpeSetAGInfo(2, wan_vid);	// AG Index2=VLAN2
-#else
-	PpeSetFpBMAP();
-	PpeSetIpProt();
-	PpeSetCacheEbl();
-	PpeSetSwitchVlanChk(0);
 #endif
 
-	/* Initialize PPE related register */
-	PpeEngStart();
-
-	/* Register RX/TX hook point */
-	ra_sw_nat_hook_tx = PpeTxHandler;
-	ra_sw_nat_hook_rx = PpeRxHandler;
+	/* Register control hook points */
 	ra_sw_nat_hook_rs = PpeRsHandler;
-
-#if defined (CONFIG_RALINK_MT7620)
-	if ((ralink_asic_rev_id & 0xF) >= 5) {
-		/* Turn On UDP Control */
-		uint32_t reg = RegRead(RALINK_PPE_BASE + 0x380);
-		reg &= ~(0x1 << 30);
-		RegWrite(RALINK_PPE_BASE + 0x380, reg);
-	}
-#endif
-
-	/* Set GMAC forwards packet to PPE */
-	SetGdmaFwd(1);
+	ra_sw_nat_hook_ec = PpeEcHandler;
 
 	printk("Ralink HW NAT %s Module Enabled, FoE Size: %d\n",
 		HW_NAT_MODULE_VER, PpeFoeTblSize);
@@ -2560,16 +2605,12 @@ static void __exit PpeCleanupMod(void)
 {
 	printk("Ralink HW NAT %s Module Disabled\n", HW_NAT_MODULE_VER);
 
-	/* Set GMAC forwards packet to CPU */
-	SetGdmaFwd(0);
-
-	/* Unregister RX/TX hook point */
-	ra_sw_nat_hook_rx = NULL;
-	ra_sw_nat_hook_tx = NULL;
+	/* Unregister control hook points */
 	ra_sw_nat_hook_rs = NULL;
+	ra_sw_nat_hook_ec = NULL;
 
-	/* Restore PPE related register */
-	PpeEngStop();
+	/* Engine Stop */
+	PpeEcHandler(0);
 
 	/* Unregister ioctl handler */
 	PpeUnRegIoctlHandler();
@@ -2577,8 +2618,6 @@ static void __exit PpeCleanupMod(void)
 	AclUnRegIoctlHandler();
 	AcUnRegIoctlHandler();
 	MtrUnRegIoctlHandler();
-#else
-	PpeSetSwitchVlanChk(1);
 #endif
 
 	/* Release net_device structure of Dest Port */

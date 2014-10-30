@@ -353,15 +353,17 @@ static inline void TCP_ECN_send(struct sock *sk, struct sk_buff *skb,
  */
 static void tcp_init_nondata_skb(struct sk_buff *skb, u32 seq, u8 flags)
 {
+	struct skb_shared_info *shinfo = skb_shinfo(skb);
+
 	skb->ip_summed = CHECKSUM_PARTIAL;
 	skb->csum = 0;
 
 	TCP_SKB_CB(skb)->tcp_flags = flags;
 	TCP_SKB_CB(skb)->sacked = 0;
 
-	skb_shinfo(skb)->gso_segs = 1;
-	skb_shinfo(skb)->gso_size = 0;
-	skb_shinfo(skb)->gso_type = 0;
+	shinfo->gso_segs = 1;
+	shinfo->gso_size = 0;
+	shinfo->gso_type = 0;
 
 	TCP_SKB_CB(skb)->seq = seq;
 	if (flags & (TCPHDR_SYN | TCPHDR_FIN))
@@ -751,6 +753,8 @@ static unsigned tcp_established_options(struct sock *sk, struct sk_buff *skb,
 	unsigned size = 0;
 	unsigned int eff_sacks;
 
+	opts->options = 0;
+
 #ifdef CONFIG_TCP_MD5SIG
 	*md5 = tp->af_specific->md5_lookup(sk, sk);
 	if (unlikely(*md5)) {
@@ -808,19 +812,21 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 
 	BUG_ON(!skb || !tcp_skb_pcount(skb));
 
-	/* If congestion control is doing timestamping, we must
-	 * take such a timestamp before we potentially clone/copy.
-	 */
-	if (icsk->icsk_ca_ops->flags & TCP_CONG_RTT_STAMP)
-		__net_timestamp(skb);
+	if (clone_it) {
+		/* If congestion control is doing timestamping, we must
+		 * take such a timestamp before we potentially clone/copy.
+		 */
+		if (icsk->icsk_ca_ops->flags & TCP_CONG_RTT_STAMP)
+			__net_timestamp(skb);
 
-	if (likely(clone_it)) {
 		if (unlikely(skb_cloned(skb)))
 			skb = pskb_copy(skb, gfp_mask);
 		else
 			skb = skb_clone(skb, gfp_mask);
 		if (unlikely(!skb))
 			return -ENOBUFS;
+		/* Our usage of tstamp should remain private */
+		skb->tstamp.tv64 = 0;
 	}
 
 	inet = inet_sk(sk);
@@ -937,21 +943,22 @@ static void tcp_queue_skb(struct sock *sk, struct sk_buff *skb)
 static void tcp_set_skb_tso_segs(const struct sock *sk, struct sk_buff *skb,
 				 unsigned int mss_now)
 {
+	struct skb_shared_info *shinfo = skb_shinfo(skb);
+
 	/* Make sure we own this skb before messing gso_size/gso_segs */
 	WARN_ON_ONCE(skb_cloned(skb));
 
-	if (skb->len <= mss_now || !sk_can_gso(sk) ||
-	    skb->ip_summed == CHECKSUM_NONE) {
+	if (skb->len <= mss_now || skb->ip_summed == CHECKSUM_NONE) {
 		/* Avoid the costly divide in the normal
 		 * non-TSO case.
 		 */
-		skb_shinfo(skb)->gso_segs = 1;
-		skb_shinfo(skb)->gso_size = 0;
-		skb_shinfo(skb)->gso_type = 0;
+		shinfo->gso_segs = 1;
+		shinfo->gso_size = 0;
+		shinfo->gso_type = 0;
 	} else {
-		skb_shinfo(skb)->gso_segs = DIV_ROUND_UP(skb->len, mss_now);
-		skb_shinfo(skb)->gso_size = mss_now;
-		skb_shinfo(skb)->gso_type = sk->sk_gso_type;
+		shinfo->gso_segs = DIV_ROUND_UP(skb->len, mss_now);
+		shinfo->gso_size = mss_now;
+		shinfo->gso_type = sk->sk_gso_type;
 	}
 }
 
@@ -1098,6 +1105,7 @@ int tcp_fragment(struct sock *sk, struct sk_buff *skb, u32 len,
  */
 static void __pskb_trim_head(struct sk_buff *skb, int len)
 {
+	struct skb_shared_info *shinfo;
 	int i, k, eat;
 
 	eat = min_t(int, len, skb_headlen(skb));
@@ -1109,23 +1117,24 @@ static void __pskb_trim_head(struct sk_buff *skb, int len)
 	}
 	eat = len;
 	k = 0;
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
-		int size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
+	shinfo = skb_shinfo(skb);
+	for (i = 0; i < shinfo->nr_frags; i++) {
+		int size = skb_frag_size(&shinfo->frags[i]);
 
 		if (size <= eat) {
 			skb_frag_unref(skb, i);
 			eat -= size;
 		} else {
-			skb_shinfo(skb)->frags[k] = skb_shinfo(skb)->frags[i];
+			shinfo->frags[k] = shinfo->frags[i];
 			if (eat) {
-				skb_shinfo(skb)->frags[k].page_offset += eat;
-				skb_frag_size_sub(&skb_shinfo(skb)->frags[k], eat);
+				shinfo->frags[k].page_offset += eat;
+				skb_frag_size_sub(&shinfo->frags[k], eat);
 				eat = 0;
 			}
 			k++;
 		}
 	}
-	skb_shinfo(skb)->nr_frags = k;
+	shinfo->nr_frags = k;
 
 	skb_reset_tail_pointer(skb);
 	skb->data_len -= len;
@@ -1289,6 +1298,28 @@ unsigned int tcp_current_mss(struct sock *sk)
 	}
 
 	return mss_now;
+}
+
+/* RFC2861, slow part. Adjust cwnd, after it was not full during one rto.
+ * As additional protections, we do not touch cwnd in retransmission phases,
+ * and if application hit its sndbuf limit recently.
+ */
+static void tcp_cwnd_application_limited(struct sock *sk)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	if (inet_csk(sk)->icsk_ca_state == TCP_CA_Open &&
+	    sk->sk_socket && !test_bit(SOCK_NOSPACE, &sk->sk_socket->flags)) {
+		/* Limited by application or receiver window. */
+		u32 init_win = tcp_init_cwnd(tp, __sk_dst_get(sk));
+		u32 win_used = max(tp->snd_cwnd_used, init_win);
+		if (win_used < tp->snd_cwnd) {
+			tp->snd_ssthresh = tcp_current_ssthresh(sk);
+			tp->snd_cwnd = (tp->snd_cwnd + win_used) >> 1;
+		}
+		tp->snd_cwnd_used = 0;
+	}
+	tp->snd_cwnd_stamp = tcp_time_stamp;
 }
 
 /* Congestion window validation. (RFC2861) */
@@ -1924,7 +1955,8 @@ u32 __tcp_select_window(struct sock *sk)
 	 */
 	int mss = icsk->icsk_ack.rcv_mss;
 	int free_space = tcp_space(sk);
-	int full_space = min_t(int, tp->window_clamp, tcp_full_space(sk));
+	int allowed_space = tcp_full_space(sk);
+	int full_space = min_t(int, tp->window_clamp, allowed_space);
 	int window;
 
 	if (mss > full_space)
@@ -1937,7 +1969,19 @@ u32 __tcp_select_window(struct sock *sk)
 			tp->rcv_ssthresh = min(tp->rcv_ssthresh,
 					       4U * tp->advmss);
 
-		if (free_space < mss)
+		/* free_space might become our new window, make sure we don't
+		 * increase it due to wscale.
+		 */
+		free_space = round_down(free_space, 1 << tp->rx_opt.rcv_wscale);
+
+		/* if free space is less than mss estimate, or is below 1/16th
+		 * of the maximum allowed, try to move to zero-window, else
+		 * tcp_clamp_window() will grow rcv buf up to tcp_rmem[2], and
+		 * new incoming data is dropped due to memory limits.
+		 * With large window, mss test triggers way too late in order
+		 * to announce zero window in time before rmem limit kicks in.
+		 */
+		if (free_space < (allowed_space >> 4) || free_space < mss)
 			return 0;
 	}
 
@@ -2142,21 +2186,6 @@ int tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	}
 
 	tcp_retrans_try_collapse(sk, skb, cur_mss);
-
-	/* Some Solaris stacks overoptimize and ignore the FIN on a
-	 * retransmit when old data is attached.  So strip it off
-	 * since it is cheap to do so and saves bytes on the network.
-	 */
-	if (skb->len > 0 &&
-	    (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN) &&
-	    tp->snd_una == (TCP_SKB_CB(skb)->end_seq - 1)) {
-		if (!pskb_trim(skb, 0)) {
-			/* Reuse, even though it does some unnecessary work */
-			tcp_init_nondata_skb(skb, TCP_SKB_CB(skb)->end_seq - 1,
-					     TCP_SKB_CB(skb)->tcp_flags);
-			skb->ip_summed = CHECKSUM_NONE;
-		}
-	}
 
 	/* Make a copy, if the first transmission SKB clone we made
 	 * is still in somebody's hands, else make a clone.

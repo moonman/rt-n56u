@@ -2275,13 +2275,6 @@ gso:
 		skb->next = nskb->next;
 		nskb->next = NULL;
 
-		/*
-		 * If device doesn't need nskb->dst, release it right now while
-		 * its hot in this cpu cache
-		 */
-		if (dev->priv_flags & IFF_XMIT_DST_RELEASE)
-			skb_dst_drop(nskb);
-
 		skb_len = nskb->len;
 		rc = ops->ndo_start_xmit(nskb, dev);
 		trace_net_dev_xmit(nskb, rc, dev, skb_len);
@@ -2298,8 +2291,11 @@ gso:
 	} while (skb->next);
 
 out_kfree_gso_skb:
-	if (likely(skb->next == NULL))
+	if (likely(skb->next == NULL)) {
 		skb->destructor = DEV_GSO_CB(skb)->destructor;
+		consume_skb(skb);
+		return rc;
+	}
 out_kfree_skb:
 	kfree_skb(skb);
 out:
