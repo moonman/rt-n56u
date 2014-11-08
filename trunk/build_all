@@ -8,7 +8,6 @@
 ################## CONFIG ######################
 MY_VERSION=$1
 
-CLEAR_TOOLCHAIN="NO"
 BUILD_TOOLCHAIN="NO"
 
 BUILD_FIRMWARE="YES"
@@ -56,11 +55,8 @@ if [ $BUILD_TOOLCHAIN = "YES" ]
 then
   cd ../toolchain-rt3883
 
-  if [ $CLEAR_TOOLCHAIN = "YES" ]
-  then
-     ./clean_toolchain_3.0.x
-     ./clean_toolchain_3.4.x
-  fi
+  ./clean_toolchain_3.0.x
+  ./clean_toolchain_3.4.x
 
   ./clean_sources
   ./build_toolchain || exit 1

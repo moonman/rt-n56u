@@ -4314,7 +4314,7 @@ do
     for ac_prog in sed gsed; do
     for ac_exec_ext in '' $ac_executable_extensions; do
       ac_path_SED="$as_dir/$ac_prog$ac_exec_ext"
-      { test -f "$ac_path_SED" && $as_test_x "$ac_path_SED"; } || continue
+      as_fn_executable_p "$ac_path_SED" || continue
 # Check for GNU ac_path_SED and select it if it is found.
   # Check for GNU $ac_path_SED
 case `"$ac_path_SED" --version 2>&1` in
