@@ -32,7 +32,7 @@ Router Internal Storage (/etc/storage) -> Reset
 1. Disable HW Nat:  
 Advanced Settings -> WAN -> Hardware offload NAT/Routing IPv4 -> Disable  
 2. SSH (or WinSCP) into the router and modify /etc/storage/qos.conf for your connection  
-3. Change QOS_ENABLED variable in qos.conf to YES  
+3. Change QOS_ENABLED variable in qos.conf to YES (all caps) 
 
 =========  
   
