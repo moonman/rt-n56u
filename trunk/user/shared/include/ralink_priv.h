@@ -22,17 +22,23 @@
 #define ETHER_ADDR_LEN		6
 #endif
 
+#if (BOARD_RAM_SIZE > 32)
 #define MAX_NUMBER_OF_MAC	64
+#else
+#define MAX_NUMBER_OF_MAC	32
+#endif
 
 #define MODE_CCK		0
 #define MODE_OFDM		1
 #define MODE_HTMIX		2
 #define MODE_HTGREENFIELD	3
+#define MODE_VHT		4
 
 #define BW_20			0
 #define BW_40			1
-#define BW_BOTH			2
-#define BW_10			3
+#define BW_80			2
+#define BW_BOTH			3
+#define BW_10			4 // not used
 
 typedef enum _RT_802_11_PHY_MODE {
 	PHY_11BG_MIXED = 0,
@@ -53,33 +59,47 @@ typedef enum _RT_802_11_PHY_MODE {
 	PHY_11VHT_N_MIXED = 15, /* 15 -> AC/AN mixed in 5G band */
 } RT_802_11_PHY_MODE;
 
-// MIMO Tx parameter, ShortGI, MCS, STBC, etc.  these are fields in TXWI. Don't change this definition!!!
+#if defined (USE_MT7610_AP) || defined (USE_MT76X2_AP)
+typedef union _MACHTTRANSMIT_SETTING {
+	struct {
+		unsigned short MCS:6;
+		unsigned short ldpc:1;
+		unsigned short BW:2;
+		unsigned short ShortGI:1;
+		unsigned short STBC:1;
+		unsigned short eTxBF:1;
+		unsigned short iTxBF:1;
+		unsigned short MODE:3;
+	} field;
+	unsigned short word;
+} MACHTTRANSMIT_SETTING, *PMACHTTRANSMIT_SETTING;
+#else
 typedef union  _MACHTTRANSMIT_SETTING {
-        struct  {
-        unsigned short	MCS:7;	// MCS
-        unsigned short	BW:1;	//channel bandwidth 20MHz or 40 MHz
-        unsigned short	ShortGI:1;
-        unsigned short	STBC:2;	//SPACE 
-	unsigned short  eTxBF:1;
-	unsigned short  rsv:1;
-	unsigned short  iTxBF:1;
-	unsigned short  MODE:2;	// Use definition MODE_xxx.
-        } field;
-        unsigned short	word;
- } MACHTTRANSMIT_SETTING, *PMACHTTRANSMIT_SETTING;
+	struct  {
+		unsigned short MCS:7;
+		unsigned short BW:1;
+		unsigned short ShortGI:1;
+		unsigned short STBC:2;
+		unsigned short eTxBF:1;
+		unsigned short rsv:1;
+		unsigned short iTxBF:1;
+		unsigned short MODE:2;
+	} field;
+	unsigned short word;
+} MACHTTRANSMIT_SETTING, *PMACHTTRANSMIT_SETTING;
+#endif
 
-// MIMO Tx parameter, ShortGI, MCS, STBC, etc.  these are fields in TXWI. Don't change this definition!!!
 typedef union  _MACHTTRANSMIT_SETTING_2G {
-        struct  {
-        unsigned short	MCS:7;	// MCS
-        unsigned short	BW:1;	//channel bandwidth 20MHz or 40 MHz
-        unsigned short	ShortGI:1;
-        unsigned short	STBC:2;	//SPACE 
-        unsigned short	rsv:3;
-        unsigned short	MODE:2;	// Use definition MODE_xxx.  
-        } field;
-        unsigned short	word;
- } MACHTTRANSMIT_SETTING_2G, *PMACHTTRANSMIT_SETTING_2G;
+	struct  {
+		unsigned short MCS:7;
+		unsigned short BW:1;
+		unsigned short ShortGI:1;
+		unsigned short STBC:2;
+		unsigned short rsv:3;
+		unsigned short MODE:2;
+	} field;
+	unsigned short word;
+} MACHTTRANSMIT_SETTING_2G, *PMACHTTRANSMIT_SETTING_2G;
 
 typedef struct _RT_802_11_MAC_ENTRY {
     unsigned char	ApIdx;
@@ -91,7 +111,7 @@ typedef struct _RT_802_11_MAC_ENTRY {
     char		AvgRssi1;
     char		AvgRssi2;
     unsigned int	ConnectedTime;
-    MACHTTRANSMIT_SETTING       TxRate;
+    MACHTTRANSMIT_SETTING	TxRate;
     unsigned int	LastRxRate;
     short		StreamSnr[3];
     short		SoundingRespSnr[3];
@@ -133,7 +153,7 @@ typedef struct _SITE_SURVEY
 } SITE_SURVEY;
 
 typedef struct _SITE_SURVEY_ARRAY
-{ 
+{
 	SITE_SURVEY SiteSurvey[64];
 } SSA;
 

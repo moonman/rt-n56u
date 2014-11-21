@@ -134,6 +134,8 @@ rm -rf "$dir_wifi_dst/rt5392"
 rm -rf "$dir_wifi_dst/rt5592"
 rm -rf "$dir_wifi_dst/rt3593"
 rm -rf "$dir_wifi_dst/mt7610"
+rm -rf "$dir_wifi_dst/mt76x2"
+rm -rf "$dir_wifi_dst/mt76x3"
 if [ -n "$CONFIG_RT2860V2_AP" ] ; then
 	dir_wifi_ver="2.7.X.X"
 	if [ "$CONFIG_FIRMWARE_WIFI5_DRIVER" = "2.4" ] && [ "$CONFIG_RALINK_RT3883" = "y" ] ; then
@@ -174,6 +176,16 @@ if [ -n "$CONFIG_MT7610_AP" ] ; then
 	dir_wifi_ver="3.0.X.X"
 	cp -rfL "$dir_wifi_src/rtpci/$dir_wifi_ver/mt7610" "$dir_wifi_dst/"
 	cp -rfL "$dir_wifi_src/rtpci/$dir_wifi_ver/mt7610_ap" "$dir_wifi_dst/"
+fi
+if [ -n "$CONFIG_MT76X2_AP" ] ; then
+	dir_wifi_ver="3.0.X.X"
+	cp -rfL "$dir_wifi_src/rtpci/$dir_wifi_ver/mt76x2" "$dir_wifi_dst/"
+	cp -rfL "$dir_wifi_src/rtpci/$dir_wifi_ver/mt76x2_ap" "$dir_wifi_dst/"
+fi
+if [ -n "$CONFIG_MT76X3_AP" ] ; then
+	dir_wifi_ver="4.0.X.X"
+	cp -rfL "$dir_wifi_src/rtpci/$dir_wifi_ver/mt76x3" "$dir_wifi_dst/"
+	cp -rfL "$dir_wifi_src/rtpci/$dir_wifi_ver/mt76x3_ap" "$dir_wifi_dst/"
 fi
 ############################ HWNAT ####################################
 dir_ppe_src="$ROOTDIR/proprietary/rt_ppe"
@@ -351,6 +363,9 @@ if [ "$CONFIG_FIRMWARE_INCLUDE_CIFS" != "y" ] ; then
 fi
 if [ "$CONFIG_FIRMWARE_INCLUDE_NFSD" != "y" -a "$CONFIG_FIRMWARE_INCLUDE_NFSC" != "y" -a "$CONFIG_FIRMWARE_INCLUDE_CIFS" != "y" ] ; then
 	func_disable_kernel_param "CONFIG_NETWORK_FILESYSTEMS"
+	if [ "$CONFIG_FIRMWARE_ENABLE_USB" != "y" ] || [ -z "$CONFIG_USB_SUPPORT" ] ; then
+		func_disable_kernel_param "CONFIG_NLS"
+	fi
 fi
 ############################## BFQ ####################################
 if [ "$CONFIG_FIRMWARE_ENABLE_BFQ" != "y" ] ; then
