@@ -3,8 +3,8 @@ rt-n56u-qos
 
 ASUS RT-N56U/N65U/N14U custom firmware with QOS
 
-Upstream: http://code.google.com/p/rt-n56u/
-Prebuilt Images Downloads: https://www.mediafire.com/folder/z09g335s500o4/Padavan%27s_RTN56U_firmware_QOS_mod
+Upstream: http://code.google.com/p/rt-n56u/  
+Prebuilt Images: https://www.mediafire.com/folder/z09g335s500o4/Padavan%27s_RTN56U_firmware_QOS_mod
 
 ========
 
