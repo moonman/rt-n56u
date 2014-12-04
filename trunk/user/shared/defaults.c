@@ -69,6 +69,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wan_dns2_x", "" },
 	{ "wan_dns3_x", "" },
 	{ "wan_hostname", "" },			/* WAN hostname */
+	{ "wan_vci", "" },			/* WAN vendor class identifier (OPT-60) */
 	{ "wan_hwaddr_x", "" },
 	{ "wan_nat_x", "1" },
 	{ "wan_mtu", "1500" },
@@ -137,6 +138,7 @@ struct nvram_pair router_defaults[] = {
 	{ "mr_enable_x", "0" },			// oleg patch
 	{ "mr_ttl_fix", "0" },
 
+#if BOARD_HAS_5G_RADIO
 	/* 5G Wireless parameters */
 	{ "wl_country_code", DEF_WLAN_5G_CC },		/* Country Code (default obtained from driver) */
 	{ "wl_ssid", DEF_WLAN_5G_SSID },		/* Service set ID (network name) */
@@ -228,6 +230,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_sta_crypto", "aes" },
 	{ "wl_sta_wpa_psk", "" },
 	{ "wl_sta_wisp", "0" },
+#endif
 
 	/* 2G Wireless parameters */
 	{ "rt_country_code", DEF_WLAN_2G_CC },
@@ -566,7 +569,11 @@ struct nvram_pair router_defaults[] = {
 	{ "wol_mac_last", "" },
 	{ "gw_arp_ping", "0" },
 	{ "ez_action_short", "0" },
+#if !defined(BOARD_GPIO_BTN_RESET)
+	{ "ez_action_long", "15" },	/* Reset */
+#else
 	{ "ez_action_long", "0" },
+#endif
 	{ "watchdog_cpu", "0" },
 	{ "front_led_all", "1" },
 	{ "front_led_wan", "2" },
@@ -575,13 +582,14 @@ struct nvram_pair router_defaults[] = {
 	{ "front_led_usb", "1" },
 	{ "front_led_pwr", "1" },
 
+	{ "ether_igmp", "1" },
+	{ "ether_m2u", "2" },
 #if (BOARD_NUM_ETH_LEDS > 1)
 	{ "ether_led0", "3" },
 #else
 	{ "ether_led0", "7" },
 #endif
 	{ "ether_led1", "0" },
-	{ "ether_igmp", "1" },
 #if BOARD_HAS_EPHY_1000
 	{ "ether_jumbo", "1" },
 	{ "ether_green", "1" },
@@ -601,7 +609,7 @@ struct nvram_pair router_defaults[] = {
 	{ "ether_flow_lan4", "0" },
 
 #if defined(BOARD_N11P)
-	{ "hw_nat_mode", "3" },
+	{ "hw_nat_mode", "4" },
 #else
 	{ "hw_nat_mode", "1" },
 #endif

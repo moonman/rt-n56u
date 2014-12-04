@@ -43,10 +43,10 @@ stop_klogd(void)
 int
 start_syslogd(void)
 {
-	char *log_ipaddr, host_dst[32];
+	char *log_ipaddr, log_rot[8], host_dst[32];
 	char *syslogd_argv[] = {
 		"/sbin/syslogd",
-		"-s512",			/* max size before rotation */
+		log_rot,			/* max size before rotation */
 		"-b0",				/* purge on rotate */
 		"-S",				/* smaller output */
 		"-D",				/* drop duplicates */
@@ -55,6 +55,8 @@ start_syslogd(void)
 		NULL, NULL,			/* -R host:port */
 		NULL
 	};
+
+	snprintf(log_rot, sizeof(log_rot), "-s%d", LOG_ROTATE_SIZE_MAX);
 
 	log_ipaddr = nvram_safe_get("log_ipaddr");
 	if (is_valid_ipv4(log_ipaddr)) {
@@ -385,6 +387,11 @@ start_services_once(int is_ap_mode)
 		}
 		
 		start_rstats();
+	} else {
+		start_udpxy(IFNAME_BR);
+#if defined(APP_XUPNPD)
+		start_xupnpd(IFNAME_BR);
+#endif
 	}
 
 	start_lltd();
@@ -419,9 +426,7 @@ stop_services(int stopall)
 	stop_detect_internet();
 	stop_rstats();
 	stop_infosvr();
-#if defined(APP_XUPNPD)
-	stop_xupnpd();
-#endif
+	stop_igmpproxy(NULL);
 }
 
 void

@@ -98,6 +98,23 @@
 // for log message title
 #define LOGNAME				BOARD_NAME
 
+#if BOARD_RAM_SIZE > 128
+ #define KERNEL_MIN_FREE_KBYTES		16384
+ #define DNS_RELAY_CACHE_MAX		1536
+ #define LOG_ROTATE_SIZE_MAX		1024
+#elif BOARD_RAM_SIZE > 64
+ #define KERNEL_MIN_FREE_KBYTES		8192
+ #define DNS_RELAY_CACHE_MAX		1024
+ #define LOG_ROTATE_SIZE_MAX		512
+#elif BOARD_RAM_SIZE > 32
+ #define KERNEL_MIN_FREE_KBYTES		4096
+ #define DNS_RELAY_CACHE_MAX		512
+ #define LOG_ROTATE_SIZE_MAX		256
+#else
+ #define KERNEL_MIN_FREE_KBYTES		2048
+ #define DNS_RELAY_CACHE_MAX		256
+ #define LOG_ROTATE_SIZE_MAX		128
+#endif
 
 /* rc.c */
 void setenv_tz(void);
@@ -161,9 +178,11 @@ int  is_same_subnet2(const char *ip1, const char *ip2, const char *msk1, const c
 void stop_xupnpd(void);
 void start_xupnpd(char *wan_ifname);
 #endif
+void stop_udpxy(void);
+void start_udpxy(char *wan_ifname);
 void stop_igmpproxy(char *wan_ifname);
 void start_igmpproxy(char *wan_ifname);
-void restart_iptv(void);
+void restart_iptv(int is_ap_mode);
 void flush_conntrack_table(char *ip);
 void flush_route_caches(void);
 void clear_if_route4(char *ifname);

@@ -4,13 +4,20 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 [ -d /proc/bus/usb ] && mount -t usbfs usbfs /proc/bus/usb
 
+size_tmp="24M"
+size_var="4M"
+if [ "$1" == "-l" ] ; then
+	size_tmp="8M"
+	size_var="1M"
+fi
+
 mount -t tmpfs tmpfs /dev   -o size=8K
 mount -t tmpfs tmpfs /etc   -o size=2M,noatime
 mount -t tmpfs tmpfs /home  -o size=1M
 mount -t tmpfs tmpfs /media -o size=8K
 mount -t tmpfs tmpfs /mnt   -o size=8K
-mount -t tmpfs tmpfs /tmp   -o size=24M
-mount -t tmpfs tmpfs /var   -o size=4M
+mount -t tmpfs tmpfs /tmp   -o size=$size_tmp
+mount -t tmpfs tmpfs /var   -o size=$size_var
 
 mkdir /dev/pts
 mount -t devpts devpts /dev/pts
@@ -31,7 +38,6 @@ mkdir -p -m 777 "/var/lib/misc"
 mkdir -p -m 777 "/var/state"
 mkdir -p -m 777 "/var/state/parport"
 mkdir -p -m 777 "/var/state/parport/svr_statue"
-mkdir -p -m 777 "/var/spool/cron/crontabs"
 mkdir -p -m 777 "/tmp/var"
 mkdir -p -m 777 "/tmp/hashes"
 mkdir -p -m 777 "/tmp/modem"
