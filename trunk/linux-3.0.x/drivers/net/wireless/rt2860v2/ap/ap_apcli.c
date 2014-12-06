@@ -770,6 +770,8 @@ BOOLEAN ApCliLinkUp(
 			else
 				CLIENT_STATUS_CLEAR_FLAG(pMacEntry, fCLIENT_STATUS_RALINK_CHIPSET);
 
+			NdisGetSystemUpTime(&pApCliEntry->ApCliRcvBeaconTime);
+
 			/* set the apcli interface be valid. */
 #ifdef MAC_REPEATER_SUPPORT
 			if (CliIdx == 0xFF)
@@ -1155,7 +1157,7 @@ VOID ApCliIfMonitor(
 				&& (RTMP_TIME_AFTER(pAd->Mlme.Now32 , (pApCliEntry->ApCliLinkUpTime + (30 * OS_HZ)))))
 				bForceBrocken = TRUE;
  
-			if (RTMP_TIME_AFTER(pAd->Mlme.Now32 , (pApCliEntry->ApCliRcvBeaconTime + (4 * OS_HZ))))
+			if (RTMP_TIME_AFTER(pAd->Mlme.Now32 , (pApCliEntry->ApCliRcvBeaconTime + (8 * OS_HZ))))
 				bForceBrocken = TRUE;
 		}
 		else
@@ -2569,17 +2571,13 @@ VOID APCli_Init(
 	IN	PRTMP_ADAPTER				pAd,
 	IN	RTMP_OS_NETDEV_OP_HOOK		*pNetDevOps)
 {
-#define APCLI_MAX_DEV_NUM	32
 	PNET_DEV	new_dev_p;
-/*	VIRTUAL_ADAPTER *apcli_pAd; */
 	INT apcli_index;
-/*	RTMP_OS_NETDEV_OP_HOOK	netDevOpHook; */
 	APCLI_STRUCT	*pApCliEntry;
-	
+
 	/* sanity check to avoid redundant virtual interfaces are created */
 	if (pAd->flg_apcli_init != FALSE)
 		return;
-
 
 	/* init */
 	for(apcli_index = 0; apcli_index < MAX_APCLI_NUM; apcli_index++)
@@ -2782,8 +2780,6 @@ int APC_PacketSend(
 	PAPCLI_STRUCT pApCli;
 	INT apcliIndex;
 
-
-
 	pAd = RTMP_OS_NETDEV_GET_PRIV(dev_p);
 	ASSERT(pAd);
 
@@ -2804,7 +2800,6 @@ int APC_PacketSend(
 		return 0;
 	}
 
-
 	pApCli = (PAPCLI_STRUCT)&pAd->ApCfg.ApCliTab;
 
 	for(apcliIndex = 0; apcliIndex < MAX_APCLI_NUM; apcliIndex++)
@@ -2824,7 +2819,7 @@ int APC_PacketSend(
 			/* transmit the packet */
 			return Func(skb_p);
 		}
-    }
+	}
 
 	RELEASE_NDIS_PACKET(pAd, skb_p, NDIS_STATUS_FAILURE);
 
@@ -2833,11 +2828,11 @@ int APC_PacketSend(
 
 BOOLEAN ApCli_StatsGet(
 	IN	PRTMP_ADAPTER pAd,
-	IN	RT_CMD_STATS *pStats)
+	IN	RT_CMD_STATS64 *pStats)
 {
 	INT ifIndex = 0, index;
+	APCLI_STRUCT *pApCliTab;
 
-	/*struct net_device_stats	stats; */
 	for(index = 0; index < MAX_APCLI_NUM; index++)
 	{
 		if (pAd->ApCfg.ApCliTab[index].dev == (PNET_DEV)(pStats->pNetDev))
@@ -2846,31 +2841,23 @@ BOOLEAN ApCli_StatsGet(
 			break;
 		}
 	}
-		
-	if(index >= MAX_APCLI_NUM)
+
+	if (index >= MAX_APCLI_NUM)
 	{
 		DBGPRINT(RT_DEBUG_ERROR, ("rt28xx_ioctl apcli_statsGet can not find apcli I/F\n"));
 		return FALSE;
 	}
 
-	pStats->pStats = pAd->stats;
+	pApCliTab = &pAd->ApCfg.ApCliTab[ifIndex];
 
-	pStats->rx_packets = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.ReceivedFragmentCount.QuadPart;
-	pStats->tx_packets = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.TransmittedFragmentCount.QuadPart;
+	pStats->rx_bytes = pApCliTab->ApCliCounter.ReceivedByteCount.QuadPart;
+	pStats->tx_bytes = pApCliTab->ApCliCounter.TransmittedByteCount.QuadPart;
 
-	pStats->rx_bytes = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.ReceivedByteCount;
-	pStats->tx_bytes = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.TransmittedByteCount;
+	pStats->rx_packets = pApCliTab->ApCliCounter.ReceivedFragmentCount;
+	pStats->tx_packets = pApCliTab->ApCliCounter.TransmittedFragmentCount;
 
-	pStats->rx_errors = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.RxErrors;
-	pStats->tx_errors = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.TxErrors;
-
-	pStats->multicast = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.MulticastReceivedFrameCount.QuadPart;   /* multicast packets received */
-	pStats->collisions = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.OneCollision + pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.MoreCollisions;  /* Collision packets */
-
-	pStats->rx_over_errors = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.RxNoBuffer;                   /* receiver ring buff overflow */
-	pStats->rx_crc_errors = 0;/*pAd->WlanCounters.FCSErrorCount;     // recved pkt with crc error */
-	pStats->rx_frame_errors = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.RcvAlignmentErrors;          /* recv'd frame alignment error */
-	pStats->rx_fifo_errors = pAd->ApCfg.ApCliTab[ifIndex].ApCliCounter.RxNoBuffer;                   /* recv'r fifo overrun */
+	pStats->rx_errors = pApCliTab->ApCliCounter.RxErrors;
+	pStats->multicast = pApCliTab->ApCliCounter.MulticastReceivedFrameCount;
 
 	return TRUE;
 }
