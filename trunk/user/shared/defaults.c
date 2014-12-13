@@ -166,7 +166,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_key3", "" },			/* 5/13 char ASCII or 10/26 char hex */
 	{ "wl_key4", "" },			/* 5/13 char ASCII or 10/26 char hex */
 	{ "wl_key_type", "0" } ,		/* WEP key format (HEX/ASCII)*/
-	{ "wl_mcastrate", "1" },		/* Mcast Rate (bps) */
+	{ "wl_mrate", "2" },			/* Mcast Rate */
 	{ "wl_crypto", "aes" },			/* WPA data encryption */
 	{ "wl_wpa_psk", DEF_WLAN_5G_PSK },			/* WPA pre-shared key */
 	{ "wl_wpa_gtk_rekey", "3600" },		/* GTK rotation interval */
@@ -235,7 +235,7 @@ struct nvram_pair router_defaults[] = {
 	/* 2G Wireless parameters */
 	{ "rt_country_code", DEF_WLAN_2G_CC },
 	{ "rt_ssid", DEF_WLAN_2G_SSID },
-	{ "rt_gmode", "2" },
+	{ "rt_gmode", "5" },			/* g/n mixed */
 	{ "rt_channel", "0" },
 	{ "rt_bcn", "100" },
 	{ "rt_dtim", "1" },
@@ -246,7 +246,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_mbssid_isolate", "1" },		/* Isolate between AP and Guests AP */
 	{ "rt_closed", "0" },
 	{ "rt_macmode", "disabled" },
-	{ "rt_mcastrate", "6" },
+	{ "rt_mrate", "2" },
 	{ "rt_mode", "ap" },
 	{ "rt_HT_BW", "1" },
 	{ "rt_HT_EXTCHA", "1" },
@@ -464,6 +464,7 @@ struct nvram_pair router_defaults[] = {
 	{ "dhcp_wins_x", "" },
 	{ "dhcp_verbose", "0" },		/* 0 : quiet, 1: verbose DHCP, 2: verbose DHCPv6, 3: verbose all */
 	{ "dhcp_static_x", "0" },
+	{ "dhcp_static_arp", "0" },
 	{ "dhcp_staticnum_x", "0" },
 
 	/* NTP client parameters */

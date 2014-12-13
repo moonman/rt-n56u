@@ -1300,6 +1300,8 @@ struct net_device {
 	/* phy device may attach itself for hardware timestamping */
 	struct phy_device *phydev;
 
+	struct lock_class_key *qdisc_tx_busylock;
+
 	/* group the device belongs to */
 	int group;
 };
@@ -2094,18 +2096,6 @@ static inline int netif_set_real_num_rx_queues(struct net_device *dev,
 }
 #endif
 
-static inline int netif_copy_real_num_queues(struct net_device *to_dev,
-					     const struct net_device *from_dev)
-{
-	netif_set_real_num_tx_queues(to_dev, from_dev->real_num_tx_queues);
-#ifdef CONFIG_RPS
-	return netif_set_real_num_rx_queues(to_dev,
-					    from_dev->real_num_rx_queues);
-#else
-	return 0;
-#endif
-}
-
 /* Use this variant when it is known for sure that it
  * is executing from hardware interrupt context or with hardware interrupts
  * disabled.
@@ -2216,8 +2206,6 @@ extern void __netdev_watchdog_up(struct net_device *dev);
 extern void netif_carrier_on(struct net_device *dev);
 
 extern void netif_carrier_off(struct net_device *dev);
-
-extern void netif_notify_peers(struct net_device *dev);
 
 /**
  *	netif_dormant_on - mark device as dormant.
@@ -2565,6 +2553,7 @@ extern void		__dev_set_rx_mode(struct net_device *dev);
 extern int		dev_set_promiscuity(struct net_device *dev, int inc);
 extern int		dev_set_allmulti(struct net_device *dev, int inc);
 extern void		netdev_state_change(struct net_device *dev);
+extern void		netdev_notify_peers(struct net_device *dev);
 extern int		netdev_bonding_change(struct net_device *dev,
 					      unsigned long event);
 extern void		netdev_features_change(struct net_device *dev);

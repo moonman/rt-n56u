@@ -214,8 +214,8 @@ static inline int ip_finish_output2(struct sk_buff *skb)
 	}
 	rcu_read_unlock();
 
-	if (net_ratelimit())
-		printk(KERN_DEBUG "ip_finish_output2: No header cache and no neighbour!\n");
+	net_dbg_ratelimited("%s: No header cache and no neighbour!\n",
+			    __func__);
 	kfree_skb(skb);
 	return -EINVAL;
 }
@@ -618,12 +618,10 @@ slow_path:
 		if (len < left)	{
 			len &= ~7;
 		}
-		/*
-		 *	Allocate buffer.
-		 */
 
-		if ((skb2 = alloc_skb(len+hlen+ll_rs, GFP_ATOMIC)) == NULL) {
-			NETDEBUG(KERN_INFO "IP: frag: no memory for new fragment!\n");
+		/* Allocate buffer */
+		skb2 = alloc_skb(len + hlen + ll_rs, GFP_ATOMIC);
+		if (!skb2) {
 			err = -ENOMEM;
 			goto fail;
 		}

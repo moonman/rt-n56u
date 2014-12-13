@@ -40,9 +40,9 @@ MODULE_DESCRIPTION("IPv4 packet filter");
 
 #ifdef CONFIG_NAT_CONE
 extern unsigned int nf_conntrack_nat_mode;
-char wan_name[IFNAMSIZ] = {0};
+extern char wan_name[IFNAMSIZ];
 #if defined (CONFIG_PPP) || defined (CONFIG_PPP_MODULE)
-char wan_ppp[IFNAMSIZ] = {0};
+extern char wan_name_ppp[IFNAMSIZ];
 #endif
 #endif
 
@@ -193,8 +193,7 @@ ip_checkentry(const struct ipt_ip *ip)
 static unsigned int
 ipt_error(struct sk_buff *skb, const struct xt_action_param *par)
 {
-	if (net_ratelimit())
-		pr_info("error: `%s'\n", (const char *)par->targinfo);
+	net_info_ratelimited("error: `%s'\n", (const char *)par->targinfo);
 
 	return NF_DROP;
 }
@@ -1500,7 +1499,7 @@ do_add_counters(struct net *net, const void __user *user,
 #if defined (CONFIG_PPP) || defined (CONFIG_PPP_MODULE)
 			/* pppX - wan */
 			else if (strncmp(e->ip.outiface, "ppp", 3) == 0) {
-				strcpy(wan_ppp, e->ip.outiface);
+				strcpy(wan_name_ppp, e->ip.outiface);
 			}
 #endif
 		}
@@ -2371,7 +2370,7 @@ static int __init ip_tables_init(void)
 	strcpy(wan_name, "eth2.2");
 #endif
 #if defined (CONFIG_PPP) || defined (CONFIG_PPP_MODULE)
-	strcpy(wan_ppp, "ppp0");
+	strcpy(wan_name_ppp, "ppp0");
 #endif
 #endif
 	ret = register_pernet_subsys(&ip_tables_net_ops);

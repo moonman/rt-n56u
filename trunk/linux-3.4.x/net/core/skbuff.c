@@ -614,6 +614,7 @@ void consume_skb(struct sk_buff *skb)
 }
 EXPORT_SYMBOL(consume_skb);
 
+#ifdef SKB_RECYCLE_SUPPORT
 /**
  * 	skb_recycle - clean up an skb for reuse
  * 	@skb: buffer
@@ -659,6 +660,7 @@ bool skb_recycle_check(struct sk_buff *skb, int skb_size)
 	return true;
 }
 EXPORT_SYMBOL(skb_recycle_check);
+#endif
 
 static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 {
@@ -3372,10 +3374,8 @@ bool skb_partial_csum_set(struct sk_buff *skb, u16 start, u16 off)
 {
 	if (unlikely(start > skb_headlen(skb)) ||
 	    unlikely((int)start + off > skb_headlen(skb) - 2)) {
-		if (net_ratelimit())
-			printk(KERN_WARNING
-			       "bad partial csum: csum=%u/%u len=%u\n",
-			       start, off, skb_headlen(skb));
+		net_warn_ratelimited("bad partial csum: csum=%u/%u len=%u\n",
+				     start, off, skb_headlen(skb));
 		return false;
 	}
 	skb->ip_summed = CHECKSUM_PARTIAL;
@@ -3388,9 +3388,8 @@ EXPORT_SYMBOL_GPL(skb_partial_csum_set);
 
 void __skb_warn_lro_forwarding(const struct sk_buff *skb)
 {
-	if (net_ratelimit())
-		pr_warning("%s: received packets cannot be forwarded"
-			   " while LRO is enabled\n", skb->dev->name);
+	net_warn_ratelimited("%s: received packets cannot be forwarded while LRO is enabled\n",
+			     skb->dev->name);
 }
 EXPORT_SYMBOL(__skb_warn_lro_forwarding);
 

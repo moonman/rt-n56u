@@ -168,14 +168,6 @@ tcp_congestion_control - STRING
 	is inherited.
 	[see setsockopt(listenfd, SOL_TCP, TCP_CONGESTION, "name" ...) ]
 
-tcp_cookie_size - INTEGER
-	Default size of TCP Cookie Transactions (TCPCT) option, that may be
-	overridden on a per socket basis by the TCPCT socket option.
-	Values greater than the maximum (16) are interpreted as the maximum.
-	Values greater than zero and less than the minimum (8) are interpreted
-	as the minimum.  Odd values are interpreted as the next even value.
-	Default: 0 (off).
-
 tcp_dsack - BOOLEAN
 	Allows TCP to send "duplicate" SACKs.
 
@@ -344,8 +336,16 @@ tcp_orphan_retries - INTEGER
 	may consume significant resources. Cf. tcp_max_orphans.
 
 tcp_reordering - INTEGER
-	Maximal reordering of packets in a TCP stream.
+	Initial reordering level of packets in a TCP stream.
+	TCP stack can then dynamically adjust flow reordering level
+	between this initial value and tcp_max_reordering
 	Default: 3
+
+tcp_max_reordering - INTEGER
+	Maximal reordering level of packets in a TCP stream.
+	300 is a fairly conservative value, but you might increase it
+	if paths are using per packet load balancing (like bonding rr mode)
+	Default: 300
 
 tcp_retrans_collapse - BOOLEAN
 	Bug-to-bug compatibility with some broken printers.
