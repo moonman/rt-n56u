@@ -68,21 +68,15 @@ EXPORT_SYMBOL_GPL(nfnetlink_parse_nat_setup_hook);
 DEFINE_SPINLOCK(nf_conntrack_lock);
 EXPORT_SYMBOL_GPL(nf_conntrack_lock);
 
-unsigned int nf_conntrack_htable_size __read_mostly;
-EXPORT_SYMBOL_GPL(nf_conntrack_htable_size);
-
-unsigned int nf_conntrack_max __read_mostly;
-EXPORT_SYMBOL_GPL(nf_conntrack_max);
-
 DEFINE_PER_CPU(struct nf_conn, nf_conntrack_untracked);
 EXPORT_PER_CPU_SYMBOL(nf_conntrack_untracked);
 
+unsigned int nf_conntrack_max __read_mostly;
+unsigned int nf_conntrack_htable_size __read_mostly;
 unsigned int nf_conntrack_hash_rnd __read_mostly;
-EXPORT_SYMBOL_GPL(nf_conntrack_hash_rnd);
 
 #ifdef CONFIG_NAT_CONE
 unsigned int nf_conntrack_nat_mode __read_mostly = NAT_MODE_LINUX;
-EXPORT_SYMBOL_GPL(nf_conntrack_nat_mode);
 char wan_name[IFNAMSIZ] __read_mostly = {0};
 #if defined (CONFIG_PPP) || defined (CONFIG_PPP_MODULE)
 char wan_name_ppp[IFNAMSIZ] __read_mostly = {0};
@@ -179,9 +173,9 @@ nf_ct_get_tuple(const struct sk_buff *skb,
 
 	return l4proto->pkt_to_tuple(skb, dataoff, tuple);
 }
-EXPORT_SYMBOL_GPL(nf_ct_get_tuple);
 
-bool nf_ct_get_tuplepr(const struct sk_buff *skb, unsigned int nhoff,
+bool
+nf_ct_get_tuplepr(const struct sk_buff *skb, unsigned int nhoff,
 		       u_int16_t l3num, struct nf_conntrack_tuple *tuple)
 {
 	struct nf_conntrack_l3proto *l3proto;
@@ -380,7 +374,7 @@ static void death_by_timeout(unsigned long ul_conntrack)
  * OR
  * - Caller must lock nf_conntrack_lock before calling this function
  */
-static struct nf_conntrack_tuple_hash *
+static inline struct nf_conntrack_tuple_hash *
 ____nf_conntrack_find(struct net *net,
 		      const struct nf_conntrack_tuple *tuple, u32 hash)
 {
@@ -1101,7 +1095,6 @@ nf_conntrack_in(struct net *net, u_int8_t pf, unsigned int hooknum,
 	enum ip_conntrack_info ctinfo;
 	struct nf_conntrack_l3proto *l3proto;
 	struct nf_conntrack_l4proto *l4proto;
-	struct nf_conn_timeout *timeout_ext;
 	unsigned int *timeouts;
 	unsigned int dataoff;
 	u_int8_t protonum;
@@ -1172,11 +1165,7 @@ nf_conntrack_in(struct net *net, u_int8_t pf, unsigned int hooknum,
 	NF_CT_ASSERT(skb->nfct);
 
 	/* Decide what timeout policy we want to apply to this flow. */
-	timeout_ext = nf_ct_timeout_find(ct);
-	if (timeout_ext)
-		timeouts = NF_CT_TIMEOUT_EXT_DATA(timeout_ext);
-	else
-		timeouts = l4proto->get_timeouts(net);
+	timeouts = nf_ct_timeout_lookup(net, ct, l4proto);
 
 	ret = l4proto->packet(ct, skb, dataoff, ctinfo, pf, hooknum, timeouts);
 	if (ret <= 0) {
@@ -1242,7 +1231,6 @@ out:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(nf_conntrack_in);
 
 bool nf_ct_invert_tuplepr(struct nf_conntrack_tuple *inverse,
 			  const struct nf_conntrack_tuple *orig)
