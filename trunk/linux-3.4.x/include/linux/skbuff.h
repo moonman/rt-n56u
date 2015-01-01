@@ -28,7 +28,6 @@
 #include <linux/textsearch.h>
 #include <net/checksum.h>
 #include <linux/rcupdate.h>
-#include <linux/dmaengine.h>
 #include <linux/hrtimer.h>
 #include <linux/dma-mapping.h>
 #include <linux/netdev_features.h>
@@ -481,10 +480,6 @@ struct sk_buff {
 #if defined(CONFIG_IMQ) || defined(CONFIG_IMQ_MODULE)
 	__u8			imq_flags:IMQ_F_BITS;
 #endif
-
-#ifdef CONFIG_NET_DMA
-	dma_cookie_t		dma_cookie;
-#endif
 #ifdef CONFIG_NETWORK_SECMARK
 	__u32			secmark;
 #endif
@@ -589,10 +584,6 @@ static inline struct sk_buff *alloc_skb_fclone(unsigned int size,
 {
 	return __alloc_skb(size, priority, 1, NUMA_NO_NODE);
 }
-
-#ifdef SKB_RECYCLE_SUPPORT
-extern bool skb_recycle_check(struct sk_buff *skb, int skb_size);
-#endif
 
 extern struct sk_buff *skb_morph(struct sk_buff *dst, struct sk_buff *src);
 #if IS_ENABLED(CONFIG_MACVTAP)
@@ -2605,27 +2596,5 @@ static inline void skb_checksum_none_assert(const struct sk_buff *skb)
 
 bool skb_partial_csum_set(struct sk_buff *skb, u16 start, u16 off);
 
-static inline bool skb_is_recycleable(const struct sk_buff *skb, int skb_size)
-{
-	if (irqs_disabled())
-		return false;
-
-#if IS_ENABLED(CONFIG_MACVTAP)
-	if (skb_shinfo(skb)->tx_flags & SKBTX_DEV_ZEROCOPY)
-		return false;
-#endif
-
-	if (skb_is_nonlinear(skb) || skb->fclone != SKB_FCLONE_UNAVAILABLE)
-		return false;
-
-	skb_size = SKB_DATA_ALIGN(skb_size + NET_SKB_PAD);
-	if (skb_end_offset(skb) < skb_size)
-		return false;
-
-	if (skb_shared(skb) || skb_cloned(skb))
-		return false;
-
-	return true;
-}
 #endif	/* __KERNEL__ */
 #endif	/* _LINUX_SKBUFF_H */

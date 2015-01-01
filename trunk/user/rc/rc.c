@@ -414,6 +414,7 @@ flash_firmware(void)
 	write_storage_to_mtd();
 
 	sync();
+	sleep(1);
 
 	if (eval("/tmp/mtd_write", "-r", "write", FW_IMG_NAME, FW_MTD_NAME) != 0) {
 		start_watchdog();
@@ -698,7 +699,7 @@ handle_notifications(void)
 	int i, stop_handle = 0;
 	char notify_name[256];
 
-	DIR *directory = opendir("/tmp/rc_notification");
+	DIR *directory = opendir(DIR_RC_NOTIFY);
 	if (!directory)
 		return;
 
@@ -717,7 +718,7 @@ handle_notifications(void)
 			continue;
 		
 		/* Remove the marker file. */
-		snprintf(notify_name, sizeof(notify_name), "/tmp/rc_notification/%s", entry->d_name);
+		snprintf(notify_name, sizeof(notify_name), "%s/%s", DIR_RC_NOTIFY, entry->d_name);
 		remove(notify_name);
 		
 		printf("rc notification: %s\n", entry->d_name);
@@ -1145,7 +1146,7 @@ handle_notifications(void)
 		else
 		{
 			/* Remove the marker file. */
-			snprintf(notify_name, sizeof(notify_name), "/tmp/rc_action_incomplete/%s", entry->d_name);
+			snprintf(notify_name, sizeof(notify_name), "%s/%s", DIR_RC_INCOMPLETE, entry->d_name);
 			remove(notify_name);
 		}
 		
@@ -1185,6 +1186,7 @@ static const applet_rc_t applets_rc[] = {
 #if defined(APP_OPENVPN)
 	{ SCRIPT_OVPN_SERVER,	ovpn_server_script_main	},
 	{ SCRIPT_OVPN_CLIENT,	ovpn_client_script_main	},
+	{ "ovpn_export_client",	ovpn_server_expcli_main	},
 #endif
 #if (BOARD_NUM_USB_PORTS > 0)
 	{ "mdev_sg",		mdev_sg_main		},
