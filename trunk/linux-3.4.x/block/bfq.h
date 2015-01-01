@@ -1,5 +1,5 @@
 /*
- * BFQ-v7r6 for 3.4.0: data structures and common functions prototypes.
+ * BFQ-v7r7 for 3.4.0: data structures and common functions prototypes.
  *
  * Based on ideas and code from CFQ:
  * Copyright (C) 2003 Jens Axboe <axboe@kernel.dk>
@@ -23,6 +23,8 @@
 
 #define BFQ_MIN_WEIGHT	1
 #define BFQ_MAX_WEIGHT	1000
+
+#define BFQ_DEFAULT_QUEUE_IOPRIO	4
 
 #define BFQ_DEFAULT_GRP_WEIGHT	10
 #define BFQ_DEFAULT_GRP_IOPRIO	0

@@ -1407,6 +1407,13 @@ bfq_setup_merge(struct bfq_queue *bfqq, struct bfq_queue *new_bfqq)
  * or with a close queue among the scheduled queues.
  * Return NULL if no merge was scheduled, a pointer to the shared bfq_queue
  * structure otherwise.
+ *
+ * The OOM queue is not allowed to participate to cooperation: in fact, since
+ * the requests temporarily redirected to the OOM queue could be redirected
+ * again to dedicated queues at any time, the state needed to correctly
+ * handle merging with the OOM queue would be quite complex and expensive
+ * to maintain. Besides, in such a critical condition as an out of memory,
+ * the benefits of queue merging may be little relevant, or even negligible.
  */
 static struct bfq_queue *
 bfq_setup_cooperator(struct bfq_data *bfqd, struct bfq_queue *bfqq,
@@ -1417,13 +1424,14 @@ bfq_setup_cooperator(struct bfq_data *bfqd, struct bfq_queue *bfqq,
 	if (bfqq->new_bfqq)
 		return bfqq->new_bfqq;
 
-	if (!io_struct)
+	if (!io_struct || unlikely(bfqq == &bfqd->oom_bfqq))
 		return NULL;
 
 	in_service_bfqq = bfqd->in_service_queue;
 
 	if (in_service_bfqq == NULL || in_service_bfqq == bfqq ||
-	    !bfqd->in_service_bic)
+	    !bfqd->in_service_bic ||
+	    unlikely(in_service_bfqq == &bfqd->oom_bfqq))
 		goto check_scheduled;
 
 	if (bfq_class_idle(in_service_bfqq) || bfq_class_idle(bfqq))
@@ -1450,7 +1458,7 @@ bfq_setup_cooperator(struct bfq_data *bfqd, struct bfq_queue *bfqq,
 check_scheduled:
 	new_bfqq = bfq_close_cooperator(bfqd, bfqq,
 					bfq_io_struct_pos(io_struct, request));
-	if (new_bfqq)
+	if (new_bfqq && likely(new_bfqq != &bfqd->oom_bfqq))
 		return bfq_setup_merge(bfqq, new_bfqq);
 
 	return NULL;
@@ -2939,7 +2947,7 @@ static void bfq_init_prio_data(struct bfq_queue *bfqq, struct io_context *ioc)
 	switch (ioprio_class) {
 	default:
 		dev_err(bfqq->bfqd->queue->backing_dev_info.dev,
-			"bfq: bad prio %x\n", ioprio_class);
+			"bfq: bad prio class %d\n", ioprio_class);
 	case IOPRIO_CLASS_NONE:
 		/*
 		 * No prio set, inherit CPU scheduling settings.
@@ -2960,6 +2968,13 @@ static void bfq_init_prio_data(struct bfq_queue *bfqq, struct io_context *ioc)
 		bfqq->entity.new_ioprio = 7;
 		bfq_clear_bfqq_idle_window(bfqq);
 		break;
+	}
+
+	if (bfqq->entity.new_ioprio < 0 ||
+	    bfqq->entity.new_ioprio >= IOPRIO_BE_NR) {
+		printk(KERN_CRIT "bfq_init_prio_data: new_ioprio %d\n",
+				 bfqq->entity.new_ioprio);
+		BUG();
 	}
 
 	bfqq->entity.ioprio_changed = 1;
@@ -3073,14 +3088,13 @@ retry:
 
 		if (bfqq != NULL) {
 			bfq_init_bfqq(bfqd, bfqq, current->pid, is_sync);
+			bfq_init_prio_data(bfqq, ioc);
+			bfq_init_entity(&bfqq->entity, bfqg);
 			bfq_log_bfqq(bfqd, bfqq, "allocated");
 		} else {
 			bfqq = &bfqd->oom_bfqq;
 			bfq_log_bfqq(bfqd, bfqq, "using oom bfqq");
 		}
-
-		bfq_init_prio_data(bfqq, ioc);
-		bfq_init_entity(&bfqq->entity, bfqg);
 	}
 
 	if (new_bfqq != NULL)
@@ -3614,7 +3628,7 @@ new_queue:
 	 * queue has just been split, mark a flag so that the
 	 * information is available to the other scheduler hooks.
 	 */
-	if (bfqq_process_refs(bfqq) == 1) {
+	if (likely(bfqq != &bfqd->oom_bfqq) && bfqq_process_refs(bfqq) == 1) {
 		bfqq->bic = bic;
 		if (split) {
 			bfq_mark_bfqq_just_split(bfqq);
@@ -3782,6 +3796,14 @@ static void *bfq_init_queue(struct request_queue *q)
 	 */
 	bfq_init_bfqq(bfqd, &bfqd->oom_bfqq, 1, 0);
 	atomic_inc(&bfqd->oom_bfqq.ref);
+	bfqd->oom_bfqq.entity.new_ioprio = BFQ_DEFAULT_QUEUE_IOPRIO;
+	bfqd->oom_bfqq.entity.new_ioprio_class = IOPRIO_CLASS_BE;
+	/*
+	 * Trigger weight initialization, according to ioprio, at the
+	 * oom_bfqq's first activation. The oom_bfqq's ioprio and ioprio
+	 * class won't be changed any more.
+	 */
+	bfqd->oom_bfqq.entity.ioprio_changed = 1;
 
 	bfqd->queue = q;
 
@@ -3792,6 +3814,7 @@ static void *bfq_init_queue(struct request_queue *q)
 	}
 
 	bfqd->root_group = bfqg;
+	bfq_init_entity(&bfqd->oom_bfqq.entity, bfqd->root_group);
 #ifdef CONFIG_CGROUP_BFQIO
 	bfqd->active_numerous_groups = 0;
 #endif
@@ -4167,7 +4190,7 @@ static int __init bfq_init(void)
 	device_speed_thresh[1] = (R_fast[1] + R_slow[1]) / 2;
 
 	elv_register(&iosched_bfq);
-	pr_info("BFQ I/O-scheduler version: v7r6");
+	pr_info("BFQ I/O-scheduler version: v7r7");
 
 	return 0;
 }
