@@ -48,9 +48,8 @@ func_enable_busybox_param()
 
 func_set_kernel_param_to_value()
 {
-	cfg_file="$ROOTDIR/$CONFIG_LINUXDIR/.config"
 	if [ -n "`grep \^$1 $cfg_file`" ] ; then
-                sed -i "s/$1.*/$1=\"$2\"/" $cfg_file
+                sed -i "s/$1.*/$1=\"$2\"/" $kernel_tf
         fi
 }
 
