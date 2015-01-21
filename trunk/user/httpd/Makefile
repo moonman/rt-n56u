@@ -23,7 +23,8 @@ LDFLAGS += -L$(STAGEDIR)/lib -lssl -lcrypto
 endif
 
 EXEC = httpd
-OBJS = httpd.o ej.o cgi.o web_ex.o common.o nvram_x.o ralink.o crc32.o aspbw.o initial_web_hook.o variables.o
+OBJS = httpd.o ej.o cgi.o web_ex.o common.o nvram_x.o ralink.o crc32.o base64.o aspbw.o initial_web_hook.o variables.o
+OBJS += tdate_parse.o
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_HTTPS),y)
 OBJS += https.o
 endif

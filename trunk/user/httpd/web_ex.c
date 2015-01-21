@@ -81,7 +81,9 @@ static int apply_cgi_group(webs_t wp, int sid, struct variable *var, const char 
 static int nvram_generate_table(webs_t wp, char *serviceId, char *groupName);
 
 static int nvram_modified = 0;
+#if BOARD_HAS_5G_RADIO
 static int wl_modified = 0;
+#endif
 static int rt_modified = 0;
 static u64 restart_needed_bits = 0;
 
@@ -91,8 +93,7 @@ static char SystemCmd[128] = {0};
 static int delMap[MAX_GROUP_COUNT+2];
 
 extern struct evDesc events_desc[];
-extern int change_passwd;
-extern int login_safe;
+extern int auth_nvram_changed;
 #if defined (SUPPORT_HTTPS)
 extern int http_is_ssl;
 #endif
@@ -109,8 +110,6 @@ nvram_commit_safe(void)
 void
 sys_reboot(void)
 {
-	dbG("[httpd] reboot...\n");
-
 	kill(1, SIGTERM);
 }
 
@@ -125,30 +124,6 @@ rfctime(const time_t *timep)
 	memcpy(&tm, localtime(timep), sizeof(struct tm));
 	strftime(s, 200, "%a, %d %b %Y %H:%M:%S %z", &tm);
 	return s;
-}
-
-void
-reltime(unsigned long seconds, char *cs)
-{
-#ifdef SHOWALL
-	unsigned int days=0, hours=0, minutes=0;
-
-	if (seconds > 60*60*24) {
-		days = seconds / (60*60*24);
-		seconds %= 60*60*24;
-	}
-	if (seconds > 60*60) {
-		hours = seconds / (60*60);
-		seconds %= 60*60;
-	}
-	if (seconds > 60) {
-		minutes = seconds / 60;
-		seconds %= 60;
-	}
-	sprintf(cs, "%d days, %d hours, %d minutes, %ld seconds", days, hours, minutes, seconds);
-#else
-	sprintf(cs, "%ld secs", seconds);
-#endif
 }
 
 /******************************************************************************/
@@ -193,7 +168,7 @@ sys_script(char *name)
 
 	if (strcmp(name,"syscmd.sh")==0)
 	{
-		if (SystemCmd[0] && login_safe) {
+		if (SystemCmd[0] && get_login_safe()) {
 			char path_env[64];
 			snprintf(path_env, sizeof(path_env), "PATH=%s", SYS_EXEC_PATH_OPT);
 			putenv(path_env);
@@ -718,30 +693,14 @@ ej_nvram_char_to_ascii(int eid, webs_t wp, int argc, char **argv)
 	return ret;
 }
 
-/* Report sys up time */
+/* report system time */
 static int
 ej_uptime(int eid, webs_t wp, int argc, char **argv)
 {
-	char buf[512];
-	int ret;
-	char *str;
 	time_t tm;
 
 	time(&tm);
-	sprintf(buf, rfctime(&tm));
-
-	str = file2str("/proc/uptime", 64);
-	if (str) {
-		unsigned long up = atol(str);
-		free(str);
-		char lease_buf[128];
-		memset(lease_buf, 0, sizeof(lease_buf));
-		reltime(up, lease_buf);
-		sprintf(buf, "%s(%s since boot)", buf, lease_buf);
-	}
-
-	ret = websWrite(wp, buf);
-	return ret;
+	return websWrite(wp, rfctime(&tm));
 }
 
 static int
@@ -1007,10 +966,84 @@ set_wifi_mcs_mode(char* ifname, char* value)
 	doSystem("iwpriv %s set %s=%d", ifname, "HtMcs", i_mcs);
 }
 
+static void
+validate_nvram_lan_param(const char *nvram_name, in_addr_t lan_addr, in_addr_t lan_mask)
+{
+	struct in_addr ina;
+	in_addr_t lan_snet, test_addr;
+
+	test_addr = inet_addr_safe(nvram_safe_get(nvram_name));
+	if (test_addr == INADDR_ANY)
+		return;
+
+	test_addr = ntohl(test_addr);
+	if ((test_addr & lan_mask) == (lan_addr & lan_mask))
+		return;
+
+	lan_snet = ~lan_mask;
+
+	test_addr &= lan_snet;
+	if (test_addr < 1)
+		test_addr = 1;
+	else
+	if (test_addr > (lan_snet-1))
+		test_addr = (lan_snet-1);
+
+	if (test_addr == (lan_addr & lan_snet)) {
+		if (test_addr < (lan_snet-1))
+			test_addr += 1;
+		else
+			test_addr -= 1;
+	}
+
+	ina.s_addr = htonl((lan_addr & lan_mask) | test_addr);
+	nvram_set(nvram_name, inet_ntoa(ina));
+}
+
+static void
+validate_nvram_lan_subnet(void)
+{
+	char nvram_ip[32];
+	in_addr_t lan_addr, lan_mask;
+	int i, i_max_items;
+
+	lan_addr = ntohl(inet_addr(nvram_safe_get("lan_ipaddr")));
+	lan_mask = ntohl(inet_addr(nvram_safe_get("lan_netmask")));
+
+	/* validate dhcp start */
+	validate_nvram_lan_param("dhcp_start", lan_addr, lan_mask);
+
+	/* validate dhcp end */
+	validate_nvram_lan_param("dhcp_end", lan_addr, lan_mask);
+
+	/* validate dhcp static IP */
+	i_max_items = nvram_safe_get_int("dhcp_staticnum_x", 0, 0, 64);
+	for (i = 0; i < i_max_items; i++) {
+		snprintf(nvram_ip, sizeof(nvram_ip), "dhcp_staticip_x%d", i);
+		validate_nvram_lan_param(nvram_ip, lan_addr, lan_mask);
+	}
+
+	if (get_ap_mode())
+		return;
+
+	/* validate port forwards IP */
+	i_max_items = nvram_safe_get_int("vts_num_x", 0, 0, 64);
+	for (i = 0; i < i_max_items; i++) {
+		snprintf(nvram_ip, sizeof(nvram_ip), "vts_ipaddr_x%d", i);
+		validate_nvram_lan_param(nvram_ip, lan_addr, lan_mask);
+	}
+
+	/* validate DMZ IP */
+	validate_nvram_lan_param("dmz_ip", lan_addr, lan_mask);
+}
+
 static int
 validate_asp_apply(webs_t wp, int sid)
 {
 	u64 event_mask;
+	int user_changed = 0;
+	int pass_changed = 0;
+	int lanip_changed = 0;
 	struct variable *v;
 	char *value;
 	char name[64];
@@ -1024,7 +1057,7 @@ validate_asp_apply(webs_t wp, int sid)
 		if (!value)
 			continue;
 		
-		if (!login_safe && (v->event_mask & EVM_BLOCK_UNSAFE))
+		if (!get_login_safe() && (v->event_mask & EVM_BLOCK_UNSAFE))
 			continue;
 		
 		event_mask = v->event_mask & ~(EVM_BLOCK_UNSAFE);
@@ -1072,13 +1105,14 @@ validate_asp_apply(webs_t wp, int sid)
 		nvram_set(v->name, value);
 		nvram_modified = 1;
 		
-		if (!strcmp(v->name, "http_username")) {
-			change_passwd = 1;
-			recreate_passwd_unix(1);
-		} else if (!strcmp(v->name, "http_passwd")) {
-			change_passwd = 1;
-			change_passwd_unix(nvram_safe_get("http_username"), value);
-		}
+		if (!strcmp(v->name, "http_username"))
+			user_changed = 1;
+		
+		if (!strcmp(v->name, "http_passwd"))
+			pass_changed = 1;
+		
+		if (!strcmp(v->name, "lan_ipaddr") || !strcmp(v->name, "lan_netmask"))
+			lanip_changed = 1;
 		
 #if BOARD_HAS_5G_RADIO
 		if (!strncmp(v->name, "wl_", 3) && strcmp(v->name, "wl_ssid2"))
@@ -1231,9 +1265,21 @@ validate_asp_apply(webs_t wp, int sid)
 		}
 	}
 
+	if (user_changed || pass_changed)
+		auth_nvram_changed = 1;
+
+	if (user_changed)
+		recreate_passwd_unix(1);
+	else if (pass_changed)
+		change_passwd_unix(nvram_safe_get("http_username"), nvram_safe_get("http_passwd"));
+
+	if (lanip_changed)
+		validate_nvram_lan_subnet();
+
 	return (nvram_modified || restart_needed_bits) ? 1 : 0;
 }
 
+#if 0
 int
 pinvalidate(char *pin_string)
 {
@@ -1262,6 +1308,7 @@ pinvalidate(char *pin_string)
 
 	return -1;
 }
+#endif
 
 static int
 update_variables_ex(int eid, webs_t wp, int argc, char **argv)
@@ -1331,9 +1378,10 @@ update_variables_ex(int eid, webs_t wp, int argc, char **argv)
 					if (nvram_get_int(group_id) > 0) {
 						restart_needed_bits |= (v->event_mask & ~(EVM_BLOCK_UNSAFE));
 						dbG("group restart_needed_bits: 0x%llx\n", restart_needed_bits);
-						
+#if BOARD_HAS_5G_RADIO
 						if (!strcmp(group_id, "RBRList") || !strcmp(group_id, "ACLList"))
 							wl_modified |= WIFI_COMMON_CHANGE_BIT;
+#endif
 						if (!strcmp(group_id, "rt_RBRList") || !strcmp(group_id, "rt_ACLList"))
 							rt_modified |= WIFI_COMMON_CHANGE_BIT;
 						
@@ -1483,8 +1531,8 @@ ej_notify_services(int eid, webs_t wp, int argc, char **argv)
 
 	if ((restart_needed_bits & EVM_RESTART_WIFI5) != 0) {
 		restart_needed_bits &= ~EVM_RESTART_WIFI5;
-		if (wl_modified) {
 #if BOARD_HAS_5G_RADIO
+		if (wl_modified) {
 			if (wl_modified & WIFI_COMMON_CHANGE_BIT)
 				notify_rc(RCN_RESTART_WIFI5);
 			else {
@@ -1500,9 +1548,9 @@ ej_notify_services(int eid, webs_t wp, int argc, char **argv)
 				if (wl_modified & WIFI_SCHED_CONTROL_BIT)
 					nvram_set_int_temp("reload_svc_wl", 1);
 			}
-#endif
 			wl_modified = 0;
 		}
+#endif
 	}
 
 	dbG("debug restart_needed_bits after: 0x%llx\n", restart_needed_bits);
@@ -2439,7 +2487,7 @@ static int login_state_hook(int eid, webs_t wp, int argc, char **argv) {
 #endif
 	fill_login_ip(s_addr, sizeof(s_addr));
 
-	websWrite(wp, "function login_safe() { return %d; }\n", login_safe);
+	websWrite(wp, "function login_safe() { return %d; }\n", get_login_safe());
 	websWrite(wp, "function login_ip_str() { return '%s'; }\n", s_addr);
 	websWrite(wp, "function login_mac_str() { return '%s'; }\n", get_login_mac());
 
@@ -2587,6 +2635,7 @@ static int ej_get_static_ccount(int eid, webs_t wp, int argc, char **argv)
 
 static int ej_get_flash_time(int eid, webs_t wp, int argc, char **argv)
 {
+	websWrite(wp, "function board_boot_time() { return %d;}\n", BOARD_BOOT_TIME+5);
 	websWrite(wp, "function board_flash_time() { return %d;}\n", BOARD_FLASH_TIME);
 
 	return 0;
@@ -2843,7 +2892,7 @@ static int ej_dump_syslog_hook(int eid, webs_t wp, int argc, char **argv)
 int ej_shown_language_option(int eid, webs_t wp, int argc, char **argv) {
 	FILE *fp;
 	int i, len;
-	struct language_table *pLang = NULL;
+	const struct language_table *pLang;
 	char buffer[256], key[16], target[32];
 	char *follow_info, *follow_info_end, *selected, *lang_set;
 
@@ -2928,12 +2977,6 @@ apply_cgi(const char *url, webs_t wp)
 		websRedirect(wp, current_url);
 		return 0;
 	}
-	else if (!strcmp(value, " Restart "))
-	{
-		websApply(wp, "Restarting.asp");
-		sys_reboot();
-		return 0;
-	}
 	else if (!strcmp(value, " ClearLog "))
 	{
 		// current only syslog implement this button
@@ -2941,10 +2984,17 @@ apply_cgi(const char *url, webs_t wp)
 		websRedirect(wp, current_url);
 		return 0;
 	}
+	else if (!strcmp(value, " Reboot "))
+	{
+		sys_reboot();
+		return 0;
+	}
 	else if (!strcmp(value, " RestoreNVRAM "))
 	{
 		websApply(wp, "Restarting.asp");
-		eval("/sbin/reset_to_defaults");
+		nvram_set_int("restore_defaults", 1);
+		nvram_commit();
+		sys_reboot();
 		return 0;
 	}
 	else if (!strcmp(value, " RestoreStorage "))
@@ -2976,7 +3026,7 @@ apply_cgi(const char *url, webs_t wp)
 		int days_valid = atoi(websGetVar(wp, "days_valid", "365"));
 		if (strlen(common_name) < 1)
 			common_name = "client@ovpn";
-		if (login_safe)
+		if (get_login_safe())
 			sys_result = doSystem("/sbin/ovpn_export_client '%s' %d %d", common_name, rsa_bits, days_valid);
 #endif
 		websWrite(wp, "{\"sys_result\": %d}", sys_result);
@@ -2991,7 +3041,7 @@ apply_cgi(const char *url, webs_t wp)
 		int days_valid = atoi(websGetVar(wp, "days_valid", "365"));
 		if (strlen(common_name) < 1)
 			common_name = "OpenVPN Server";
-		if (login_safe)
+		if (get_login_safe())
 			sys_result = doSystem("/usr/bin/openvpn-cert.sh %s -n '%s' -b %d -d %d", "server", common_name, rsa_bits, days_valid);
 #endif
 		websWrite(wp, "{\"sys_result\": %d}", sys_result);
@@ -3006,7 +3056,7 @@ apply_cgi(const char *url, webs_t wp)
 		int days_valid = atoi(websGetVar(wp, "days_valid", "365"));
 		if (strlen(common_name) < 1)
 			common_name = nvram_safe_get("lan_ipaddr_t");
-		if (login_safe)
+		if (get_login_safe())
 			sys_result = doSystem("/usr/bin/https-cert.sh -n '%s' -b %d -d %d", common_name, rsa_bits, days_valid);
 #endif
 		websWrite(wp, "{\"sys_result\": %d}", sys_result);
@@ -3199,9 +3249,9 @@ nvram_add_group_table(webs_t wp, char *serviceId, struct variable *v, int count)
     	}
     	
     	if (fieldCount==0)
-    	   sprintf(bufs,"%s", buf);
+    	   sprintf(bufs, "%s", buf);
     	else
-    	   sprintf(bufs,"%s%s",bufs, buf);
+    	   snprintf(bufs, sizeof(bufs), "%s%s", bufs, buf);
     	
     	fieldCount++;
     }
@@ -3763,7 +3813,7 @@ do_nvram_file(const char *url, FILE *stream)
 	const char *nvram_file = PROFILE_FIFO_DOWNLOAD;
 
 	unlink(nvram_file);
-	if (login_safe) {
+	if (get_login_safe()) {
 		doSystem("nvram save %s", nvram_file);
 		do_file(nvram_file, stream);
 		unlink(nvram_file);
@@ -3776,7 +3826,7 @@ do_storage_file(const char *url, FILE *stream)
 	const char *storage_file = "/tmp/.storage_tar.bz2";
 
 	unlink(storage_file);
-	if (login_safe) {
+	if (get_login_safe()) {
 		doSystem("/sbin/mtd_storage.sh %s", "backup");
 		do_file(storage_file, stream);
 		unlink(storage_file);
@@ -3796,7 +3846,7 @@ do_export_ovpn_client(const char *url, FILE *stream)
 {
 	const char *tmp_ovpn_conf = "/tmp/client.ovpn";
 
-	if (login_safe)
+	if (get_login_safe())
 		do_file(tmp_ovpn_conf, stream);
 	unlink(tmp_ovpn_conf);
 }
@@ -3805,11 +3855,6 @@ do_export_ovpn_client(const char *url, FILE *stream)
 static char syslog_txt[] =
 "Content-Disposition: attachment;\r\n"
 "filename=syslog.txt"
-;
-
-static char cache_static[] =
-"Cache-Control: max-age=2592000\r\n"
-"Expires: Tue, 31 Dec 2014 01:00:00 GMT"
 ;
 
 static char no_cache_IE[] =
@@ -3821,62 +3866,51 @@ static char no_cache_IE[] =
 
 struct mime_handler mime_handlers[] = {
 	/* cached javascript files w/o translations */
-	{ "jquery.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "**bootstrap.min.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "**engage.itoggle.min.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "**highstock.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "**formcontrol.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "itoggle.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "modem_isp.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "client_function.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "disk_functions.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "md5.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "tmcal.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "tmhist.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "tmmenu.js", "text/javascript", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
+	{ "jquery.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**bootstrap.min.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**engage.itoggle.min.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**highstock.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**formcontrol.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "itoggle.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "modem_isp.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "client_function.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "disk_functions.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "md5.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "tmcal.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "tmhist.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "tmmenu.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 
 	/* cached css  */
-	{ "**.css", "text/css", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
+	{ "**.css", "text/css", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 
 	/* cached images */
-	{ "**.png", "image/png", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "**.gif", "image/gif", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "**.jpg", "image/jpeg", cache_static, NULL, do_file, NULL }, // 2012.06 Eagle23
-	{ "**.ico", "image/x-icon", cache_static, NULL, do_file, NULL }, // 2013.04 Eagle23
-
-	/* no-cached ugly check html file (w/o login) */
-	{ "httpd_check.htm", "text/html", no_cache_IE, NULL, do_file, NULL },
-
-	/* no-cached logout html file (w/o login) */
-	{ "Nologin.asp", "text/html", no_cache_IE, NULL, do_ej, NULL },
+	{ "**.png", "image/png", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**.gif", "image/gif", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**.jpg", "image/jpeg", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**.ico", "image/x-icon", NULL, NULL, do_file, 0 }, // 2013.04 Eagle23
 
 	/* no-cached html/asp files with translations */
-	{ "**.htm*", "text/html", no_cache_IE, do_html_apply_post, do_ej, do_auth },
-	{ "**.asp*", "text/html", no_cache_IE, do_html_apply_post, do_ej, do_auth },
+	{ "**.htm*", "text/html", no_cache_IE, do_html_apply_post, do_ej, 1 },
+	{ "**.asp*", "text/html", no_cache_IE, do_html_apply_post, do_ej, 1 },
 
 	/* no-cached javascript files with translations */
-	{ "**.js",  "text/javascript", no_cache_IE, NULL, do_ej, do_auth },
-
-	/* misc objects */
-	{ "**.svg", "image/svg+xml", NULL, NULL, do_file, NULL },
-	{ "**.swf", "application/x-shockwave-flash", NULL, NULL, do_file, NULL  },
-	{ "**.htc", "text/x-component", NULL, NULL, do_file, NULL  },
+	{ "**.js",  "text/javascript", no_cache_IE, NULL, do_ej, 1 },
 
 	/* downloads objects */
-	{ "Settings_**.CFG", "application/force-download", NULL, NULL, do_nvram_file, do_auth },
-	{ "Storage_**.TBZ", "application/force-download", NULL, NULL, do_storage_file, do_auth },
-	{ "syslog.txt", "application/force-download", syslog_txt, NULL, do_syslog_file, do_auth },
+	{ "Settings_**.CFG", "application/force-download", NULL, NULL, do_nvram_file, 1 },
+	{ "Storage_**.TBZ", "application/force-download", NULL, NULL, do_storage_file, 1 },
+	{ "syslog.txt", "application/force-download", syslog_txt, NULL, do_syslog_file, 1 },
 #if defined(APP_OPENVPN)
-	{ "client.ovpn", "application/force-download", NULL, NULL, do_export_ovpn_client, do_auth },
+	{ "client.ovpn", "application/force-download", NULL, NULL, do_export_ovpn_client, 1 },
 #endif
 
 	/* no-cached POST objects */
-	{ "update.cgi*", "text/javascript", no_cache_IE, do_html_apply_post, do_update_cgi, do_auth },
-	{ "apply.cgi*", "text/html", no_cache_IE, do_html_apply_post, do_apply_cgi, do_auth },
-	{ "upgrade.cgi*", "text/html", no_cache_IE, do_upgrade_post, do_upgrade_cgi, do_auth },
-	{ "upload.cgi*", "text/html", no_cache_IE, do_upload_post, do_upload_cgi, do_auth },
+	{ "update.cgi*", "text/javascript", no_cache_IE, do_html_apply_post, do_update_cgi, 1 },
+	{ "apply.cgi*", "text/html", no_cache_IE, do_html_apply_post, do_apply_cgi, 1 },
+	{ "upgrade.cgi*", "text/html", no_cache_IE, do_upgrade_post, do_upgrade_cgi, 1 },
+	{ "upload.cgi*", "text/html", no_cache_IE, do_upload_post, do_upload_cgi, 1 },
 
-	{ NULL, NULL, NULL, NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL, NULL, 0 }
 };
 
 // traffic monitor

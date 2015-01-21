@@ -29,6 +29,7 @@
 /* MIPS GIC controller */
 #define SURFBOARDINT_FE			3	/* FE */
 #define SURFBOARDINT_PCIE0		4	/* PCIE0 */
+#define SURFBOARDINT_AUX_TIMER		5	/* AUX timer (systick) */
 #define SURFBOARDINT_SYSCTL		6	/* SYSCTL */
 #define SURFBOARDINT_MIPS_TIMER		7	/* MIPS timer */
 #define SURFBOARDINT_I2C		8	/* I2C */
@@ -58,9 +59,8 @@
 #define SURFBOARDINT_UART1		SURFBOARDINT_UART_LITE1
 #define SURFBOARDINT_UART2		SURFBOARDINT_UART_LITE2
 
-/* (32xGIC + 8xIPI) * 4xCPU = 160 */
-#define SURFBOARDGIC_END		31
-#define SURFBOARDINT_END		159	/* NR_IRQS must be multiply of BITS_PER_LONG  */
+/* 32 + 3 + IPI*NR_CPU (max 64) */
+#define SURFBOARDINT_END		63	/* NR_IRQS must be multiply of BITS_PER_LONG  */
 
 #else
 
@@ -87,7 +87,8 @@
 #endif
 
 #if defined (CONFIG_RALINK_MT7628)
-#define SURFBOARDINT_CRYPTO		13	/* CryptoEngine */
+#define SURFBOARDINT_AES		13	/* AES */
+#define SURFBOARDINT_AESENGINE		13	/* AES Engine */
 #define SURFBOARDINT_SDXC		14	/* SDXC */
 #define SURFBOARDINT_UART_LITE1		20	/* UART Lite 1 */
 #define SURFBOARDINT_UART_LITE2		21	/* UART Lite 2 */
@@ -167,6 +168,9 @@
 
 /* bobtseng added --, 2006.3.6. */
 
+/*
+ * GCMP Specific definitions
+ */
 #define GCMP_BASE_ADDR		0x1fbf8000
 #define GCMP_ADDRSPACE_SZ	(256 * 1024)
 
