@@ -241,22 +241,6 @@ unsigned int __cpuinit get_c0_compare_int(void)
 	return SURFBOARDINT_MIPS_TIMER;
 }
 
-void gic_irq_ack(struct irq_data *d)
-{
-	int irq = (d->irq - gic_irq_base);
-
-	GIC_CLR_INTR_MASK(irq);
-
-	if (gic_irq_flags[irq] & GIC_TRIG_EDGE)
-		GICWRITE(GIC_REG(SHARED, GIC_SH_WEDGE), irq);
-}
-
-void gic_finish_irq(struct irq_data *d)
-{
-	/* Enable interrupts. */
-	GIC_SET_INTR_MASK(d->irq - gic_irq_base);
-}
-
 void __init gic_platform_init(int irqs, struct irq_chip *irq_controller)
 {
 	int i;
@@ -321,15 +305,6 @@ void __init arch_init_irq(void)
 	}
 }
 
-static inline void gic_irqdispatch(void)
-{
-	unsigned int irq = gic_get_int();
-
-	if (likely(irq < GIC_NUM_INTRS))  {
-		do_IRQ(MIPS_GIC_IRQ_BASE + irq);
-	}
-}
-
 asmlinkage void plat_irq_dispatch(void)
 {
 	unsigned int pending;
@@ -344,7 +319,6 @@ asmlinkage void plat_irq_dispatch(void)
 		do_IRQ(cp0_compare_irq);	// MIPS Timer
 	}
 
-	if (pending & (CAUSEF_IP6 | CAUSEF_IP5 | CAUSEF_IP4 | CAUSEF_IP3 | CAUSEF_IP2)) {
-		gic_irqdispatch();
-	}
+	if (pending & (CAUSEF_IP6 | CAUSEF_IP5 | CAUSEF_IP4 | CAUSEF_IP3 | CAUSEF_IP2))
+		gic_irq_dispatch();
 }

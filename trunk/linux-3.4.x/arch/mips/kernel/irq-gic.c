@@ -26,17 +26,7 @@ struct gic_pcpu_mask {
 	DECLARE_BITMAP(pcpu_mask, GIC_NUM_INTRS);
 };
 
-struct gic_pending_regs {
-	DECLARE_BITMAP(pending, GIC_NUM_INTRS);
-};
-
-struct gic_intrmask_regs {
-	DECLARE_BITMAP(intrmask, GIC_NUM_INTRS);
-};
-
 static struct gic_pcpu_mask pcpu_masks[NR_CPUS];
-static struct gic_pending_regs pending_regs[NR_CPUS];
-static struct gic_intrmask_regs intrmask_regs[NR_CPUS];
 
 void gic_send_ipi(unsigned int intr)
 {
@@ -69,15 +59,15 @@ static void __init vpe_local_setup(unsigned int numvpes)
 	}
 }
 
-unsigned int gic_get_int(void)
+void gic_irq_dispatch(void)
 {
-	unsigned int i;
-	unsigned long *pending, *intrmask, *pcpu_mask;
+	unsigned int i, intr;
+	unsigned long *pcpu_mask;
 	unsigned long *pending_abs, *intrmask_abs;
+	DECLARE_BITMAP(pending, GIC_NUM_INTRS);
+	DECLARE_BITMAP(intrmask, GIC_NUM_INTRS);
 
 	/* Get per-cpu bitmaps */
-	pending = pending_regs[smp_processor_id()].pending;
-	intrmask = intrmask_regs[smp_processor_id()].intrmask;
 	pcpu_mask = pcpu_masks[smp_processor_id()].pcpu_mask;
 
 	pending_abs = (unsigned long *) GIC_REG_ABS_ADDR(SHARED,
@@ -95,7 +85,14 @@ unsigned int gic_get_int(void)
 	bitmap_and(pending, pending, intrmask, GIC_NUM_INTRS);
 	bitmap_and(pending, pending, pcpu_mask, GIC_NUM_INTRS);
 
-	return find_first_bit(pending, GIC_NUM_INTRS);
+	intr = find_first_bit(pending, GIC_NUM_INTRS);
+	while (intr < GIC_NUM_INTRS) {
+		do_IRQ(MIPS_GIC_IRQ_BASE + intr);
+		
+		/* go to next pending bit */
+		bitmap_clear(pending, intr, 1);
+		intr = find_first_bit(pending, GIC_NUM_INTRS);
+	}
 }
 
 static void gic_mask_irq(struct irq_data *d)
@@ -106,6 +103,15 @@ static void gic_mask_irq(struct irq_data *d)
 static void gic_unmask_irq(struct irq_data *d)
 {
 	GIC_SET_INTR_MASK(d->irq - gic_irq_base);
+}
+
+static void gic_ack_irq(struct irq_data *d)
+{
+	int irq = (d->irq - gic_irq_base);
+
+	/* Clear edge detector */
+	if (gic_irq_flags[irq] & GIC_TRIG_EDGE)
+		GICWRITE(GIC_REG(SHARED, GIC_SH_WEDGE), irq);
 }
 
 #ifdef CONFIG_SMP
@@ -121,7 +127,7 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *cpumask,
 
 	cpumask_and(&tmp, cpumask, cpu_online_mask);
 	if (cpus_empty(tmp))
-		return -1;
+		return -EINVAL;
 
 	/* Assumption : cpumask refers to a single CPU */
 	spin_lock_irqsave(&gic_lock, flags);
@@ -143,11 +149,11 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *cpumask,
 
 static struct irq_chip gic_irq_controller = {
 	.name			=	"MIPS GIC",
-	.irq_ack		=	gic_irq_ack,
+	.irq_ack		=	gic_ack_irq,
 	.irq_mask		=	gic_mask_irq,
-	.irq_mask_ack		=	gic_mask_irq,
 	.irq_unmask		=	gic_unmask_irq,
-	.irq_eoi		=	gic_finish_irq,
+	.irq_disable		=	gic_mask_irq,
+	.irq_enable		=	gic_unmask_irq,
 #ifdef CONFIG_SMP
 	.irq_set_affinity	=	gic_set_affinity,
 #endif
