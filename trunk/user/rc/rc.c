@@ -169,6 +169,11 @@ init_gpio_leds_buttons(void)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_POWER, 1);
 	LED_CONTROL(BOARD_GPIO_LED_POWER, LED_ON);
 #endif
+#if defined (BOARD_GPIO_PWR_USB)
+	/* enable USB port 5V power */
+	cpu_gpio_set_pin_direction(BOARD_GPIO_PWR_USB, 1);
+	cpu_gpio_set_pin(BOARD_GPIO_PWR_USB, BOARD_GPIO_PWR_USB_ON);
+#endif
 
 #if defined (BOARD_GPIO_BTN_RESET)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_RESET, 0);
@@ -305,14 +310,22 @@ nvram_convert_misc_values(void)
 	if (strlen(nvram_safe_get("wl_wpa_mode")) < 1)
 		nvram_set_int("wl_wpa_mode", 0);
 
+#if BOARD_HAS_5G_11AC
+	if (strlen(nvram_safe_get("wl_gmode")) < 1)
+		nvram_set_int("wl_gmode", 4); // a/n/ac Mixed
+
+	if (nvram_get_int("wl_HT_BW") > 2)
+		nvram_set_int("wl_HT_BW", 2);
+#else
 	if (strlen(nvram_safe_get("wl_gmode")) < 1)
 		nvram_set_int("wl_gmode", 2); // a/n Mixed
 
-	if (strlen(nvram_safe_get("rt_gmode")) < 1)
-		nvram_set_int("rt_gmode", 2); // b/g/n Mixed
-
 	if (nvram_get_int("wl_HT_BW") > 1)
 		nvram_set_int("wl_HT_BW", 1);
+#endif
+
+	if (strlen(nvram_safe_get("rt_gmode")) < 1)
+		nvram_set_int("rt_gmode", 2); // b/g/n Mixed
 
 	if (nvram_get_int("rt_HT_BW") > 1)
 		nvram_set_int("rt_HT_BW", 1);
