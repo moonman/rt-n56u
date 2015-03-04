@@ -28,6 +28,46 @@
 #include "switch.h"
 
 ////////////////////////////////////////////////////////////////////////////////
+// MIB COUNTERS
+////////////////////////////////////////////////////////////////////////////////
+
+#if defined (USE_MTK_GSW)
+typedef struct esw_mib_counters_s
+{
+	uint64_t TxGoodOctets;
+	uint32_t TxUcastFrames;
+	uint32_t TxMcastFrames;
+	uint32_t TxBcastFrames;
+	uint32_t TxDropFrames;
+	uint32_t TxCollisions;
+	uint32_t TxCRCError;
+	uint64_t RxGoodOctets;
+	uint32_t RxUcastFrames;
+	uint32_t RxMcastFrames;
+	uint32_t RxBcastFrames;
+	uint32_t RxDropFrames;
+	uint32_t RxFilterFrames;
+	uint32_t RxCRCError;
+	uint32_t RxAligmentError;
+} esw_mib_counters_t;
+#else
+typedef struct esw_mib_counters_s
+{
+	uint64_t TxGoodOctets;
+	uint32_t TxGoodFrames;
+	uint32_t TxBadOctets;
+	uint32_t TxBadFrames;
+	uint32_t TxDropFrames;
+	uint64_t RxGoodOctets;
+	uint32_t RxGoodFrames;
+	uint32_t RxBadOctets;
+	uint32_t RxBadFrames;
+	uint32_t RxDropFramesFilter;
+	uint32_t RxDropFramesErr;
+} esw_mib_counters_t;
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
 // IOCTL
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -209,6 +249,32 @@ int phy_jumbo_frames(unsigned int jumbo_frames_on)
 	return mtk_esw_ioctl(MTK_ESW_IOCTL_JUMBO_FRAMES, 0, &jumbo_frames_on);
 }
 
+int phy_igmp_static_port(unsigned int static_port)
+{
+	unsigned int ports_mask = 0;
+
+	switch (static_port)
+	{
+	case 1:
+		ports_mask |= SWAPI_PORTMASK_LAN1;
+		break;
+	case 2:
+		ports_mask |= SWAPI_PORTMASK_LAN2;
+		break;
+	case 3:
+		ports_mask |= SWAPI_PORTMASK_LAN3;
+		break;
+	case 4:
+		ports_mask |= SWAPI_PORTMASK_LAN4;
+		break;
+	case 5:
+		ports_mask |= SWAPI_PORTMASK_WAN;
+		break;
+	}
+
+	return mtk_esw_ioctl(MTK_ESW_IOCTL_IGMP_STATIC_PORTS, 0, &ports_mask);
+}
+
 int phy_igmp_snooping(unsigned int igmp_snooping_on)
 {
 	return mtk_esw_ioctl(MTK_ESW_IOCTL_IGMP_SNOOPING, 0, &igmp_snooping_on);
@@ -267,12 +333,6 @@ int phy_vlan_reset_table(void)
 {
 	unsigned int unused = 0;
 	return mtk_esw_ioctl(MTK_ESW_IOCTL_VLAN_RESET_TABLE, 0, &unused);
-}
-
-inline int phy_vlan_ingress_mode(unsigned int port_pask)
-{
-	// N.A.
-	return 0;
 }
 
 int phy_vlan_accept_port_mode(int accept_mode, unsigned int port_pask)
@@ -340,19 +400,22 @@ int show_usage(char *cmd)
 	"    2               Show GPIO mode RAW\n"
 	"    3 [0|1] [PIN]   Set GPIO pin direction (0=Input, 1=Output)\n"
 	"    4 [0|1] [PIN]   Set GPIO pin value\n"
-	"    5 [PIN]         Show GPIO pin value\n\n"
+	"    5 [PIN]         Show GPIO pin value\n"
+	"\n"
 	"   10               Show WAN port link status\n"
 	"   11               Show WAN ports link status\n"
 	"   12               Show LAN ports link status\n"
 	"   13               Show LAN1 port link status\n"
 	"   14               Show LAN2 port link status\n"
 	"   15               Show LAN3 port link status\n"
-	"   16               Show LAN4 port link status\n\n"
+	"   16               Show LAN4 port link status\n"
+	"\n"
 	"   20               Show WAN port speed status\n"
 	"   21               Show LAN1 port speed status\n"
 	"   22               Show LAN2 port speed status\n"
 	"   23               Show LAN3 port speed status\n"
-	"   24               Show LAN4 port speed status\n\n"
+	"   24               Show LAN4 port speed status\n"
+	"\n"
 	"   30               Show WAN port MIB counters\n"
 	"   31               Show LAN1 port MIB counters\n"
 	"   32               Show LAN2 port MIB counters\n"
@@ -361,29 +424,34 @@ int show_usage(char *cmd)
 #if defined (USE_MTK_GSW)
 	"   35               Show CPU WAN port MIB counters\n"
 	"   36               Show CPU LAN port MIB counters\n"
-	"   38               Reset all ports MIB counters\n\n"
+	"   38               Reset all ports MIB counters\n"
 #else
-	"   36               Show CPU LAN port MIB counters\n\n"
+	"   36               Show CPU WAN/LAN port MIB counters\n"
 #endif
+	"\n"
 	"   40 [0x25252525]  Full reset and reinit switch\n"
 	"   41 [MASK] [0|1]  Set power off/on for ports mask\n"
 	"   42 [W|L]  [0|1]  Set power off/on for WAN or LAN ports\n"
-	"   43               Clear switch MAC table\n\n"
+	"   43               Clear switch L2 MAC table\n"
+	"\n"
 	"   50 [0..8] [0..3] Config WAN bridge mode and isolation\n"
 	"   60               Reset VLAN table and init VLAN1\n"
 	"   62 [MASK] [0..2] Set VLAN accept mode for ports mask\n"
 	"   63 [MASK] [DATA] Create port-based VLAN entry\n"
-	"   64 [MASK] [DATA] Create VLAN entry\n\n"
+	"   64 [MASK] [DATA] Create VLAN entry\n"
+	"\n"
 	"   71 [0..1000]     Set Unknown Multicast and Broadcast storm rate for all PHY ports\n"
 	"   75 [1|0]         Set Jumbo Frames accept on/off\n"
 	"   76 [1|0]         Set 802.3az EEE on/off\n"
+	"   77 [MASK]        Set IGMP/MLD static ports mask\n"
 	"   78 [1|0]         Set IGMP/MLD snooping on/off\n"
 	"   80 [7,11]        Set EPHY LED action\n"
+	"\n"
 	"   90 [MODE]        Set WAN port link mode (flow|link)\n"
 	"   91 [MODE]        Set LAN1 port link mode (flow|link)\n"
 	"   92 [MODE]        Set LAN2 port link mode (flow|link)\n"
 	"   93 [MODE]        Set LAN3 port link mode (flow|link)\n"
-	"   94 [MODE]        Set LAN4 port link mode (flow|link)\n\n"
+	"   94 [MODE]        Set LAN4 port link mode (flow|link)\n"
 	, cmd);
 
 	return 1;
@@ -515,10 +583,10 @@ int show_status_speed(unsigned int cmd)
 int show_mib_counters(unsigned int cmd)
 {
 	int retVal;
-	arl_mib_counters_t mibc;
+	esw_mib_counters_t mibc;
 	char *portname = "";
 
-	memset(&mibc, 0, sizeof(arl_mib_counters_t));
+	memset(&mibc, 0, sizeof(esw_mib_counters_t));
 	retVal = mtk_esw_ioctl(cmd, 0, (unsigned int *)&mibc);
 	if (retVal == 0)
 	{
@@ -547,12 +615,48 @@ int show_mib_counters(unsigned int cmd)
 			break;
 		}
 		
+#if defined (USE_MTK_GSW)
+		printf("%s MIB counters:\n"
+			"  TxGoodOctets: %llu\n"
+			"  TxUcastFrames: %u\n"
+			"  TxMcastFrames: %u\n"
+			"  TxBcastFrames: %u\n"
+			"  TxDropFrames: %u\n"
+			"  TxCollisions: %u\n"
+			"  TxCRCError: %u\n"
+			"  RxGoodOctets: %llu\n"
+			"  RxUcastFrames: %u\n"
+			"  RxMcastFrames: %u\n"
+			"  RxBcastFrames: %u\n"
+			"  RxDropFrames: %u\n"
+			"  RxFilterFrames: %u\n"
+			"  RxCRCError: %u\n"
+			"  RxAligmentError: %u\n"
+			,
+			portname,
+			mibc.TxGoodOctets,
+			mibc.TxUcastFrames,
+			mibc.TxMcastFrames,
+			mibc.TxBcastFrames,
+			mibc.TxDropFrames,
+			mibc.TxCollisions,
+			mibc.TxCRCError,
+			mibc.RxGoodOctets,
+			mibc.RxUcastFrames,
+			mibc.RxMcastFrames,
+			mibc.RxBcastFrames,
+			mibc.RxDropFrames,
+			mibc.RxFilterFrames,
+			mibc.RxCRCError,
+			mibc.RxAligmentError
+			);
+#else
 		printf("%s MIB counters:\n"
 			"  TxGoodOctets: %llu\n"
 			"  TxGoodFrames: %u\n"
 			"  TxBadOctets: %u\n"
 			"  TxBadFrames: %u\n"
-			"  TxDropFrames: %u\n"
+			"  TxDropFrames: %u\n\n"
 			"  RxGoodOctets: %llu\n"
 			"  RxGoodFrames: %u\n"
 			"  RxBadOctets: %u\n"
@@ -573,6 +677,7 @@ int show_mib_counters(unsigned int cmd)
 			mibc.RxDropFramesFilter,
 			mibc.RxDropFramesErr
 			);
+#endif
 	}
 
 	return retVal;

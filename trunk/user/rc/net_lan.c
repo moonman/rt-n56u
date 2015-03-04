@@ -135,12 +135,9 @@ init_bridge(int is_ap_mode)
 #endif
 
 #if defined (USE_RT3352_MII)
-	if (!is_ap_mode)
-	{
-		/* create VLAN3 for guest AP */
-		doSystem("vconfig add %s %d", IFNAME_MAC, INIC_GUEST_VLAN_VID);
-		ifconfig(IFNAME_INIC_GUEST_VLAN, IFUP, NULL, NULL);
-	}
+	/* create VLAN3 for guest AP */
+	doSystem("vconfig add %s %d", IFNAME_MAC, INIC_GUEST_VLAN_VID);
+	ifconfig(IFNAME_INIC_GUEST_VLAN, IFUP, NULL, NULL);
 #endif
 
 #if BOARD_2G_IN_SOC
@@ -254,11 +251,12 @@ void
 config_bridge(int is_ap_mode)
 {
 	char bridge_path[64], *wired_ifname;
-	int multicast_router, multicast_querier;
+	int multicast_router, multicast_querier, igmp_static_port;
 	int igmp_snoop = nvram_get_int("ether_igmp");
 	int wired_m2u = nvram_get_int("ether_m2u");
 
 	if (!is_ap_mode) {
+		igmp_static_port = 0;
 		if (nvram_match("mr_enable_x", "1")) {
 			multicast_router = 2;   // bridge is mcast router path (br0 <--igmpproxy--> eth3)
 			multicast_querier = 0;  // bridge is not needed internal mcast querier (igmpproxy is mcast querier)
@@ -268,6 +266,7 @@ config_bridge(int is_ap_mode)
 		}
 		wired_ifname = IFNAME_LAN;
 	} else {
+		igmp_static_port = nvram_get_int("ether_uport");
 		multicast_router = 0;   // bridge is not mcast router path
 		multicast_querier = 1;  // bridge is needed internal mcast querier (for eth2-ra0-rai0 snooping work)
 #if defined (AP_MODE_LAN_TAGGED)
@@ -291,6 +290,9 @@ config_bridge(int is_ap_mode)
 	fput_int(bridge_path, (igmp_snoop) ? 1 : 0);
 
 	brport_set_m2u(wired_ifname, (igmp_snoop && wired_m2u == 1) ? 1 : 0);
+
+	phy_igmp_static_port(igmp_static_port);
+	phy_igmp_snooping((igmp_snoop && wired_m2u == 2) ? 1 : 0);
 }
 
 void
@@ -355,7 +357,6 @@ switch_config_base(void)
 #endif
 	phy_jumbo_frames(nvram_get_int("ether_jumbo"));
 	phy_green_ethernet(nvram_get_int("ether_green"));
-	phy_igmp_snooping((nvram_get_int("ether_m2u") == 2) ? 1 : 0);
 }
 
 void
@@ -413,8 +414,7 @@ switch_config_vlan(int first_call)
 		bwan_isolation = SWAPI_WAN_BWAN_ISOLATION_NONE;
 	
 	is_vlan_filter = (nvram_match("vlan_filter", "1")) ? 1 : 0;
-	if (is_vlan_filter)
-	{
+	if (is_vlan_filter) {
 		bwan_isolation = SWAPI_WAN_BWAN_ISOLATION_FROM_CPU;
 		
 		vlan_vid[SWAPI_VLAN_RULE_WAN_INET] = nvram_get_int("vlan_vid_cpu");
@@ -438,18 +438,16 @@ switch_config_vlan(int first_call)
 		vlan_tag[SWAPI_VLAN_RULE_WAN_LAN3] = nvram_get_int("vlan_tag_lan3");
 		vlan_tag[SWAPI_VLAN_RULE_WAN_LAN4] = nvram_get_int("vlan_tag_lan4");
 		
-		if(is_vlan_vid_inet_valid(vlan_vid[SWAPI_VLAN_RULE_WAN_INET]))
+		if (is_vlan_vid_valid(vlan_vid[SWAPI_VLAN_RULE_WAN_INET]))
 			vlan_tag[SWAPI_VLAN_RULE_WAN_INET] = 1;
 		else
 			vlan_vid[SWAPI_VLAN_RULE_WAN_INET] = 0;
 		
-		if (is_vlan_vid_iptv_valid(vlan_vid[SWAPI_VLAN_RULE_WAN_INET], vlan_vid[SWAPI_VLAN_RULE_WAN_IPTV]))
+		if (is_vlan_vid_valid(vlan_vid[SWAPI_VLAN_RULE_WAN_IPTV]))
 			vlan_tag[SWAPI_VLAN_RULE_WAN_IPTV] = 1;
 		else
 			vlan_vid[SWAPI_VLAN_RULE_WAN_IPTV] = 0;
-	}
-	else
-	{
+	} else {
 		memset(vlan_vid, 0, sizeof(vlan_vid));
 		memset(vlan_pri, 0, sizeof(vlan_pri));
 		memset(vlan_tag, 0, sizeof(vlan_tag));
@@ -462,8 +460,7 @@ switch_config_vlan(int first_call)
 	phy_bridge_mode(bridge_mode, bwan_isolation);
 	
 #if defined(USE_RT3352_MII)
-	if (!first_call)
-	{
+	if (!first_call) {
 		// clear isolation iNIC port from all LAN ports
 		if (is_interface_up(IFNAME_INIC_MAIN) && get_mlme_radio_rt())
 			phy_isolate_inic(0);
@@ -472,15 +469,9 @@ switch_config_vlan(int first_call)
 }
 
 int
-is_vlan_vid_inet_valid(int vlan_vid_inet)
+is_vlan_vid_valid(int vlan_vid)
 {
-	return (vlan_vid_inet >= MIN_EXT_VLAN_VID && vlan_vid_inet < 4095) ? 1 : 0;
-}
-
-int
-is_vlan_vid_iptv_valid(int vlan_vid_inet, int vlan_vid_iptv)
-{
-	return (vlan_vid_iptv >= MIN_EXT_VLAN_VID && vlan_vid_iptv < 4095 && vlan_vid_iptv != vlan_vid_inet) ? 1 : 0;
+	return (vlan_vid >= MIN_EXT_VLAN_VID && vlan_vid < 4095) ? 1 : 0;
 }
 
 void

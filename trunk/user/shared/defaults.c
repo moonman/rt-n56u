@@ -100,6 +100,12 @@ struct nvram_pair router_defaults[] = {
 	{ "vlan_tag_lan4", "0" },
 	{ "x_DHCPClient", "1" },
 
+	/* VLAN IPTV path */
+	{ "viptv_mode", "0" },
+	{ "viptv_ipaddr", "0.0.0.0" },
+	{ "viptv_netmask", "0.0.0.0" },
+	{ "viptv_gateway", "0.0.0.0" },
+
 	/* PPP VPN parameters */
 	{ "wan_pppoe_username", "" },		/* PPP username */
 	{ "wan_pppoe_passwd", "" },		/* PPP password */
@@ -588,6 +594,7 @@ struct nvram_pair router_defaults[] = {
 	{ "front_led_pwr", "1" },
 
 	{ "ether_igmp", "1" },
+	{ "ether_uport", "5" },		/* WAN port in AP mode is static upstream by default */
 	{ "ether_m2u", "2" },
 #if defined(USE_RTL8367)
 	{ "ether_jumbo", "1" },

@@ -177,43 +177,48 @@ static void gsw_set_pll(void)
 		/* 25Mhz Xtal - do nothing */
 	} else if (regValue >= 3) {
 		/* 40Mhz Xtal */
-		mii_mgr_write(0, 13, 0x1f);	// disable MT7530 core clock
-		mii_mgr_write(0, 14, 0x410);
-		mii_mgr_write(0, 13, 0x401f);
-		mii_mgr_write(0, 14, 0x0);
 		
-		mii_mgr_write(0, 13, 0x1f);	// disable MT7530 PLL
-		mii_mgr_write(0, 14, 0x40d);
+		/* disable MT7530 core clock */
+		mii_mgr_write(0, 13, 0x001f);
+		mii_mgr_write(0, 14, 0x0410);
+		mii_mgr_write(0, 13, 0x401f);
+		mii_mgr_write(0, 14, 0x0000);
+		
+		/* disable MT7530 PLL */
+		mii_mgr_write(0, 13, 0x001f);
+		mii_mgr_write(0, 14, 0x040d);
 		mii_mgr_write(0, 13, 0x401f);
 		mii_mgr_write(0, 14, 0x2020);
 		
-		mii_mgr_write(0, 13, 0x1f);	// for MT7530 core clock = 500Mhz
-		mii_mgr_write(0, 14, 0x40e);
+		/* MT7530 core clock = 500MHz */
+		mii_mgr_write(0, 13, 0x001f);
+		mii_mgr_write(0, 14, 0x040e);
 		mii_mgr_write(0, 13, 0x401f);
-		mii_mgr_write(0, 14, 0x119);
+		mii_mgr_write(0, 14, 0x0119);
 		
-		mii_mgr_write(0, 13, 0x1f);	// enable MT7530 PLL
+		/* enable MT7530 PLL */
+		mii_mgr_write(0, 13, 0x001f);
 		mii_mgr_write(0, 14, 0x40d);
 		mii_mgr_write(0, 13, 0x401f);
 		mii_mgr_write(0, 14, 0x2820);
 		udelay(20);
 		
-		mii_mgr_write(0, 13, 0x1f);	// enable MT7530 core clock
-		mii_mgr_write(0, 14, 0x410);
+		/* enable MT7530 core clock */
+		mii_mgr_write(0, 13, 0x001f);
+		mii_mgr_write(0, 14, 0x0410);
 		mii_mgr_write(0, 13, 0x401f);
+#if defined (CONFIG_GE1_TRGMII_FORCE_1200)
+		mii_mgr_write(0, 14, 0x0003);	/* TRGMII */
+#else
+		mii_mgr_write(0, 14, 0x0001);	/* RGMII */
+#endif
 	} else {
 		/* 20Mhz Xtal - todo */
 	}
 
 #if defined (CONFIG_GE1_TRGMII_FORCE_1200)
-	/* set TRGMII clock mode */
-	mii_mgr_write(0, 14, 0x0003);
-
 	/* enable MT7530 TRGMII */
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7830, 0x1);
-#else
-	/* set RGMII clock mode */
-	mii_mgr_write(0, 14, 0x0001);
 #endif
 }
 
@@ -231,7 +236,7 @@ void mt7621_esw_fc_delay_set(int is_link_100)
 /* MT7621 embedded switch (aka MT7350) */
 void mt7621_esw_init(void)
 {
-	u32  __maybe_unused i, regLink, regValue = 0;
+	u32 __maybe_unused i, regLink, regValue = 0;
 
 	/* MT7621 E2 has FC bug */
 	if ((ralink_asic_rev_id & 0xFFFF) == 0x0101)
@@ -268,8 +273,7 @@ void mt7621_esw_init(void)
 
 	/* configure MT7350 Port6 */
 #if defined (CONFIG_GE2_INTERNAL_GMAC_P5)
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2604, 0x004f0003);		// P6 set security mode
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2610, 0x810000c0);		// P6 is transparent port, admit all frames
+	/* do not override P6 security (use external switch control) */
 #elif defined (CONFIG_GE2_INTERNAL_GPHY_P4)
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x2604, 0x004f0000);		// P6 has matrix mode (P6|P3|P2|P1|P0)
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x2610, 0x810000c0);		// P6 is transparent port, admit all frames
@@ -285,9 +289,7 @@ void mt7621_esw_init(void)
 
 	/* configure MT7350 Port5 */
 #if defined (CONFIG_GE2_INTERNAL_GMAC_P5)
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2504, 0x00300003);		// P5 set security mode
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2510, 0x810000c0);		// P5 is transparent port, admit all frames
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2514, 0x00010002);		// P5 PVID=2
+	/* do not override P5 security (use external switch control) */
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x3500, regLink);		// (P5, Force mode, Link Up, 1000Mbps, Full-Duplex)
 	sysRegWrite(RALINK_ETH_SW_BASE+0x200, (0x20000000|regLink));	// (GE2, Force 1000M/FD)
 #elif defined (CONFIG_GE2_INTERNAL_GPHY_P4) || defined (CONFIG_GE2_INTERNAL_GPHY_P0)
@@ -309,12 +311,11 @@ void mt7621_esw_init(void)
 	regValue &= ~(1<<30);
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7a40, regValue);
 
-	regValue = 0x855;
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x7a78, regValue);
+	mii_mgr_write(MT7530_MDIO_ADDR, 0x7a78, 0x0855);
 #endif
 
-	/* set MT7530 delay setting for 10/1000M */
 #if defined (CONFIG_GE2_INTERNAL_GPHY_P4) || defined (CONFIG_GE2_INTERNAL_GPHY_P0)
+	/* set MT7530 delay setting for 10/1000M */
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7b00, 0x102);
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7b04, 0x14);
 #endif
@@ -327,22 +328,18 @@ void mt7621_esw_init(void)
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7a74, 0x44);
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7a7c, 0x44);
 
-	/* disable EEE */
-#if defined (CONFIG_GE2_INTERNAL_GPHY_P4) || defined (CONFIG_GE2_INTERNAL_GPHY_P0)
-	for (i = 0; i <= 4; i++) {
-		mii_mgr_write(i, 13, 0x7);
-		mii_mgr_write(i, 14, 0x3C);
-		mii_mgr_write(i, 13, 0x4007);
-		mii_mgr_write(i, 14, 0x0);
-	}
-
-	/* disable EEE 10Base-T */
-	for (i = 0; i <= 4; i++) {
-		mii_mgr_write(i, 13, 0x1f);
-		mii_mgr_write(i, 14, 0x027b);
-		mii_mgr_write(i, 13, 0x401f);
-		mii_mgr_write(i, 14, 0x1177);
-	}
+#if defined (CONFIG_GE2_INTERNAL_GPHY_P4)
+	/* disable P4 EEE LPI */
+	mii_mgr_write(4, 13, 0x0007);
+	mii_mgr_write(4, 14, 0x003c);
+	mii_mgr_write(4, 13, 0x4007);
+	mii_mgr_write(4, 14, 0x0000);
+#elif defined (CONFIG_GE2_INTERNAL_GPHY_P0)
+	/* disable P0 EEE LPI */
+	mii_mgr_write(0, 13, 0x0007);
+	mii_mgr_write(0, 14, 0x003c);
+	mii_mgr_write(0, 13, 0x4007);
+	mii_mgr_write(0, 14, 0x0000);
 #endif
 
 	/* enable switch INTR */

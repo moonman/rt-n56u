@@ -244,6 +244,10 @@
 			{"wan_auth_user", "", NULL, EVM_RESTART_WAN},
 			{"wan_auth_pass", "", NULL, EVM_RESTART_WAN},
 			{"wan_auth_host", "", NULL, EVM_RESTART_WAN},
+			{"viptv_mode", "", NULL, EVM_RESTART_WAN},
+			{"viptv_ipaddr", "", NULL, EVM_RESTART_WAN},
+			{"viptv_netmask", "", NULL, EVM_RESTART_WAN},
+			{"viptv_gateway", "", NULL, EVM_RESTART_WAN},
 			{0,0,0,0}
 		};
 
@@ -470,6 +474,7 @@
 			{"adsc_enable", "", NULL, EVM_RESTART_ADSC},
 			{"scripts.authorized_keys", "File", NULL, EVM_RESTART_SSHD|EVM_BLOCK_UNSAFE},
 			{"ether_igmp", "", NULL, EVM_RESTART_SWITCH_CFG},
+			{"ether_uport", "", NULL, EVM_RESTART_SWITCH_CFG},
 			{"ether_m2u", "", NULL, EVM_RESTART_SWITCH_CFG},
 			{"ether_led0", "", NULL, EVM_RESTART_SWITCH_CFG},
 			{"ether_led1", "", NULL, EVM_RESTART_SWITCH_CFG},

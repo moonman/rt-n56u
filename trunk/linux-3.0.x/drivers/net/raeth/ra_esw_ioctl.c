@@ -50,6 +50,9 @@ extern int (*ra_sw_nat_hook_rx)(struct sk_buff *skb);
 ////////////////////////////////////////////////////////////////////////////////////
 
 static DEFINE_MUTEX(esw_access_mutex);
+#if defined (CONFIG_MT7530_GSW)
+static DECLARE_BITMAP(g_vlan_pool, 4096);
+#endif
 
 static u32 g_wan_bridge_mode                     = SWAPI_WAN_BRIDGE_DISABLE;
 static u32 g_wan_bwan_isolation                  = SWAPI_WAN_BWAN_ISOLATION_NONE;
@@ -59,6 +62,7 @@ static u32 g_led_phy_mode                        = SWAPI_LED_LINK_ACT;
 static u32 g_jumbo_frames_enabled                = ESW_DEFAULT_JUMBO_FRAMES;
 static u32 g_green_ethernet_enabled              = ESW_DEFAULT_GREEN_ETHERNET;
 static u32 g_igmp_snooping_enabled               = ESW_DEFAULT_IGMP_SNOOPING;
+static u32 g_igmp_static_ports                   = 0;
 
 static u32 g_storm_rate_limit                    = ESW_DEFAULT_STORM_RATE;
 
@@ -73,7 +77,7 @@ static u32 g_vlan_rule_user[SWAPI_VLAN_RULE_NUM] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 static atomic_t g_switch_inited                  = ATOMIC_INIT(0);
 static atomic_t g_port_link_changed              = ATOMIC_INIT(0);
 
-static bwan_member_t g_bwan_member[SWAPI_WAN_BRIDGE_NUM][ESW_PHY_ID_MAX+1];
+static bwan_member_t g_bwan_member[SWAPI_WAN_BRIDGE_NUM][ESW_MAC_ID_MAX+1];
 
 ////////////////////////////////////////////////////////////////////////////////////
 
@@ -97,7 +101,7 @@ static u32 get_ports_mask_lan(u32 include_cpu)
 	if (include_cpu)
 		portmask_lan |= (1u << LAN_PORT_CPU);
 
-	for (i = 0; i <= ESW_PHY_ID_MAX; i++) {
+	for (i = 0; i <= ESW_MAC_ID_MAX; i++) {
 		if (g_bwan_member[wan_bridge_mode][i].bwan)
 			portmask_lan &= ~(1u << i);
 	}
@@ -124,7 +128,7 @@ static u32 get_ports_mask_wan(u32 include_cpu, int is_phy_id)
 	if (include_cpu)
 		portmask_wan |= (1u << WAN_PORT_CPU);
 
-	for (i = 0; i <= ESW_PHY_ID_MAX; i++) {
+	for (i = 0; i <= ESW_MAC_ID_MAX; i++) {
 		if (g_bwan_member[wan_bridge_mode][i].bwan)
 			portmask_wan |= (1u << i);
 	}
@@ -158,39 +162,82 @@ static u32 get_ports_mask_from_user(u32 user_port_mask, int is_phy_id)
 	return gsw_ports_mask;
 }
 
-static char* get_port_desc(u32 port_id)
+static const char* get_port_desc(u32 port_id)
 {
-	char *port_desc;
+	const char *port_desc;
 
 	switch (port_id)
 	{
 	case LAN_PORT_1:
-		port_desc = (char*)g_port_desc_lan1;
+		port_desc = g_port_desc_lan1;
 		break;
 	case LAN_PORT_2:
-		port_desc = (char*)g_port_desc_lan2;
+		port_desc = g_port_desc_lan2;
 		break;
 	case LAN_PORT_3:
-		port_desc = (char*)g_port_desc_lan3;
+		port_desc = g_port_desc_lan3;
 		break;
 	case LAN_PORT_4:
-		port_desc = (char*)g_port_desc_lan4;
+		port_desc = g_port_desc_lan4;
 		break;
 	case LAN_PORT_CPU:
-		port_desc = (char*)g_port_desc_cpu;
+		port_desc = g_port_desc_cpu;
 		break;
 	case WAN_PORT_MAC:
 #if (WAN_PORT_PHY != WAN_PORT_MAC)
 	case WAN_PORT_PHY:
 #endif
-		port_desc = (char*)g_port_desc_wan;
+		port_desc = g_port_desc_wan;
 		break;
 	default:
-		port_desc = (char*)g_port_desc_rgmii;
+		port_desc = g_port_desc_rgmii;
 		break;
 	}
 
 	return port_desc;
+}
+
+static void esw_show_bridge_partitions(u32 wan_bridge_mode)
+{
+	char *wanl, *wanr, *lans;
+
+	wanl = "W|";
+	wanr = "";
+
+	switch (wan_bridge_mode)
+	{
+	case SWAPI_WAN_BRIDGE_LAN1:
+		lans = "WLLL";
+		break;
+	case SWAPI_WAN_BRIDGE_LAN2:
+		lans = "LWLL";
+		break;
+	case SWAPI_WAN_BRIDGE_LAN3:
+		lans = "LLWL";
+		break;
+	case SWAPI_WAN_BRIDGE_LAN4:
+		lans = "LLLW";
+		break;
+	case SWAPI_WAN_BRIDGE_LAN3_LAN4:
+		lans = "LLWW";
+		break;
+	case SWAPI_WAN_BRIDGE_LAN1_LAN2:
+		lans = "WWLL";
+		break;
+	case SWAPI_WAN_BRIDGE_LAN1_LAN2_LAN3:
+		lans = "WWWL";
+		break;
+	case SWAPI_WAN_BRIDGE_DISABLE_WAN:
+		lans = "LLLL";
+		wanl = "L";
+		wanr = "";
+		break;
+	default:
+		lans = "LLLL";
+		break;
+	}
+
+	printk("%s - %s: %s%s%s\n", MTK_ESW_DEVNAME, "hw bridge", wanl, lans, wanr);
 }
 
 static void esw_port_matrix_set(u32 port_id, u32 fwd_mask, u32 pvlan_ingress_mode)
@@ -255,59 +302,71 @@ static void esw_vlan_pvid_set(u32 port_id, u32 pvid, u32 prio)
 
 static void esw_igmp_ports_config(u32 wan_bridge_mode)
 {
-	u32 i, reg_isc, mask_drp;
+	u32 i, reg_isc, mask_no_learn;
+
+	mask_no_learn = 0;
 
 	if (wan_bridge_mode != SWAPI_WAN_BRIDGE_DISABLE_WAN) {
-		mask_drp = get_ports_mask_wan(1, 0);
+		mask_no_learn = get_ports_mask_wan(0, 0);
 		for (i = 0; i <= ESW_MAC_ID_MAX; i++) {
-			if ((mask_drp >> i) & 0x1)
+			if ((mask_no_learn >> i) & 0x1)
 				esw_reg_set(REG_ESW_PORT_PIC_P0 + 0x100*i, 0x8000);
 		}
 	}
+
+	/* make CPU ports always static */
+	mask_no_learn |= (1u << WAN_PORT_CPU);
+	mask_no_learn |= (1u << LAN_PORT_CPU);
+
+	if (g_igmp_snooping_enabled)
+		mask_no_learn |= g_igmp_static_ports;
 	else
-		mask_drp = (1u << LAN_PORT_CPU);
+		mask_no_learn |= get_ports_mask_lan(0);
 
 	reg_isc = esw_reg_get(REG_ESW_ISC);
 	reg_isc &= ~0xFF0000FF;
-	reg_isc |= mask_drp;
+	reg_isc |= mask_no_learn;
 	esw_reg_set(REG_ESW_ISC, reg_isc);
 }
 
 static void esw_igmp_mld_snooping(u32 enable_igmp, u32 enable_mld)
 {
-	u32 i, mask_lan, reg_pic_phy, reg_pic_cpu;
+	u32 i, mask_lan, dst_igmp, src_join, reg_pic, reg_pic_lan;
+	u32 mask_static = g_igmp_static_ports;
 
-	reg_pic_phy = 0x00008000;		// Robustness = 2
-	reg_pic_cpu = 0x00008000;		// Robustness = 2
+	dst_igmp = 0;
+	src_join = 0;
+	reg_pic = (2u << 14);			// Robustness = 2
+
 	if (enable_mld) {
-		reg_pic_cpu |= (1u << 9);	// IPM_33
+		dst_igmp |= (1u << 9);		// IPM_33
 		
-		reg_pic_phy |= (1u << 13);	// MLD_HW_LEAVE
-		reg_pic_phy |= (1u << 7);	// MLD2_JOIN_EN
-		reg_pic_phy |= (1u << 5);	// MLD_JOIN_EN
-		
-		if (g_wan_bridge_mode == SWAPI_WAN_BRIDGE_DISABLE_WAN)
-			reg_pic_phy |= (1u << 9);	// IPM_33
+		src_join |= (1u << 7);		// MLD2_JOIN_EN
+		src_join |= (1u << 5);		// MLD_JOIN_EN
 	}
 
 	if (enable_igmp) {
-		reg_pic_cpu |= (1u << 8);	// IPM_01
+		dst_igmp |= (1u << 10);		// IPM_224
+		dst_igmp |= (1u << 8);		// IPM_01
 		
-		reg_pic_phy |= (1u << 12);	// IGMP_HW_LEAVE
-		reg_pic_phy |= (1u << 6);	// IGMP3_JOIN_EN
-		reg_pic_phy |= (1u << 4);	// IGMP_JOIN_EN
-		
-		if (g_wan_bridge_mode == SWAPI_WAN_BRIDGE_DISABLE_WAN)
-			reg_pic_phy |= (1u << 8);	// IPM_01
+		src_join |= (1u << 6);		// IGMP3_JOIN_EN
+		src_join |= (1u << 4);		// IGMP_JOIN_EN
 	}
 
 	mask_lan = get_ports_mask_lan(0);
 	for (i = 0; i <= ESW_MAC_ID_MAX; i++) {
-		if ((mask_lan >> i) & 0x1)
-			esw_reg_set(REG_ESW_PORT_PIC_P0 + 0x100*i, reg_pic_phy);
+		if ((mask_lan >> i) & 0x1) {
+			reg_pic_lan = reg_pic;
+			if ((mask_static >> i) & 0x1)
+				reg_pic_lan |= dst_igmp;
+			else
+				reg_pic_lan |= src_join;
+			esw_reg_set(REG_ESW_PORT_PIC_P0 + 0x100*i, reg_pic_lan);
+		}
 	}
 
-	esw_reg_set(REG_ESW_PORT_PIC_P0 + 0x100*LAN_PORT_CPU, reg_pic_cpu);
+	/* make CPU port always static */
+	esw_reg_set(REG_ESW_PORT_PIC_P0 + 0x100*LAN_PORT_CPU, reg_pic | dst_igmp);
 }
 
 static int esw_mac_table_clear(void)
@@ -405,11 +464,11 @@ static void esw_vlan_reset_table(void)
 {
 	u32 i;
 
-	// Reset VLAN mappings
+	/* Reset VLAN mappings */
 	for (i = 0; i < 8; i++)
 		esw_reg_set(REG_ESW_VLAN_ID_BASE + 4*i, (((i<<1)+2) << 12) | ((i<<1)+1));
 
-	// Reset VLAN table from idx 1 to 15
+	/* Reset VLAN table from idx 1 to 15 */
 	for(i = 1; i < 16; i++)
 		esw_write_vtcr(2, i);
 }
@@ -439,45 +498,53 @@ static void esw_vlan_set(u32 cvid, u32 svid, u32 port_member, u32 fid)
 	esw_reg_set(REG_ESW_VLAN_VAWD1, reg_val);
 
 	esw_write_vtcr(1, cvid);
+	set_bit(cvid, g_vlan_pool);
 }
 
 static void esw_vlan_reset_table(void)
 {
 	u32 i;
 
-	// Reset VLAN table from vid 2 to 10 (todo)
-	for(i = 2; i < 11; i++)
-		esw_write_vtcr(2, i);
+	/* Reset VLAN table from VID #2 */
+	for (i = 2; i < 4096; i++) {
+		if (test_and_clear_bit(i, g_vlan_pool))
+			esw_write_vtcr(2, i);
+	}
 }
 #endif
 
+#define VLAN_ENTRY_ID_MAX	(15)
 static u32 find_vlan_slot(vlan_entry_t *vlan_entry, u32 start_idx, u32 cvid)
 {
 	u32 i;
 
-	for (i = start_idx; i <= ESW_VLAN_ID_MAX; i++) {
+	for (i = start_idx; i <= VLAN_ENTRY_ID_MAX; i++) {
 		if (!vlan_entry[i].valid || vlan_entry[i].cvid == cvid)
 			return i;
 	}
 
-	return ESW_VLAN_ID_MAX + 1; // not found
+	return VLAN_ENTRY_ID_MAX + 1; // not found
 }
 
 static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 {
+	vlan_entry_t vlan_entry[VLAN_ENTRY_ID_MAX+1];
 	pvlan_member_t pvlan_member[ESW_MAC_ID_MAX+1];
-	vlan_entry_t vlan_entry[ESW_VLAN_ID_MAX+1];
 	u32 pvid[SWAPI_VLAN_RULE_NUM];
 	u32 prio[SWAPI_VLAN_RULE_NUM];
 	u32 tagg[SWAPI_VLAN_RULE_NUM];
-	u32 i, next_fid, next_vid, vlan_idx;
-	u32 egress_swap_port_cpu, vlan_filter_on;
-	u32 __maybe_unused cpu_wan_accept_tagged = 0;
+	u32 i, next_fid, next_vid, vlan_idx, vlan_filter_on;
+	u32 __maybe_unused cpu_lan_egress_swap = 0;
+#if defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5) || defined (CONFIG_GE2_INTERNAL_GMAC_P5)
+	pvlan_member_t pvlan_member_cpu_wan;
+#endif
 
 	next_vid = 3;
 	next_fid = 3;
 	vlan_filter_on = 0;
-	egress_swap_port_cpu = 0;
+
+	memset(vlan_entry, 0, sizeof(vlan_entry));
+	memset(pvlan_member, 0, sizeof(pvlan_member));
 
 	for (i = 0; i < SWAPI_VLAN_RULE_NUM; i++) {
 		pvid[i] =  (g_vlan_rule_user[i] & 0xFFF);
@@ -491,21 +558,27 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 		pvid[SWAPI_VLAN_RULE_WAN_INET] = 2; // VID 2
 		prio[SWAPI_VLAN_RULE_WAN_INET] = 0;
 		tagg[SWAPI_VLAN_RULE_WAN_INET] = 0;
+	} else {
+		tagg[SWAPI_VLAN_RULE_WAN_INET] = 1;
 	}
 
-	for (i = 0; i <= ESW_VLAN_ID_MAX; i++) {
-		vlan_entry[i].valid = 0;
-		vlan_entry[i].fid = 0;
-		vlan_entry[i].cvid = 0;
-		vlan_entry[i].svid = 0;
-		vlan_entry[i].port_member = 0;
+	if (pvid[SWAPI_VLAN_RULE_WAN_IPTV] < MIN_EXT_VLAN_VID) {
+		pvid[SWAPI_VLAN_RULE_WAN_IPTV] = 2; // VID 2
+		prio[SWAPI_VLAN_RULE_WAN_IPTV] = 0;
+		tagg[SWAPI_VLAN_RULE_WAN_IPTV] = 0;
+	} else {
+		tagg[SWAPI_VLAN_RULE_WAN_IPTV] = 1;
 	}
 
 	/* fill WAN port (use PVID 2 for handle untagged traffic -> VID2) */
 	pvlan_member[WAN_PORT_MAC].pvid = 2;
-	pvlan_member[WAN_PORT_MAC].prio = 0;
-	pvlan_member[WAN_PORT_MAC].tagg = 0;
-	pvlan_member[WAN_PORT_MAC].swap = 0;
+
+#if defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5) || defined (CONFIG_GE2_INTERNAL_GMAC_P5)
+	/* fill CPU WAN port (use PVID 2 for handle untagged traffic -> VID2) */
+	pvlan_member_cpu_wan.pvid = 2;
+	pvlan_member_cpu_wan.prio = 0;
+	pvlan_member_cpu_wan.tagg = 0;
+#endif
 
 	/* VID #1 */
 	vlan_entry[0].valid = 1;
@@ -520,6 +593,7 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 	vlan_entry[1].port_member |= ((1u << WAN_PORT_CPU) | (1u << WAN_PORT_MAC));
 
 #if !defined (CONFIG_MT7530_GSW)
+	/* MT7620 not support PORT_MATRIX in security mode */
 	if (!vlan_filter_on && wan_bwan_isolation == SWAPI_WAN_BWAN_ISOLATION_BETWEEN) {
 		pvlan_member[WAN_PORT_MAC].pvid = next_vid;
 		
@@ -538,7 +612,7 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 		next_fid++;
 		next_vid++;
 		
-		egress_swap_port_cpu = 1;
+		cpu_lan_egress_swap = 1;
 	}
 #endif
 
@@ -551,33 +625,30 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 
 	/* check IPTV tagged */
 	if (pvid[SWAPI_VLAN_RULE_WAN_IPTV] >= MIN_EXT_VLAN_VID) {
-		vlan_idx = find_vlan_slot(&vlan_entry[0], next_vid-1, pvid[SWAPI_VLAN_RULE_WAN_IPTV]);
-		if (vlan_idx <= ESW_VLAN_ID_MAX) {
+		vlan_idx = find_vlan_slot(vlan_entry, next_vid-1, pvid[SWAPI_VLAN_RULE_WAN_IPTV]);
+		if (vlan_idx <= VLAN_ENTRY_ID_MAX) {
 			if (!vlan_entry[vlan_idx].valid) {
 				vlan_entry[vlan_idx].valid = 1;
 				vlan_entry[vlan_idx].fid = next_fid++;
 				vlan_entry[vlan_idx].cvid = pvid[SWAPI_VLAN_RULE_WAN_IPTV];
 				vlan_entry[vlan_idx].svid = pvid[SWAPI_VLAN_RULE_WAN_IPTV];
-			}
-			vlan_entry[vlan_idx].port_member |= ((1u << WAN_PORT_CPU) | (1u << WAN_PORT_MAC));
-			
-			pvlan_member[WAN_PORT_MAC].tagg = 1;
-			pvlan_member[WAN_PORT_MAC].swap = 1;
-			
-			cpu_wan_accept_tagged = 1;
-			
+				
 #if defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P0) || defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P4) || \
     defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5)
-			/* need add vlan members on MT7620 ESW P4 (ESW members P7|P6|P4) */
-			mt7620_esw_vlan_set_idx(2, pvid[SWAPI_VLAN_RULE_WAN_IPTV], 0xd0);
+				/* need add vlan members on MT7620 ESW P4 (ESW members P7|P6|P4) */
+				mt7620_esw_vlan_set_idx(2, pvid[SWAPI_VLAN_RULE_WAN_IPTV], 0xd0);
 #endif
+			}
+			vlan_entry[vlan_idx].port_member |= ((1u << WAN_PORT_CPU) | (1u << WAN_PORT_MAC));
+			pvlan_member[WAN_PORT_MAC].tagg = 1;
+			pvlan_member[WAN_PORT_MAC].swap = 1;
 		}
 	}
 
 	/* check INET tagged */
 	if (pvid[SWAPI_VLAN_RULE_WAN_INET] >= MIN_EXT_VLAN_VID) {
-		vlan_idx = find_vlan_slot(&vlan_entry[0], next_vid-1, pvid[SWAPI_VLAN_RULE_WAN_INET]);
-		if (vlan_idx <= ESW_VLAN_ID_MAX) {
+		vlan_idx = find_vlan_slot(vlan_entry, next_vid-1, pvid[SWAPI_VLAN_RULE_WAN_INET]);
+		if (vlan_idx <= VLAN_ENTRY_ID_MAX) {
 			if (!vlan_entry[vlan_idx].valid) {
 				vlan_entry[vlan_idx].valid = 1;
 				vlan_entry[vlan_idx].fid = next_fid++;
@@ -591,24 +662,30 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 #endif
 			}
 			vlan_entry[vlan_idx].port_member |= ((1u << WAN_PORT_CPU) | (1u << WAN_PORT_MAC));
-			
 			pvlan_member[WAN_PORT_MAC].tagg = 1;
 			pvlan_member[WAN_PORT_MAC].swap = 1;
-			
-			cpu_wan_accept_tagged = 1;
 		}
 	}
 
+#if defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5) || defined (CONFIG_GE2_INTERNAL_GMAC_P5)
+	/* if INET and IPTV tagged with common VID, untag WAN_CPU + use PVID */
+	if (tagg[SWAPI_VLAN_RULE_WAN_INET] && pvid[SWAPI_VLAN_RULE_WAN_INET] == pvid[SWAPI_VLAN_RULE_WAN_IPTV]) {
+		/* update VID #2 members (do not forward untagged packets to WAN_CPU) */
+		vlan_entry[1].port_member &= ~(1u << WAN_PORT_CPU);
+		pvlan_member_cpu_wan.pvid = pvid[SWAPI_VLAN_RULE_WAN_INET];
+	} else if (tagg[SWAPI_VLAN_RULE_WAN_INET] || tagg[SWAPI_VLAN_RULE_WAN_IPTV])
+		pvlan_member_cpu_wan.tagg = 1;
+#endif
+
 	/* fill LAN ports */
-	for (i = 0; i <= ESW_PHY_ID_MAX; i++) {
+	for (i = 0; i <= ESW_MAC_ID_MAX; i++) {
 		int rule_id;
 		
-		if (i == WAN_PORT_PHY)
+		if (i == WAN_PORT_MAC)
 			continue;
 		
-		pvlan_member[i].prio = 0;
-		pvlan_member[i].tagg = 0;
-		pvlan_member[i].swap = 0;
+		if ((1u << i) & ESW_MASK_EXCLUDE)
+			continue;
 		
 		if (!g_bwan_member[wan_bridge_mode][i].bwan) {
 			pvlan_member[i].pvid = 1;
@@ -627,6 +704,7 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 			vlan_entry[1].port_member |= (1u << i);
 			
 #if !defined (CONFIG_MT7530_GSW)
+			/* MT7620 not support PORT_MATRIX in security mode */
 			if (!vlan_filter_on && wan_bwan_isolation != SWAPI_WAN_BWAN_ISOLATION_NONE) {
 				pvlan_member[i].pvid = next_vid;
 				
@@ -645,8 +723,8 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 			}
 #endif
 		} else {
-			vlan_idx = find_vlan_slot(&vlan_entry[0], next_vid-1, pvid[rule_id]);
-			if (vlan_idx <= ESW_VLAN_ID_MAX) {
+			vlan_idx = find_vlan_slot(vlan_entry, next_vid-1, pvid[rule_id]);
+			if (vlan_idx <= VLAN_ENTRY_ID_MAX) {
 				if (!vlan_entry[vlan_idx].valid) {
 					vlan_entry[vlan_idx].valid = 1;
 					vlan_entry[vlan_idx].fid = next_fid++;
@@ -672,7 +750,7 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 
 #if defined (ESW_PORT_PPE)
 	/* add PPE port to members with CPU port */
-	for (i = 0; i <= ESW_VLAN_ID_MAX; i++) {
+	for (i = 0; i <= VLAN_ENTRY_ID_MAX; i++) {
 		if (!vlan_entry[i].valid)
 			continue;
 		if (vlan_entry[i].port_member & (1u << ESW_PORT_CPU))
@@ -695,20 +773,19 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 	}
 
 	/* configure CPU LAN port */
+	esw_port_accept_set(LAN_PORT_CPU, PORT_ACCEPT_FRAMES_ALL);
 #if defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P0) || defined (CONFIG_GE2_INTERNAL_GPHY_P0) || \
     defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P4) || defined (CONFIG_GE2_INTERNAL_GPHY_P4) || \
     defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5) || defined (CONFIG_GE2_INTERNAL_GMAC_P5)
 	/* [MT7620 P5 -> MT7530 P6] or [MT7621 GE1 -> MT7530 P6] */
 	esw_port_attrib_set(LAN_PORT_CPU, PORT_ATTRIBUTE_TRANSPARENT);
-	esw_port_accept_set(LAN_PORT_CPU, PORT_ACCEPT_FRAMES_UNTAGGED);
 	esw_port_egress_mode_set(LAN_PORT_CPU, PVLAN_EGRESS_UNTAG);
 #else
 	/* P6 always is trunk port */
 	esw_port_attrib_set(LAN_PORT_CPU, PORT_ATTRIBUTE_USER);
-	esw_port_accept_set(LAN_PORT_CPU, PORT_ACCEPT_FRAMES_ALL);
-	esw_port_egress_mode_set(LAN_PORT_CPU, (egress_swap_port_cpu) ? PVLAN_EGRESS_SWAP : PVLAN_EGRESS_TAG);
+	esw_port_egress_mode_set(LAN_PORT_CPU, (cpu_lan_egress_swap) ? PVLAN_EGRESS_SWAP : PVLAN_EGRESS_TAG);
 #if defined (ESW_PORT_PPE)
-	esw_port_egress_mode_set(ESW_PORT_PPE, (egress_swap_port_cpu) ? PVLAN_EGRESS_SWAP : PVLAN_EGRESS_TAG);
+	esw_port_egress_mode_set(ESW_PORT_PPE, (cpu_lan_egress_swap) ? PVLAN_EGRESS_SWAP : PVLAN_EGRESS_TAG);
 #endif
 #endif
 
@@ -724,21 +801,16 @@ static void esw_vlan_apply_rules(u32 wan_bridge_mode, u32 wan_bwan_isolation)
 	/* configure CPU WAN port */
 #if defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5) || defined (CONFIG_GE2_INTERNAL_GMAC_P5)
 	/* [MT7620 P4 -> MT7530 P5] or [MT7621 GE2 -> MT7530 P5] */
-	if (cpu_wan_accept_tagged) {
-		esw_port_attrib_set(WAN_PORT_CPU, PORT_ATTRIBUTE_USER);
-		esw_port_accept_set(WAN_PORT_CPU, PORT_ACCEPT_FRAMES_ALL);
-		esw_port_egress_mode_set(WAN_PORT_CPU, (egress_swap_port_cpu) ? PVLAN_EGRESS_SWAP : PVLAN_EGRESS_TAG);
-	} else {
-		esw_port_attrib_set(WAN_PORT_CPU, PORT_ATTRIBUTE_TRANSPARENT);
-		esw_port_accept_set(WAN_PORT_CPU, PORT_ACCEPT_FRAMES_UNTAGGED);
-		esw_port_egress_mode_set(WAN_PORT_CPU, PVLAN_EGRESS_UNTAG);
-	}
+	esw_vlan_pvid_set(WAN_PORT_CPU, pvlan_member_cpu_wan.pvid, pvlan_member_cpu_wan.prio);
+	esw_port_accept_set(WAN_PORT_CPU, PORT_ACCEPT_FRAMES_ALL);
+	esw_port_attrib_set(WAN_PORT_CPU, (pvlan_member_cpu_wan.pvid != 2 || pvlan_member_cpu_wan.tagg) ? PORT_ATTRIBUTE_USER : PORT_ATTRIBUTE_TRANSPARENT);
+	esw_port_egress_mode_set(WAN_PORT_CPU, (pvlan_member_cpu_wan.tagg) ? PVLAN_EGRESS_TAG : PVLAN_EGRESS_UNTAG);
 	esw_port_ingress_mode_set(WAN_PORT_CPU, PVLAN_INGRESS_MODE_SECURITY);
 #endif
 
 	/* fill VLAN table */
 	esw_vlan_reset_table();
-	for (i = 0; i <= ESW_VLAN_ID_MAX; i++) {
+	for (i = 0; i <= VLAN_ENTRY_ID_MAX; i++) {
 		if (!vlan_entry[i].valid)
 			continue;
 #if !defined (CONFIG_MT7530_GSW)
@@ -769,16 +841,15 @@ static void esw_vlan_init_vid1(void)
 	}
 
 	/* configure CPU port */
+	esw_port_accept_set(LAN_PORT_CPU, PORT_ACCEPT_FRAMES_ALL);
 #if defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P0) || defined (CONFIG_GE2_INTERNAL_GPHY_P0) || \
     defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P4) || defined (CONFIG_GE2_INTERNAL_GPHY_P4) || \
     defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5) || defined (CONFIG_GE2_INTERNAL_GMAC_P5)
 	/* [MT7620 P4 -> MT7530 P5] or [MT7621 GE2 -> MT7530 P5] */
 	esw_port_attrib_set(LAN_PORT_CPU, PORT_ATTRIBUTE_TRANSPARENT);
-	esw_port_accept_set(LAN_PORT_CPU, PORT_ACCEPT_FRAMES_UNTAGGED);
 	esw_port_egress_mode_set(LAN_PORT_CPU, PVLAN_EGRESS_UNTAG);
 #else
 	esw_port_attrib_set(LAN_PORT_CPU, PORT_ATTRIBUTE_USER);
-	esw_port_accept_set(LAN_PORT_CPU, PORT_ACCEPT_FRAMES_ALL);
 	esw_port_egress_mode_set(LAN_PORT_CPU, PVLAN_EGRESS_TAG);
 #endif
 	esw_port_ingress_mode_set(LAN_PORT_CPU, PVLAN_INGRESS_MODE_SECURITY);
@@ -792,49 +863,6 @@ static void esw_vlan_init_vid1(void)
 #else
 	esw_vlan_set(1, 0, port_member, 1);
 #endif
-}
-
-static void esw_show_bridge_partitions(u32 wan_bridge_mode)
-{
-	char *wanl, *wanr, *lans;
-
-	wanl = "W|";
-	wanr = "";
-
-	switch (wan_bridge_mode)
-	{
-	case SWAPI_WAN_BRIDGE_LAN1:
-		lans = "WLLL";
-		break;
-	case SWAPI_WAN_BRIDGE_LAN2:
-		lans = "LWLL";
-		break;
-	case SWAPI_WAN_BRIDGE_LAN3:
-		lans = "LLWL";
-		break;
-	case SWAPI_WAN_BRIDGE_LAN4:
-		lans = "LLLW";
-		break;
-	case SWAPI_WAN_BRIDGE_LAN3_LAN4:
-		lans = "LLWW";
-		break;
-	case SWAPI_WAN_BRIDGE_LAN1_LAN2:
-		lans = "WWLL";
-		break;
-	case SWAPI_WAN_BRIDGE_LAN1_LAN2_LAN3:
-		lans = "WWWL";
-		break;
-	case SWAPI_WAN_BRIDGE_DISABLE_WAN:
-		lans = "LLLL";
-		wanl = "L";
-		wanr = "";
-		break;
-	default:
-		lans = "LLLL";
-		break;
-	}
-
-	printk("%s - %s: %s%s%s\n", MTK_ESW_DEVNAME, "hw bridge", wanl, lans, wanr);
 }
 
 #if defined (CONFIG_MT7530_GSW)
@@ -942,6 +970,8 @@ static void esw_vlan_bridge_isolate(u32 wan_bridge_mode, u32 wan_bwan_isolation,
 	if (bridge_changed) {
 		esw_igmp_ports_config(wan_bridge_mode);
 		esw_show_bridge_partitions(wan_bridge_mode);
+		if (g_igmp_snooping_enabled)
+			esw_igmp_mld_snooping(1, 1);
 	}
 
 	esw_mac_table_clear();
@@ -949,6 +979,13 @@ static void esw_vlan_bridge_isolate(u32 wan_bridge_mode, u32 wan_bwan_isolation,
     defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5)
 	mt7620_esw_mac_table_clear();
 #endif
+}
+
+static void esw_cpu_ports_down(void)
+{
+	/* force MAC P5/P6 link down */
+	esw_reg_set(0x3500, 0x8000);
+	esw_reg_set(0x3600, 0x8000);
 }
 
 static void esw_soft_reset(void)
@@ -966,9 +1003,8 @@ static void esw_soft_reset(void)
 	/* disable switch interrupts */
 	esw_irq_uninit();
 
-	/* force MAC P5/P6 link down */
-	esw_reg_set(0x3500, 0x8000);
-	esw_reg_set(0x3600, 0x8000);
+	/* disable CPU ports link */
+	esw_cpu_ports_down();
 
 	/* reset MT7530 */
 	esw_reg_set(0x7000, 0x3);
@@ -1066,11 +1102,7 @@ static void esw_storm_control(u32 port_id, int set_bcast, int set_mcast, int set
 		reg_bsr |= (rate_unit_10);		// STORM_10M
 	}
 
-#if !defined (CONFIG_MT7530_GSW)
 	esw_reg_set(REG_ESW_PORT_BSR_P0 + 0x100*port_id, reg_bsr);
-#else
-	// todo (mt7530 documentation needed)
-#endif
 }
 
 static void esw_jumbo_control(u32 jumbo_frames_enabled)
@@ -1110,7 +1142,7 @@ static void esw_eee_control(u32 green_ethernet_enabled)
 #if defined (CONFIG_P4_MAC_TO_PHY_MODE)
 		if (i == 4)
 			continue;
-#elif defined (CONFIG_P5_MAC_TO_PHY_MODE) || defined (CONFIG_GE2_RGMII_AN)
+#elif defined (CONFIG_P5_MAC_TO_PHY_MODE)
 		if (i == 5)
 			continue;
 #endif
@@ -1121,7 +1153,23 @@ static void esw_eee_control(u32 green_ethernet_enabled)
 		mii_mgr_write(i, 17, (green_ethernet_enabled) ? 0x0002 : 0x0000);
 	}
 #else
-	// todo (mt7530 documentation needed)
+#if defined (CONFIG_RALINK_MT7621)
+	for (i = 0; i <= 4; i++) {
+		/* EEE 1000/100 LPI */
+		mii_mgr_write(i, 13, 0x0007);
+		mii_mgr_write(i, 14, 0x003c);
+		mii_mgr_write(i, 13, 0x4007);
+		mii_mgr_write(i, 14, (green_ethernet_enabled) ? 0x0006 : 0x0000);
+	}
+
+	/* EEE 10Base-Te (global) */
+	mii_mgr_write(0, 13, 0x001f);
+	mii_mgr_write(0, 14, 0x027b);
+	mii_mgr_write(0, 13, 0x401f);
+	mii_mgr_write(0, 14, (green_ethernet_enabled) ? 0x1147 : 0x1177);
+#else
+	/* not confirmed for external MT7530B/W */
+#endif
 #endif
 
 	/* restore PHY ports link */
@@ -1227,25 +1275,49 @@ static u32 esw_status_link_changed(void)
 	return atomic_cmpxchg(&g_port_link_changed, 1, 0);
 }
 
-static void esw_status_mib_port(u32 port_id, arl_mib_counters_t *mibc)
+static void esw_status_mib_port(u32 port_id, esw_mib_counters_t *mibc)
 {
 	ULARGE_INTEGER rx_goct, tx_goct;
 
 	rx_goct.u.LowPart = esw_get_port_mib_rgoc(port_id, &rx_goct.u.HighPart);
 	tx_goct.u.LowPart = esw_get_port_mib_tgoc(port_id, &tx_goct.u.HighPart);
 
-	mibc->TxGoodOctets         = tx_goct.QuadPart;
-	mibc->TxBadOctets          = esw_get_port_mib_tboc(port_id);
-	mibc->TxGoodFrames         = esw_get_port_mib_tgpc(port_id);
-	mibc->TxBadFrames          = esw_get_port_mib_tbpc(port_id);
-	mibc->TxDropFrames         = esw_get_port_mib_tepc(port_id);
+	mibc->TxGoodOctets	= tx_goct.QuadPart;
+	mibc->RxGoodOctets	= rx_goct.QuadPart;
 
-	mibc->RxGoodOctets         = rx_goct.QuadPart;
-	mibc->RxBadOctets          = esw_get_port_mib_rboc(port_id);
-	mibc->RxGoodFrames         = esw_get_port_mib_rgpc(port_id);
-	mibc->RxBadFrames          = esw_get_port_mib_rbpc(port_id);
-	mibc->RxDropFramesErr      = esw_get_port_mib_repc(port_id);
-	mibc->RxDropFramesFilter   = esw_get_port_mib_rfpc(port_id);
+#if defined (CONFIG_MT7530_GSW)
+	mibc->TxDropFrames	= esw_reg_get(0x4000 + 0x100*port_id);
+	mibc->TxCRCError	= esw_reg_get(0x4004 + 0x100*port_id);
+	mibc->TxUcastFrames	= esw_reg_get(0x4008 + 0x100*port_id);
+	mibc->TxMcastFrames	= esw_reg_get(0x400c + 0x100*port_id);
+	mibc->TxBcastFrames	= esw_reg_get(0x4010 + 0x100*port_id);
+	mibc->TxCollision	= esw_reg_get(0x4014 + 0x100*port_id);
+//	mibc->TxPausedFrames	= esw_reg_get(0x402c + 0x100*port_id);
+
+	mibc->RxDropFrames	= esw_reg_get(0x4060 + 0x100*port_id);
+	mibc->RxFilterFrames	= esw_reg_get(0x4064 + 0x100*port_id);
+	mibc->RxUcastFrames	= esw_reg_get(0x4068 + 0x100*port_id);
+	mibc->RxMcastFrames	= esw_reg_get(0x406c + 0x100*port_id);
+	mibc->RxBcastFrames	= esw_reg_get(0x4070 + 0x100*port_id);
+	mibc->RxAligmentError	= esw_reg_get(0x4074 + 0x100*port_id);
+	mibc->RxCRCError	= esw_reg_get(0x4078 + 0x100*port_id);
+//	mibc->RxUndersizeError	= esw_reg_get(0x407c + 0x100*port_id);
+//	mibc->RxFragmentError	= esw_reg_get(0x4080 + 0x100*port_id);
+//	mibc->RxOversizeError	= esw_reg_get(0x4084 + 0x100*port_id);
+//	mibc->RxJabberError	= esw_reg_get(0x4088 + 0x100*port_id);
+//	mibc->RxPausedFrames	= esw_reg_get(0x408c + 0x100*port_id);
+#else
+	mibc->TxBadOctets	= esw_get_port_mib_tboc(port_id);
+	mibc->TxGoodFrames	= esw_get_port_mib_tgpc(port_id);
+	mibc->TxBadFrames	= esw_get_port_mib_tbpc(port_id);
+	mibc->TxDropFrames	= esw_get_port_mib_tepc(port_id);
+
+	mibc->RxBadOctets	= esw_get_port_mib_rboc(port_id);
+	mibc->RxGoodFrames	= esw_get_port_mib_rgpc(port_id);
+	mibc->RxBadFrames	= esw_get_port_mib_rbpc(port_id);
+	mibc->RxDropFramesErr	= esw_get_port_mib_repc(port_id);
+	mibc->RxDropFramesFilter= esw_get_port_mib_rfpc(port_id);
+#endif
 }
 
 static void esw_status_mib_reset(void)
@@ -1613,7 +1685,7 @@ static void change_jumbo_frames_accept(u32 jumbo_frames_enabled)
 	}
 }
 
-void change_green_ethernet_mode(u32 green_ethernet_enabled)
+static void change_green_ethernet_mode(u32 green_ethernet_enabled)
 {
 	if (green_ethernet_enabled) green_ethernet_enabled = 1;
 
@@ -1626,6 +1698,21 @@ void change_green_ethernet_mode(u32 green_ethernet_enabled)
 	}
 }
 
+static void change_igmp_static_ports(u32 ports_mask)
+{
+	ports_mask = get_ports_mask_from_user(ports_mask & 0xFF, 0);
+
+	if (g_igmp_static_ports != ports_mask)
+	{
+		g_igmp_static_ports = ports_mask;
+		
+		if (g_igmp_snooping_enabled) {
+			esw_igmp_ports_config(g_wan_bridge_mode);
+			esw_igmp_mld_snooping(1, 1);
+		}
+	}
+}
+
 static void change_igmp_snooping_control(u32 igmp_snooping_enabled)
 {
 	if (igmp_snooping_enabled) igmp_snooping_enabled = 1;
@@ -1635,6 +1722,7 @@ static void change_igmp_snooping_control(u32 igmp_snooping_enabled)
 		g_igmp_snooping_enabled = igmp_snooping_enabled;
 		printk("%s - IGMP/MLD snooping: %s\n", MTK_ESW_DEVNAME, (igmp_snooping_enabled) ? "on" : "off");
 		
+		esw_igmp_ports_config(g_wan_bridge_mode);
 		esw_igmp_mld_snooping(igmp_snooping_enabled, igmp_snooping_enabled);
 	}
 }
@@ -1733,14 +1821,10 @@ static void reset_and_init_switch(void)
 
 static void fill_bridge_members(void)
 {
-	u32 i, j;
-
-	for (i = 0; i < SWAPI_WAN_BRIDGE_NUM; i++) {
-		for (j = 0; j <= ESW_PHY_ID_MAX; j++) {
-			g_bwan_member[i][j].bwan = 0;
-			g_bwan_member[i][j].rule = 0;
-		}
-	}
+#if defined (CONFIG_MT7530_GSW)
+	set_bit(1, g_vlan_pool);
+#endif
+	memset(g_bwan_member, 0, sizeof(g_bwan_member));
 
 	g_bwan_member[SWAPI_WAN_BRIDGE_LAN1][LAN_PORT_1].bwan = 1;
 	g_bwan_member[SWAPI_WAN_BRIDGE_LAN1][LAN_PORT_1].rule = SWAPI_VLAN_RULE_WAN_LAN1;
@@ -1779,7 +1863,7 @@ long mtk_esw_ioctl(struct file *file, unsigned int req, unsigned long arg)
 	int ioctl_result = 0;
 	u32 uint_value = 0;
 	u32 uint_result = 0;
-	arl_mib_counters_t port_counters;
+	esw_mib_counters_t port_counters;
 
 	unsigned int uint_param = (req >> MTK_ESW_IOCTL_CMD_LENGTH_BITS);
 	req &= ((1u << MTK_ESW_IOCTL_CMD_LENGTH_BITS)-1);
@@ -1869,31 +1953,31 @@ long mtk_esw_ioctl(struct file *file, unsigned int req, unsigned long arg)
 
 	case MTK_ESW_IOCTL_STATUS_CNT_PORT_WAN:
 		esw_status_mib_port(WAN_PORT_MAC, &port_counters);
-		copy_to_user((arl_mib_counters_t __user *)arg, &port_counters, sizeof(arl_mib_counters_t));
+		copy_to_user((esw_mib_counters_t __user *)arg, &port_counters, sizeof(esw_mib_counters_t));
 		break;
 	case MTK_ESW_IOCTL_STATUS_CNT_PORT_LAN1:
 		esw_status_mib_port(LAN_PORT_1, &port_counters);
-		copy_to_user((arl_mib_counters_t __user *)arg, &port_counters, sizeof(arl_mib_counters_t));
+		copy_to_user((esw_mib_counters_t __user *)arg, &port_counters, sizeof(esw_mib_counters_t));
 		break;
 	case MTK_ESW_IOCTL_STATUS_CNT_PORT_LAN2:
 		esw_status_mib_port(LAN_PORT_2, &port_counters);
-		copy_to_user((arl_mib_counters_t __user *)arg, &port_counters, sizeof(arl_mib_counters_t));
+		copy_to_user((esw_mib_counters_t __user *)arg, &port_counters, sizeof(esw_mib_counters_t));
 		break;
 	case MTK_ESW_IOCTL_STATUS_CNT_PORT_LAN3:
 		esw_status_mib_port(LAN_PORT_3, &port_counters);
-		copy_to_user((arl_mib_counters_t __user *)arg, &port_counters, sizeof(arl_mib_counters_t));
+		copy_to_user((esw_mib_counters_t __user *)arg, &port_counters, sizeof(esw_mib_counters_t));
 		break;
 	case MTK_ESW_IOCTL_STATUS_CNT_PORT_LAN4:
 		esw_status_mib_port(LAN_PORT_4, &port_counters);
-		copy_to_user((arl_mib_counters_t __user *)arg, &port_counters, sizeof(arl_mib_counters_t));
+		copy_to_user((esw_mib_counters_t __user *)arg, &port_counters, sizeof(esw_mib_counters_t));
 		break;
 	case MTK_ESW_IOCTL_STATUS_CNT_PORT_CPU_WAN:
 		esw_status_mib_port(WAN_PORT_CPU, &port_counters);
-		copy_to_user((arl_mib_counters_t __user *)arg, &port_counters, sizeof(arl_mib_counters_t));
+		copy_to_user((esw_mib_counters_t __user *)arg, &port_counters, sizeof(esw_mib_counters_t));
 		break;
 	case MTK_ESW_IOCTL_STATUS_CNT_PORT_CPU_LAN:
 		esw_status_mib_port(LAN_PORT_CPU, &port_counters);
-		copy_to_user((arl_mib_counters_t __user *)arg, &port_counters, sizeof(arl_mib_counters_t));
+		copy_to_user((esw_mib_counters_t __user *)arg, &port_counters, sizeof(esw_mib_counters_t));
 		break;
 	case MTK_ESW_IOCTL_STATUS_CNT_RESET_ALL:
 		esw_status_mib_reset();
@@ -1958,6 +2042,11 @@ long mtk_esw_ioctl(struct file *file, unsigned int req, unsigned long arg)
 	case MTK_ESW_IOCTL_GREEN_ETHERNET:
 		copy_from_user(&uint_value, (int __user *)arg, sizeof(int));
 		change_green_ethernet_mode(uint_value);
+		break;
+
+	case MTK_ESW_IOCTL_IGMP_STATIC_PORTS:
+		copy_from_user(&uint_value, (int __user *)arg, sizeof(int));
+		change_igmp_static_ports(uint_value);
 		break;
 
 	case MTK_ESW_IOCTL_IGMP_SNOOPING:
@@ -2072,6 +2161,7 @@ int esw_ioctl_init(void)
 	mii_mgr_init();
 #endif
 	power_down_all_phy();
+	esw_cpu_ports_down();
 
 	return 0;
 }

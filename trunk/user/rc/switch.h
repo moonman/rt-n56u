@@ -71,6 +71,7 @@ int phy_led_mode_yellow(unsigned int led_yellow);
 
 int phy_green_ethernet(unsigned int green_ethernet_on);
 int phy_jumbo_frames(unsigned int jumbo_frames_on);
+int phy_igmp_static_port(unsigned int static_port);
 int phy_igmp_snooping(unsigned int igmp_snooping_on);
 
 int phy_ports_power(int power_on);
@@ -84,7 +85,6 @@ int phy_disable_inic(unsigned int inic_disabled);
 int phy_clear_mac_table(void);
 
 int phy_vlan_reset_table(void);
-int phy_vlan_ingress_mode(unsigned int port_pask);
 int phy_vlan_accept_port_mode(int accept_mode, unsigned int port_pask);
 int phy_vlan_create_port_vid(int pvid, int priority, unsigned int member, unsigned int untag, int fid);
 int phy_vlan_create_entry(int vid, unsigned int member, unsigned int untag, int fid);

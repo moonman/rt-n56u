@@ -35,8 +35,7 @@ void mt7530_gsw_init(void)
 
 	/* configure MT7530 Port6 */
 #if defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5)
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2604, 0x204f0003);		// P6 set security mode, egress always tagged
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2610, 0x81000000);		// P6 is user port, admit all frames
+	/* do not override P6 security (use external switch control) */
 #elif defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P4)
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x2604, 0x004f0000);		// P6 has matrix mode (P6|P3|P2|P1|P0)
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x2610, 0x810000c0);		// P6 is transparent port, admit all frames
@@ -51,9 +50,7 @@ void mt7530_gsw_init(void)
 
 	/* configure MT7530 Port5 */
 #if defined (CONFIG_P4_RGMII_TO_MT7530_GMAC_P5)
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2504, 0x20300003);		// P5 set security mode, egress always tagged
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2510, 0x81000000);		// P5 is user port, admit all frames
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x2514, 0x00010002);		// P5 PVID=2
+	/* do not override P5 security (use external switch control) */
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x3500, 0x0005e33b);		// (P5, Force mode, Link Up, 1000Mbps, Full-Duplex, FC ON)
 #elif defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P4) || defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P0)
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x3500, 0x00056300);		// (P5, AN) ???
@@ -69,31 +66,12 @@ void mt7530_gsw_init(void)
 	regValue &= ~(1<<30);
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7a40, regValue);
 
-	regValue = 0x855;
-	mii_mgr_write(MT7530_MDIO_ADDR, 0x7a78, regValue);
+	mii_mgr_write(MT7530_MDIO_ADDR, 0x7a78, 0x855);
 
-#if 0
-	/* todo, more documentation is needed */
-
+#if defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P4) || defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P0)
 	/* set MT7530 delay setting for 10/1000M */
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7b00, 0x102);
 	mii_mgr_write(MT7530_MDIO_ADDR, 0x7b04, 0x14);
-
-	/* disable EEE */
-	for (i = 0; i <= 4; i++) {
-		mii_mgr_write(i, 13, 0x7);
-		mii_mgr_write(i, 14, 0x3C);
-		mii_mgr_write(i, 13, 0x4007);
-		mii_mgr_write(i, 14, 0x0);
-	}
-
-	/* disable EEE 10Base-T */
-	for (i = 0; i <= 4; i++) {
-		mii_mgr_write(i, 13, 0x1f);
-		mii_mgr_write(i, 14, 0x027b);
-		mii_mgr_write(i, 13, 0x401f);
-		mii_mgr_write(i, 14, 0x1177);
-	}
 #endif
 
 	/* enable switch INTR */
