@@ -654,6 +654,7 @@ VOID ScanNextChannel(
 			}
 #endif /* P2P_APCLI_SUPPORT */
 #ifdef APCLI_SUPPORT
+			int loop;
 #ifdef APCLI_AUTO_CONNECT_SUPPORT
 			if (pAd->ApCfg.ApCliAutoConnectRunning == TRUE)
 			{
@@ -665,7 +666,6 @@ VOID ScanNextChannel(
 #endif /* APCLI_AUTO_CONNECT_SUPPORT */
 
 			/* to prevent AP no beacon when do sitesurvey. each time we get back to origin channel, update RcvBcnTime */
-			int loop;
 			for (loop = 0; loop < MAX_APCLI_NUM; loop++)
 			{
 				PAPCLI_STRUCT pApCliEntry = &pAd->ApCfg.ApCliTab[loop];
@@ -1289,6 +1289,7 @@ VOID ScanNextChannel(
 
 #ifdef CONFIG_AP_SUPPORT
 #ifdef DOT11_N_SUPPORT
+#ifdef DOT11N_DRAFT3
 extern int DetectOverlappingPeriodicRound;
 
 VOID Handle_BSS_Width_Trigger_Events(
@@ -1308,6 +1309,7 @@ VOID Handle_BSS_Width_Trigger_Events(
         DetectOverlappingPeriodicRound = 31;
 	}
 }
+#endif /* DOT11N_DRAFT3 */
 #endif /* DOT11_N_SUPPORT */
 #endif /* CONFIG_AP_SUPPORT */
 

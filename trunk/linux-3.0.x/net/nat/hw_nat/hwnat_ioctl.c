@@ -21,6 +21,10 @@
 #include "util.h"
 #include "ra_nat.h"
 
+#if defined (CONFIG_PPE_MCAST)
+#include "mcast_tbl.h"
+#endif
+
 extern int udp_offload;
 #if defined (CONFIG_RA_HW_NAT_IPV6)
 extern int ipv6_offload;
@@ -52,6 +56,10 @@ int HwNatIoctl(struct inode *inode, struct file *filp,
 #endif
 	struct hwnat_config_args *opt4 = (struct hwnat_config_args *)arg;
 
+#if defined (CONFIG_PPE_MCAST)
+	struct hwnat_mcast_args *opt5 = (struct hwnat_mcast_args *)arg;
+#endif
+
 	switch (cmd) {
 	case HW_NAT_GET_ALL_ENTRIES:
 		opt->result = FoeGetAllEntries(opt);
@@ -68,15 +76,16 @@ int HwNatIoctl(struct inode *inode, struct file *filp,
 	case HW_NAT_DUMP_ENTRY:
 		FoeDumpEntry(opt->entry_num);
 		break;
-#if defined (CONFIG_HNAT_V2)
-	case HW_NAT_DUMP_CACHE_ENTRY:
-		FoeDumpCacheEntry();
-		break;
-#endif
 	case HW_NAT_DEBUG:	/* For Debug */
 		DebugLevel = opt->debug;
 		break;
 #if defined (CONFIG_HNAT_V2)
+	case HW_NAT_DROP_ENTRY:
+		opt->result = FoeDropEntry(opt);
+		break;
+	case HW_NAT_DUMP_CACHE_ENTRY:
+		FoeDumpCacheEntry();
+		break;
 	case HW_NAT_GET_AC_CNT:
 		opt3->result = PpeGetAGCnt(opt3);
 		break;
@@ -160,6 +169,17 @@ int HwNatIoctl(struct inode *inode, struct file *filp,
 	case HW_NAT_ALLOW_IPV6:
 		opt4->result = PpeSetAllowIPv6(opt4->foe_allow_ipv6);
 		break;
+#if defined (CONFIG_PPE_MCAST)
+	case HW_NAT_MCAST_INS:
+		foe_mcast_entry_ins(opt5->mc_vid, opt5->dst_mac, opt5->mc_px_en, opt5->mc_px_qos_en, opt5->mc_qos_qid);
+		break;
+	case HW_NAT_MCAST_DEL:
+		foe_mcast_entry_del(opt5->mc_vid, opt5->dst_mac, opt5->mc_px_en, opt5->mc_px_qos_en);
+		break;
+	case HW_NAT_MCAST_DUMP:
+		foe_mcast_entry_dump();
+		break;
+#endif
 	default:
 		break;
 	}
@@ -204,7 +224,7 @@ int PpeGetAGCnt(struct hwnat_ac_args * opt3)
 #elif defined (CONFIG_RALINK_MT7621)
 	opt3->ag_byte_cnt = RegRead(AC_BASE + opt3->ag_index * 16);     /* 64bit bytes cnt */
 	opt3->ag_byte_cnt |= ((unsigned long long)(RegRead(AC_BASE + opt3->ag_index * 16 + 4)) << 32);
-	opt3->ag_pkt_cnt = RegRead(AC_BASE + opt3->ag_index * 16 + 8);  /* 32bites packet cnt */
+	opt3->ag_pkt_cnt = RegRead(AC_BASE + opt3->ag_index * 16 + 8);  /* 32bit packet cnt */
 #endif
 	return HWNAT_SUCCESS;
 }

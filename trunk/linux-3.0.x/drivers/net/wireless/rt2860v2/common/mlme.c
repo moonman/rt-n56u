@@ -1169,18 +1169,77 @@ VOID MlmePeriodicExec(
 
 				if (pAd->RalinkCounters.OneSecFalseCCACnt > pAd->CommonCfg.MO_Cfg.nFalseCCATh)
 				{
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0xAD);
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x28);
+
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0xB1);
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x20);
+
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0x8D);
+					if (pAd->CommonCfg.BBPCurrentBW == BW_20)
+					{
+#ifdef RT6352_EL_SUPPORT
+						if (pAd->NicConfig2.field.ExternalLNAForG)
+							RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x15);
+						else
+#endif /* RT6352_EL_SUPPORT */
+							RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x1A);
+					}
+					else
+					{
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x10);
+					}
+
 					if (BbpReg < (pAd->CommonCfg.MO_Cfg.Stored_BBP_R66 + 0x10))
 					{
 						BbpReg += 4;
 						AsicBBPWriteWithRxChain(pAd, BBP_R66, BbpReg, RX_CHAIN_ALL);
 					}
+					else if (BbpReg == (pAd->CommonCfg.MO_Cfg.Stored_BBP_R66 + 0x10))
+					{
+						if (pAd->RalinkCounters.OneSecFalseCCACnt > 1500)
+						{
+							RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0x9C);
+							RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x3D);
+
+							RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0x9D);
+							if (pAd->CommonCfg.BBPCurrentBW == BW_20)
+								RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x40);
+							else
+								RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x2F);
+						}
+					}
 				}
 				else if (pAd->RalinkCounters.OneSecFalseCCACnt < pAd->CommonCfg.MO_Cfg.nLowFalseCCATh)
 				{
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0x9C);
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x27);
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0x9D);
+					RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x27);
+
 					if (BbpReg > pAd->CommonCfg.MO_Cfg.Stored_BBP_R66)
 					{
 						BbpReg -= 4;
 						AsicBBPWriteWithRxChain(pAd, BBP_R66, BbpReg, RX_CHAIN_ALL);
+					}
+					else if (BbpReg == pAd->CommonCfg.MO_Cfg.Stored_BBP_R66)
+					{
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0xAD);
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x0D);
+						
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0xB1);
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x16);
+
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0x8D);
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x0C);
+					}
+				}
+				else
+				{
+					if (BbpReg == pAd->CommonCfg.MO_Cfg.Stored_BBP_R66)
+					{
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R195, 0x8D);
+						RTMP_BBP_IO_WRITE8_BY_REG_ID(pAd, BBP_R196, 0x0C);
 					}
 				}
 			}
@@ -5014,6 +5073,12 @@ BOOLEAN MlmeEnqueue(
 
 	NdisAcquireSpinLock(&(Queue->Lock));
 	Tail = Queue->Tail;
+	/* Double check for safety multi-thread system. */
+	if (Queue->Entry[Tail].Occupied)
+	{
+		NdisReleaseSpinLock(&(Queue->Lock));
+		return FALSE;
+	}
 	Queue->Tail++;
 	Queue->Num++;
 	if (Queue->Tail == MAX_LEN_OF_MLME_QUEUE) 
@@ -5196,6 +5261,12 @@ BOOLEAN MlmeEnqueueForRecv(
 
 	NdisAcquireSpinLock(&(Queue->Lock));
 	Tail = Queue->Tail;
+	/* Double check for safety multi-thread system. */
+	if (Queue->Entry[Tail].Occupied)
+	{
+		NdisReleaseSpinLock(&(Queue->Lock));
+		return FALSE;
+	}
 	Queue->Tail++;
 	Queue->Num++;
 	if (Queue->Tail == MAX_LEN_OF_MLME_QUEUE) 
@@ -5293,6 +5364,12 @@ BOOLEAN MlmeEnqueueForWsc(
     /* OK, we got all the informations, it is time to put things into queue*/
 	NdisAcquireSpinLock(&(Queue->Lock));
     Tail = Queue->Tail;
+    /* Double check for safety multi-thread system. */
+    if (Queue->Entry[Tail].Occupied)
+    {
+        NdisReleaseSpinLock(&(Queue->Lock));
+        return FALSE;
+    }
     Queue->Tail++;
     Queue->Num++;
     if (Queue->Tail == MAX_LEN_OF_MLME_QUEUE) 
@@ -5496,7 +5573,7 @@ BOOLEAN MlmeQueueFull(
 	if (SendId == 0)
 		Ans = ((Queue->Num >= (MAX_LEN_OF_MLME_QUEUE / 2)) || Queue->Entry[Queue->Tail].Occupied);
 	else
-		Ans = (Queue->Num == MAX_LEN_OF_MLME_QUEUE);
+		Ans = (Queue->Num == MAX_LEN_OF_MLME_QUEUE)  || Queue->Entry[Queue->Tail].Occupied;
 	NdisReleaseSpinLock(&(Queue->Lock));
 
 	return Ans;
