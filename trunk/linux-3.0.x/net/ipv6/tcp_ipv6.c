@@ -1576,7 +1576,7 @@ static int tcp_v6_do_rcv(struct sock *sk, struct sk_buff *skb)
 		return 0;
 	}
 
-	if (skb->len < tcp_hdrlen(skb) || tcp_checksum_complete(skb))
+	if (tcp_checksum_complete(skb))
 		goto csum_err;
 
 	if (sk->sk_state == TCP_LISTEN) {
@@ -1698,8 +1698,10 @@ process:
 		goto discard_and_relse;
 	}
 
+#ifdef CONFIG_XFRM
 	if (!xfrm6_policy_check(sk, XFRM_POLICY_IN, skb))
 		goto discard_and_relse;
+#endif
 
 	if (sk_filter(sk, skb))
 		goto discard_and_relse;
@@ -1733,10 +1735,12 @@ process:
 	return ret ? -1 : 0;
 
 no_tcp_socket:
+#ifdef CONFIG_XFRM
 	if (!xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb))
 		goto discard_it;
+#endif
 
-	if (skb->len < (th->doff<<2) || tcp_checksum_complete(skb)) {
+	if (tcp_checksum_complete(skb)) {
 bad_packet:
 		TCP_INC_STATS_BH(net, TCP_MIB_INERRS);
 	} else {
@@ -1757,12 +1761,14 @@ discard_and_relse:
 	goto discard_it;
 
 do_time_wait:
+#ifdef CONFIG_XFRM
 	if (!xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb)) {
 		inet_twsk_put(inet_twsk(sk));
 		goto discard_it;
 	}
+#endif
 
-	if (skb->len < (th->doff<<2) || tcp_checksum_complete(skb)) {
+	if (tcp_checksum_complete(skb)) {
 		TCP_INC_STATS_BH(net, TCP_MIB_INERRS);
 		inet_twsk_put(inet_twsk(sk));
 		goto discard_it;

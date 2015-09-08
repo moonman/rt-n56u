@@ -60,6 +60,7 @@ function initial(){
 		showhide_div('row_dhcpd_rt', 0);
 		showhide_div('row_dhcpd_ap', 1);
 		showhide_div('row_domain', 0);
+		showhide_div('row_dservers', 0);
 		showhide_div('row_hosts', 0);
 	}
 
@@ -300,28 +301,24 @@ function markGroupMDHCP(o, c, b) {
 }
 
 function showMDHCPList(){
-	var code = '<table width="100%" cellspacing="0" cellpadding="3" class="table">';
-
+	var code = '<table width="100%" cellspacing="0" cellpadding="3" class="table table-list">';
 	if(m_dhcp.length == 0)
 		code +='<tr><td colspan="4" style="text-align: center;"><div class="alert alert-info"><#IPConnection_VSList_Norule#></div></td></tr>';
 	else{
-		for(var i = 0; i < m_dhcp.length; i++){
+	    for(var i = 0; i < m_dhcp.length; i++){
 		code +='<tr id="row' + i + '">';
-		code +='<td width="25%">' + m_dhcp[i][0] + '</td>';
-		code +='<td width="25%">' + m_dhcp[i][1] + '</td>';
-		code +='<td width="45%">' + m_dhcp[i][2] + '</td>';
+		code +='<td width="25%">&nbsp;' + m_dhcp[i][0] + '</td>';
+		code +='<td width="25%">&nbsp;' + m_dhcp[i][1] + '</td>';
+		code +='<td width="45%">&nbsp;' + m_dhcp[i][2] + '</td>';
 		code +='<td width="5%" style="text-align: center;"><input type="checkbox" name="ManualDHCPList_s" value="' + m_dhcp[i][mdhcp_ifield] + '" onClick="changeBgColor(this,' + i + ');" id="check' + m_dhcp[i][mdhcp_ifield] + '"></td>';
 		code +='</tr>';
-		}
-		
+	    }
 		code += '<tr>';
 		code += '<td colspan="3">&nbsp;</td>'
-		code += '<td><button class="btn btn-danger" type="submit" onclick="return markGroupMDHCP(this, 64, \' Del \');" name="ManualDHCPList"><i class="icon icon-minus icon-white"></i></button></td>';
+		code += '<td><button class="btn btn-danger" type="submit" onclick="markGroupMDHCP(this, 64, \' Del \');" name="ManualDHCPList"><i class="icon icon-minus icon-white"></i></button></td>';
 		code += '</tr>'
 	}
-
 	code +='</table>';
-
 	$("MDHCPList_Block").innerHTML = code;
 }
 
@@ -333,6 +330,16 @@ function changeBgColor(obj, num){
 }
 
 </script>
+<style>
+.table-list td {
+    padding: 6px 8px;
+}
+.table-list input,
+.table-list select {
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
+</style>
 </head>
 
 <body onload="initial();" onunLoad="return unload_body();">
@@ -430,26 +437,26 @@ function changeBgColor(obj, num){
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,3);"><#LANHostConfig_MinAddress_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_start" value="<% nvram_get_x("", "dhcp_start"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);">
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_start" value="<% nvram_get_x("", "dhcp_start"); %>" onKeyPress="return is_ipaddr(this,event);">
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,4);"><#LANHostConfig_MaxAddress_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_end" value="<% nvram_get_x("","dhcp_end"); %>" onKeyPress="return is_ipaddr(this)" onKeyUp="change_ipaddr(this)">
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_end" value="<% nvram_get_x("","dhcp_end"); %>" onKeyPress="return is_ipaddr(this,event);">
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,5);"><#LANHostConfig_LeaseTime_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="6" size="6" name="dhcp_lease" class="input" value="<% nvram_get_x("", "dhcp_lease"); %>" onKeyPress="return is_number(this)">
+                                                <input type="text" maxlength="6" size="6" name="dhcp_lease" class="input" value="<% nvram_get_x("", "dhcp_lease"); %>" onKeyPress="return is_number(this,event);">
                                                 &nbsp;<span style="color:#888;">[120..604800]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th style="padding-bottom: 0px;"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,6);"><#LANHostConfig_x_LGateway_itemname#></a></th>
                                             <td style="padding-bottom: 0px;">
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_gateway_x" value="<% nvram_get_x("", "dhcp_gateway_x"); %>" onKeyPress="return is_ipaddr(this)" onKeyUp="change_ipaddr(this)">
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_gateway_x" value="<% nvram_get_x("", "dhcp_gateway_x"); %>" onKeyPress="return is_ipaddr(this,event);">
                                             </td>
                                         </tr>
                                     </table>
@@ -461,25 +468,25 @@ function changeBgColor(obj, num){
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,7);"><#LANHostConfig_x_LDNSServer1_itemname#> 1:</a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns1_x" value="<% nvram_get_x("", "dhcp_dns1_x"); %>" onKeyPress="return is_ipaddr(this)" onKeyUp="change_ipaddr(this)">
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns1_x" value="<% nvram_get_x("", "dhcp_dns1_x"); %>" onKeyPress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,8);"><#LANHostConfig_x_LDNSServer1_itemname#> 2:</a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns2_x" value="<% nvram_get_x("", "dhcp_dns2_x"); %>" onKeyPress="return is_ipaddr(this)" onKeyUp="change_ipaddr(this)">
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns2_x" value="<% nvram_get_x("", "dhcp_dns2_x"); %>" onKeyPress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,9);"><#LANHostConfig_x_LDNSServer1_itemname#> 3:</a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns3_x" value="<% nvram_get_x("", "dhcp_dns3_x"); %>" onKeyPress="return is_ipaddr(this)" onKeyUp="change_ipaddr(this)">
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns3_x" value="<% nvram_get_x("", "dhcp_dns3_x"); %>" onKeyPress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th style="padding-bottom: 0px;"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,10);"><#LANHostConfig_x_WINSServer_itemname#></a></th>
                                             <td style="padding-bottom: 0px;">
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_wins_x" value="<% nvram_get_x("", "dhcp_wins_x"); %>" onkeypress="return is_ipaddr(this)" onkeyup="change_ipaddr(this)" />
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_wins_x" value="<% nvram_get_x("", "dhcp_wins_x"); %>" onkeypress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                     </table>
@@ -503,7 +510,15 @@ function changeBgColor(obj, num){
                                             <td colspan="2">
                                                 <a href="javascript:spoiler_toggle('spoiler_conf')"><span><#CustomConf#> "dnsmasq.conf"</span></a>
                                                 <div id="spoiler_conf" style="display:none;">
-                                                    <textarea rows="16" wrap="off" spellcheck="false" maxlength="8192" class="span12" name="dnsmasq.dnsmasq.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dnsmasq.conf",""); %></textarea>
+                                                    <textarea rows="16" wrap="off" spellcheck="false" maxlength="4096" class="span12" name="dnsmasq.dnsmasq.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dnsmasq.conf",""); %></textarea>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_dservers">
+                                            <td colspan="2">
+                                                <a href="javascript:spoiler_toggle('spoiler_dservers')"><span><#CustomConf#> "dnsmasq.servers"</span></a>
+                                                <div id="spoiler_dservers" style="display:none;">
+                                                    <textarea rows="16" wrap="off" spellcheck="false" maxlength="16384" class="span12" name="dnsmasq.dnsmasq.servers" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dnsmasq.servers",""); %></textarea>
                                                 </div>
                                             </td>
                                         </tr>
@@ -569,15 +584,15 @@ function changeBgColor(obj, num){
                                             <td width="25%">
                                                 <div id="ClientList_Block" class="alert alert-info ddown-list" style="width: 400px;"></div>
                                                 <div class="input-append">
-                                                    <input type="text" maxlength="12" class="span12" size="12" name="dhcp_staticmac_x_0" onkeypress="return is_hwaddr()" style="float:left; width: 110px"/>
+                                                    <input type="text" maxlength="12" class="span12" size="12" name="dhcp_staticmac_x_0" onkeypress="return is_hwaddr(event);" style="float:left; width: 110px"/>
                                                     <button class="btn btn-chevron" id="chevron" type="button" onclick="pullLANIPList(this);" title="Select the MAC of LAN clients."><i class="icon icon-chevron-down"></i></button>
                                                 </div>
                                             </td>
                                             <td width="25%">
-                                                <input type="text" maxlength="15" class="span12" size="15" name="dhcp_staticip_x_0" onkeypress="return is_ipaddr(this)" onkeyup="change_ipaddr(this)" />
+                                                <input type="text" maxlength="15" class="span12" size="15" name="dhcp_staticip_x_0" onkeypress="return is_ipaddr(this,event);"/>
                                             </td>
                                             <td width="45%">
-                                                <input type="text" maxlength="24" class="span12" size="20" name="dhcp_staticname_x_0" onKeyPress="return is_string(this)"/>
+                                                <input type="text" maxlength="24" class="span12" size="20" name="dhcp_staticname_x_0" onKeyPress="return is_string(this,event);"/>
                                             </td>
                                             <td width="5%">
                                                 <button class="btn" style="max-width: 219px" type="submit" onclick="return markGroupMDHCP(this, 64, ' Add ');" name="ManualDHCPList2" value="<#CTL_add#>" size="12"><i class="icon icon-plus"></i></button>

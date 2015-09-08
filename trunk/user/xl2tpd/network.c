@@ -32,7 +32,7 @@
 #include "misc.h"    /* for IPADDY macro */
 
 char hostname[256];
-int server_socket;              /* Server socket */
+int server_socket = -1;         /* Server socket */
 #ifdef USE_KERNEL
 int kernel_support;             /* Kernel Support there or not? */
 #endif
@@ -614,6 +614,7 @@ void network_thread ()
                     l2tp_log (LOG_WARNING, "%s: received too small a packet\n",
                          __FUNCTION__);
                 }
+                if (st) st=st->next;
 		continue;
             }
 
@@ -663,13 +664,10 @@ void network_thread ()
 	    {
 		do_packet_dump (buf);
 	    }
-	    if (!
-		(c = get_call (tunnel, call, from.sin_addr,
+			if (!(c = get_call (tunnel, call, from.sin_addr,
 			       from.sin_port, refme, refhim)))
 	    {
-		if ((c =
-		     get_tunnel (tunnel, from.sin_addr.s_addr,
-				 from.sin_port)))
+				if ((c = get_tunnel (tunnel, from.sin_addr.s_addr, from.sin_port)))
 		{
 		    /*
 		     * It is theoretically possible that we could be sent
@@ -708,14 +706,14 @@ void network_thread ()
 		{
 		    if (gconfig.debug_tunnel)
 			l2tp_log (LOG_DEBUG, "%s: bad packet\n", __FUNCTION__);
-		};
+		}
 		if (c->cnu)
 		{
 		    /* Send Zero Byte Packet */
 		    control_zlb (buf, c->container, c);
 		    c->cnu = 0;
 		}
-	    };
+		}
 	}
 	if (st) st=st->next;
 	}
@@ -734,26 +732,7 @@ void network_thread ()
                     /* Got some payload to send */
                     int result;
                     recycle_payload (buf, sc->container->peer);
-/*
-#ifdef DEBUG_FLOW_MORE
-                    l2tp_log (LOG_DEBUG, "%s: rws = %d, pSs = %d, pLr = %d\n",
-                         __FUNCTION__, sc->rws, sc->pSs, sc->pLr);
-#endif
-		    if ((sc->rws>0) && (sc->pSs > sc->pLr + sc->rws) && !sc->rbit) {
-#ifdef DEBUG_FLOW
-						log(LOG_DEBUG, "%s: throttling payload (call = %d, tunnel = %d, Lr = %d, Ss = %d, rws = %d)!\n",__FUNCTION__,
-								 sc->cid, sc->container->tid, sc->pLr, sc->pSs, sc->rws); 
-#endif
-						sc->throttle = -1;
-						We unthrottle in handle_packet if we get a payload packet, 
-						valid or ZLB, but we also schedule a dethrottle in which
-						case the R-bit will be set
-						FIXME: Rate Adaptive timeout? 						
-						tv.tv_sec = 2;
-						tv.tv_usec = 0;
-						sc->dethrottle = schedule(tv, dethrottle, sc); 					
-					} else */
-/*					while ((result=read_packet(buf,sc->fd,sc->frame & SYNC_FRAMING))>0) { */
+
                     while ((result =
                             read_packet (buf, sc->fd, SYNC_FRAMING)) > 0)
                     {
@@ -800,6 +779,8 @@ int connect_pppol2tp(struct tunnel *t) {
             struct sockaddr_pppol2tp sax;
 
             struct sockaddr_in server;
+
+            memset(&server, 0, sizeof(struct sockaddr_in));
             server.sin_family = AF_INET;
             server.sin_addr.s_addr = gconfig.listenaddr;
             server.sin_port = htons (gconfig.port);
@@ -808,7 +789,7 @@ int connect_pppol2tp(struct tunnel *t) {
                 l2tp_log (LOG_CRIT, "%s: Unable to allocate UDP socket. Terminating.\n",
                     __FUNCTION__);
                 return -EINVAL;
-            };
+            }
 
             flags=1;
             setsockopt(ufd, SOL_SOCKET, SO_REUSEADDR, &flags, sizeof(flags));
@@ -816,21 +797,23 @@ int connect_pppol2tp(struct tunnel *t) {
 
             if (bind (ufd, (struct sockaddr *) &server, sizeof (server)))
             {
-                close (ufd);
                 l2tp_log (LOG_CRIT, "%s: Unable to bind UDP socket: %s. Terminating.\n",
                      __FUNCTION__, strerror(errno), errno);
+                close (ufd);
                 return -EINVAL;
-            };
+            }
             server = t->peer;
             flags = fcntl(ufd, F_GETFL);
             if (flags == -1 || fcntl(ufd, F_SETFL, flags | O_NONBLOCK) == -1) {
                 l2tp_log (LOG_WARNING, "%s: Unable to set UDP socket nonblock.\n",
                      __FUNCTION__);
+                close (ufd);
                 return -EINVAL;
             }
             if (connect (ufd, (struct sockaddr *) &server, sizeof(server)) < 0) {
                 l2tp_log (LOG_CRIT, "%s: Unable to connect UDP peer. Terminating.\n",
                  __FUNCTION__);
+                close(ufd);
                 return -EINVAL;
             }
 
@@ -846,6 +829,7 @@ int connect_pppol2tp(struct tunnel *t) {
             if (flags == -1 || fcntl(fd2, F_SETFL, flags | O_NONBLOCK) == -1) {
                 l2tp_log (LOG_WARNING, "%s: Unable to set PPPoL2TP socket nonblock.\n",
                      __FUNCTION__);
+                close(fd2);
                 return -EINVAL;
             }
             memset(&sax, 0, sizeof(sax));

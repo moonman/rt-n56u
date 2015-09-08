@@ -7,7 +7,7 @@
 #define NETLINK_ROUTE		0	/* Routing/device hook				*/
 #define NETLINK_UNUSED		1	/* Unused number				*/
 #define NETLINK_USERSOCK	2	/* Reserved for user mode socket protocols 	*/
-#define NETLINK_FIREWALL	3	/* Firewalling hook				*/
+#define NETLINK_FIREWALL	3	/* Unused number, formerly ip_queue		*/
 #define NETLINK_SOCK_DIAG	4	/* socket monitoring				*/
 #define NETLINK_NFLOG		5	/* netfilter/iptables ULOG */
 #define NETLINK_XFRM		6	/* ipsec */
@@ -243,14 +243,6 @@ struct netlink_notify {
 
 struct nlmsghdr *
 __nlmsg_put(struct sk_buff *skb, u32 pid, u32 seq, int type, int len, int flags);
-
-#define NLMSG_NEW(skb, pid, seq, type, len, flags) \
-({	if (unlikely(skb_tailroom(skb) < (int)NLMSG_SPACE(len))) \
-		goto nlmsg_failure; \
-	__nlmsg_put(skb, pid, seq, type, len, flags); })
-
-#define NLMSG_PUT(skb, pid, seq, type, len) \
-	NLMSG_NEW(skb, pid, seq, type, len, 0)
 
 struct netlink_dump_control {
 	int (*dump)(struct sk_buff *skb, struct netlink_callback *);

@@ -56,7 +56,7 @@ unsigned int (*nf_nat_sip_hook)(struct sk_buff *skb, unsigned int dataoff,
 				unsigned int *datalen) __read_mostly;
 EXPORT_SYMBOL_GPL(nf_nat_sip_hook);
 
-void (*nf_nat_sip_seq_adjust_hook)(struct sk_buff *skb, s16 off) __read_mostly;
+void (*nf_nat_sip_seq_adjust_hook)(struct sk_buff *skb, s32 off) __read_mostly;
 EXPORT_SYMBOL_GPL(nf_nat_sip_seq_adjust_hook);
 
 unsigned int (*nf_nat_sip_expect_hook)(struct sk_buff *skb,
@@ -897,7 +897,6 @@ static int set_expected_rtp_rtcp(struct sk_buff *skb, unsigned int dataoff,
 #endif
 			skip_expect = 1;
 	} while (!skip_expect);
-	rcu_read_unlock();
 
 	base_port = ntohs(tuple.dst.u.udp.port) & ~1;
 	rtp_port = htons(base_port);
@@ -911,8 +910,10 @@ static int set_expected_rtp_rtcp(struct sk_buff *skb, unsigned int dataoff,
 			goto err1;
 	}
 
-	if (skip_expect)
+	if (skip_expect) {
+		rcu_read_unlock();
 		return NF_ACCEPT;
+	}
 
 	rtp_exp = nf_ct_expect_alloc(ct);
 	if (rtp_exp == NULL)
@@ -943,6 +944,7 @@ static int set_expected_rtp_rtcp(struct sk_buff *skb, unsigned int dataoff,
 err2:
 	nf_ct_expect_put(rtp_exp);
 err1:
+	rcu_read_unlock();
 	return ret;
 }
 
@@ -1362,8 +1364,25 @@ static int process_sip_request(struct sk_buff *skb, unsigned int dataoff,
 {
 	enum ip_conntrack_info ctinfo;
 	struct nf_conn *ct = nf_ct_get(skb, &ctinfo);
+	struct nf_conn_help *help = nfct_help(ct);
+	enum ip_conntrack_dir dir = CTINFO2DIR(ctinfo);
 	unsigned int matchoff, matchlen;
 	unsigned int cseq, i;
+	union nf_inet_addr addr;
+	__be16 port;
+
+	/* Many Cisco IP phones use a high source port for SIP requests, but
+	 * listen for the response on port 5060.  If we are the local
+	 * router for one of these phones, save the port number from the
+	 * Via: header so that nf_nat_sip can redirect the responses to
+	 * the correct port.
+	 */
+	if (ct_sip_parse_header_uri(ct, *dptr, NULL, *datalen,
+				    SIP_HDR_VIA_UDP, NULL, &matchoff,
+				    &matchlen, &addr, &port) > 0 &&
+	    port != ct->tuplehash[dir].tuple.src.u.udp.port &&
+	    nf_inet_addr_cmp(&addr, &ct->tuplehash[dir].tuple.src.u3))
+		help->help.ct_sip_info.forced_dport = port;
 
 	for (i = 0; i < ARRAY_SIZE(sip_handlers); i++) {
 		const struct sip_handler *handler;

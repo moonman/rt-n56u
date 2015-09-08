@@ -62,7 +62,7 @@
 
 #include <asm/rt2880/rt_mmap.h>
 
-#include <linux/mmc/mmc_mtk.h>
+#include <ralink/mtk_mmc_dev.h>
 
 #include "mt6575_sd.h"
 #include "dbg.h"
@@ -1653,7 +1653,7 @@ static void msdc_ops_request(struct mmc_host *mmc,struct mmc_request *mrq)
     }
 
     if (!is_card_present(host) || host->power_mode == MMC_POWER_OFF) {
-        ERR_MSG("cmd<%d> card<%d> power<%d>", mrq->cmd->opcode, is_card_present(host), host->power_mode);
+        N_MSG(WRN, "cmd<%d> card<%d> power<%d>", mrq->cmd->opcode, is_card_present(host), host->power_mode);
         mrq->cmd->error = (unsigned int)-ENOMEDIUM; 
 
 #if 1
@@ -2338,7 +2338,7 @@ static int msdc_drv_probe(struct platform_device *pdev)
         hw->register_pm(msdc_pm, (void*)host);  /* combo_sdio_register_pm() */
 #endif
         if(hw->flags & MSDC_SYS_SUSPEND) { /* will not set for WIFI */
-            ERR_MSG("MSDC_SYS_SUSPEND and register_pm both set");
+            N_MSG(WRN, "MSDC_SYS_SUSPEND and register_pm both set");
         }
         //mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY; /* pm not controlled by system but by client. */ /* --- by chhung */
     }
@@ -2386,7 +2386,7 @@ static int msdc_drv_remove(struct platform_device *pdev)
     host = mmc_priv(mmc);
     BUG_ON(!host);
 
-    ERR_MSG("removed !!!");
+    INIT_MSG("removed !!!");
 
     platform_set_drvdata(pdev, NULL);
     mmc_remove_host(host->mmc);
@@ -2483,11 +2483,8 @@ static int __init mt_msdc_init(void)
     reg |=  ((0x3<<26)|(0x3<<28)|(0x3<<30));
 #endif
     reg1 = sdr_read32((volatile u32*)(RALINK_SYSCTL_BASE + 0x1340));
-    reg1 &= ~(0x1<<11); //Normal mode(AP mode), SDXC CLK=PAD_GPIO0=GPIO11, driving = 6mA
+    reg1 |= (0x1<<11); // Normal mode(AP mode), SDXC CLK=PAD_GPIO0=GPIO11, driving = 8mA
     sdr_write32((volatile u32*)(RALINK_SYSCTL_BASE + 0x1340), reg1);
-    reg1 = sdr_read32((volatile u32*)(RALINK_SYSCTL_BASE + 0x1350));
-    reg1 |= (0x1<<11);
-    sdr_write32((volatile u32*)(RALINK_SYSCTL_BASE + 0x1350), reg1);
 #endif
     sdr_write32((volatile u32*)(RALINK_SYSCTL_BASE + 0x60), reg);
 
@@ -2515,4 +2512,4 @@ module_exit(mt_msdc_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MediaTek SD/MMC Card driver");
-MODULE_AUTHOR("Infinity Chen <infinity.chen@mediatek.com>");
+MODULE_AUTHOR("Mediatek");

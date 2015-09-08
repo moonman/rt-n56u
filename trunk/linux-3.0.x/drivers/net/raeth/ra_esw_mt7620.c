@@ -4,21 +4,28 @@
 #include <linux/types.h>
 #include <linux/delay.h>
 #include <linux/string.h>
+#include <linux/netdevice.h>
 
-#include <linux/ralink_gpio.h>
-
-#include "ra_ethreg.h"
-#include "mii_mgr.h"
-#include "ra_phy.h"
+#include "ra_eth_reg.h"
 #include "ra_esw_reg.h"
+#include "mii_mgr.h"
+#include "ra_eth.h"
+#include "ra_phy.h"
 #include "ra_gsw_mt7530.h"
-#include "ra_esw_mt7620.h"
 
 extern u32 ralink_asic_rev_id;
 
 #if defined (CONFIG_RAETH_ESW)
+
+#if defined (CONFIG_RAETH_HAS_PORT4)
+#define MAX_ESW_PHY_ID	3
+#else
+#define MAX_ESW_PHY_ID	4
+#endif
+
 static void mt7620_ephy_init(void)
 {
+	u32 i;
 	u32 is_BGA = (ralink_asic_rev_id >> 16) & 0x1;
 
 	/* PCIE_RC_MODE=1 */
@@ -35,7 +42,8 @@ static void mt7620_ephy_init(void)
 	* Reg16~30:Local/Global registers
 	*
 	*/
-	/*correct PHY setting L3.0 BGA*/
+
+	/* correct PHY setting L3.0 BGA */
 	mii_mgr_write(1, 31, 0x4000); //global, page 4
 
 	mii_mgr_write(1, 17, 0x7444);
@@ -70,25 +78,16 @@ static void mt7620_ephy_init(void)
 		mii_mgr_write(1, 25, 0x00ae);
 		mii_mgr_write(1, 26, 0x0fff);
 	}
-	mii_mgr_write(1, 31, 0x1000); //global, page 1
+	mii_mgr_write(1, 31, 0x1000); // global, page 1
 	mii_mgr_write(1, 17, 0xe7f8);
 
-	mii_mgr_write(1, 31, 0x8000); //local, page 0
-	mii_mgr_write(0, 30, 0xa000);
-	mii_mgr_write(1, 30, 0xa000);
-	mii_mgr_write(2, 30, 0xa000);
-	mii_mgr_write(3, 30, 0xa000);
-#if !defined (CONFIG_RAETH_HAS_PORT4)
-	mii_mgr_write(4, 30, 0xa000);
-#endif
+	mii_mgr_write(1, 31, 0x8000); // local, page 0
+	for (i = 0; i <= MAX_ESW_PHY_ID; i++)
+		mii_mgr_write(i, 30, 0xa000);
 
-	mii_mgr_write(0, 4, 0x05e1);
-	mii_mgr_write(1, 4, 0x05e1);
-	mii_mgr_write(2, 4, 0x05e1);
-	mii_mgr_write(3, 4, 0x05e1);
-#if !defined (CONFIG_RAETH_HAS_PORT4)
-	mii_mgr_write(4, 4, 0x05e1);
-#endif
+	/* set default ability */
+	for (i = 0; i <= MAX_ESW_PHY_ID; i++)
+		mii_mgr_write(i, 4, 0x05e1);
 
 	mii_mgr_write(1, 31, 0xa000); // local, page 2
 	mii_mgr_write(0, 16, 0x1111);
@@ -99,17 +98,46 @@ static void mt7620_ephy_init(void)
 	mii_mgr_write(4, 16, 0x1313);
 #endif
 
-#if 0
-	/* disable 802.3az EEE (need link down first) */
-	mii_mgr_write(1, 31, 0xb000); //local, page 3
-	mii_mgr_write(0, 17, 0x0000);
-	mii_mgr_write(1, 17, 0x0000);
-	mii_mgr_write(2, 17, 0x0000);
-	mii_mgr_write(3, 17, 0x0000);
-#if !defined (CONFIG_RAETH_HAS_PORT4)
-	mii_mgr_write(4, 17, 0x0000);
+#if !defined (CONFIG_RAETH_ESW_CONTROL)
+	/* disable 802.3az EEE by default */
+	mt7620_esw_eee_enable(0);
 #endif
-#endif
+
+	mii_mgr_write(1, 31, 0x8000); // local, page 0
+}
+
+void mt7620_esw_eee_enable(int is_eee_enabled)
+{
+	u32 i, reg_pmsr;
+
+	/* select PHY local page #3 */
+	mii_mgr_write(1, 31, 0xb000);
+
+	for (i = 0; i <= MAX_ESW_PHY_ID; i++) {
+		/* check port link before touch EEE */
+		reg_pmsr = sysRegRead(RALINK_ETH_SW_BASE + REG_ESW_MAC_PMSR_P0 + 0x100*i);
+		if (reg_pmsr & 0x01)
+			continue;
+		
+		/* set PHY EEE on/off */
+		mii_mgr_write(i, 17, (is_eee_enabled) ? 0x0002 : 0x0000);
+	}
+}
+
+void mt7620_esw_eee_on_link(u32 port_id, int port_link, int is_eee_enabled)
+{
+	if (port_id > MAX_ESW_PHY_ID)
+		return;
+
+	/* MT7620 ESW need disable EEE on every link down */
+	if (is_eee_enabled || port_link)
+		return;
+
+	/* select PHY local page #3 */
+	mii_mgr_write(port_id, 31, 0xb000);
+
+	/* set PHY EEE off */
+	mii_mgr_write(port_id, 17, 0x0000);
 }
 #endif
 
@@ -163,6 +191,13 @@ int mt7620_esw_vlan_clear_idx(u32 idx)
 	idx &= 0xf;
 
 	return mt7620_esw_write_vtcr(2, idx);
+}
+
+void mt7620_esw_pvid_set(u32 port_id, u32 pvid, u32 prio)
+{
+	u32 reg_ppbv = (1u << 16) | ((prio & 0x7) << 13) | (pvid & 0xfff);
+
+	sysRegWrite(RALINK_ETH_SW_BASE+REG_ESW_PORT_PPBV1_P0+0x100*port_id, reg_ppbv);
 }
 
 int mt7620_esw_mac_table_clear(void)
@@ -239,10 +274,10 @@ void mt7620_esw_init(void)
 	sysRegWrite(RALINK_ETH_SW_BASE+0x2610, 0x81000000);	// P6 is user port, admit all frames
 	sysRegWrite(RALINK_ETH_SW_BASE+0x2510, 0x810000c0);	// P5 is transparent port, admit all frames
 	sysRegWrite(RALINK_ETH_SW_BASE+0x2410, 0x810000c0);	// P4 is transparent port, admit all frames
-	sysRegWrite(RALINK_ETH_SW_BASE+0x2514, 0x00010001);	// P5 PVID=1
-	sysRegWrite(RALINK_ETH_SW_BASE+0x2414, 0x00010002);	// P4 PVID=2
 	mt7620_esw_vlan_set_idx(0, 1, 0xe0);			// VID=1 members (P7|P6|P5)
 	mt7620_esw_vlan_set_idx(1, 2, 0xd0);			// VID=2 members (P7|P6|P4)
+	mt7620_esw_pvid_set(5, 1, 0);				// P5 PVID=1
+	mt7620_esw_pvid_set(4, 2, 0);				// P4 PVID=2
 	mt7620_esw_mac_table_clear();
 #endif
 #endif
@@ -274,7 +309,7 @@ void mt7620_esw_init(void)
 	/* Use P5 for connect to external GigaPHY (with autopolling) */
 	ge1_set_mode(0, 1);
 	sysRegWrite(RALINK_ETH_SW_BASE+0x3500, 0x00056330);	// (P5, AN)
-	init_giga_phy(1);
+	init_ext_giga_phy(1);
 	enable_autopoll_phy(1);
 #else
 	/* Disable P5 */
@@ -303,7 +338,7 @@ void mt7620_esw_init(void)
 	/* Use P4 for connect to external GigaPHY (with autopolling) */
 	ge2_set_mode(0, 1);
 	sysRegWrite(RALINK_ETH_SW_BASE+0x3400, 0x00056330);	// (P4, AN)
-	init_giga_phy(2);
+	init_ext_giga_phy(2);
 	enable_autopoll_phy(1);
 #elif defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P4) || defined (CONFIG_P4_MAC_TO_MT7530_GPHY_P0)
 	/* Use P4 for connect to external MT7530 GigaPHY P4 or P0 (with autopolling) */

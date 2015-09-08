@@ -262,8 +262,8 @@ config ARPD
 	bool "IP: ARP daemon support"
 	---help---
 	  The kernel maintains an internal cache which maps IP addresses to
-	  hardware addresses on the local network, so that Ethernet/Token Ring/
-	  etc. frames are sent to the proper address on the physical networking
+	  hardware addresses on the local network, so that Ethernet
+	  frames are sent to the proper address on the physical networking
 	  layer. Normally, kernel uses the ARP protocol to resolve these
 	  mappings.
 
@@ -385,7 +385,7 @@ config INET_XFRM_MODE_BEET
 
 config INET_LRO
 	tristate "Large Receive Offload (ipv4/tcp)"
-	default y
+	default n
 	---help---
 	  Support for Large Receive Offload (ipv4/tcp).
 

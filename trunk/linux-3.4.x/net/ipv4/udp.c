@@ -210,7 +210,7 @@ int udp_lib_get_port(struct sock *sk, unsigned short snum,
 
 	if (!snum) {
 		int low, high, remaining;
-		unsigned rand;
+		unsigned int rand;
 		unsigned short first, last;
 		DECLARE_BITMAP(bitmap, PORTS_PER_CHAIN);
 
@@ -1272,10 +1272,8 @@ csum_copy_err:
 		UDP_INC_STATS_USER(sock_net(sk), UDP_MIB_INERRORS, is_udplite);
 	unlock_sock_fast(sk, slow);
 
-	if (noblock)
-		return -EAGAIN;
-
-	/* starting over for a new packet */
+	/* starting over for a new packet, but check if we need to yield */
+	cond_resched();
 	msg->msg_flags &= ~MSG_TRUNC;
 	goto try_again;
 }
@@ -1419,8 +1417,10 @@ int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	/*
 	 *	Charge it to the socket, dropping if the queue is full.
 	 */
+#ifdef CONFIG_XFRM
 	if (!xfrm4_policy_check(sk, XFRM_POLICY_IN, skb))
 		goto drop;
+#endif
 	nf_reset(skb);
 
 	if (up->encap_type) {
@@ -1694,8 +1694,10 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 		return 0;
 	}
 
+#ifdef CONFIG_XFRM
 	if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb))
 		goto drop;
+#endif
 	nf_reset(skb);
 
 	/* No socket. Drop packet silently, if checksum is wrong */

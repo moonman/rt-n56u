@@ -268,13 +268,17 @@ nfqnl_build_packet_message(struct nfqnl_instance *queue,
 
 	skb = alloc_skb(size, GFP_ATOMIC);
 	if (!skb)
-		goto nlmsg_failure;
+		return NULL;
 
 	old_tail = skb->tail;
-	nlh = NLMSG_PUT(skb, 0, 0,
+	nlh = nlmsg_put(skb, 0, 0,
 			NFNL_SUBSYS_QUEUE << 8 | NFQNL_MSG_PACKET,
-			sizeof(struct nfgenmsg));
-	nfmsg = NLMSG_DATA(nlh);
+			sizeof(struct nfgenmsg), 0);
+	if (!nlh) {
+		kfree_skb(skb);
+		return NULL;
+	}
+	nfmsg = nlmsg_data(nlh);
 	nfmsg->nfgen_family = entry->pf;
 	nfmsg->version = NFNETLINK_V0;
 	nfmsg->res_id = htons(queue->queue_num);
@@ -288,58 +292,67 @@ nfqnl_build_packet_message(struct nfqnl_instance *queue,
 	indev = entry->indev;
 	if (indev) {
 #ifndef CONFIG_BRIDGE_NETFILTER
-		NLA_PUT_BE32(skb, NFQA_IFINDEX_INDEV, htonl(indev->ifindex));
+		if (nla_put_be32(skb, NFQA_IFINDEX_INDEV, htonl(indev->ifindex)))
+			goto nla_put_failure;
 #else
 		if (entry->pf == PF_BRIDGE) {
 			/* Case 1: indev is physical input device, we need to
 			 * look for bridge group (when called from
 			 * netfilter_bridge) */
-			NLA_PUT_BE32(skb, NFQA_IFINDEX_PHYSINDEV,
-				     htonl(indev->ifindex));
+			if (nla_put_be32(skb, NFQA_IFINDEX_PHYSINDEV,
+					 htonl(indev->ifindex)) ||
 			/* this is the bridge group "brX" */
 			/* rcu_read_lock()ed by __nf_queue */
-			NLA_PUT_BE32(skb, NFQA_IFINDEX_INDEV,
-				     htonl(br_port_get_rcu(indev)->br->dev->ifindex));
+			    nla_put_be32(skb, NFQA_IFINDEX_INDEV,
+					 htonl(br_port_get_rcu(indev)->br->dev->ifindex)))
+				goto nla_put_failure;
 		} else {
 			/* Case 2: indev is bridge group, we need to look for
 			 * physical device (when called from ipv4) */
-			NLA_PUT_BE32(skb, NFQA_IFINDEX_INDEV,
-				     htonl(indev->ifindex));
-			if (entskb->nf_bridge && entskb->nf_bridge->physindev)
-				NLA_PUT_BE32(skb, NFQA_IFINDEX_PHYSINDEV,
-					     htonl(entskb->nf_bridge->physindev->ifindex));
+			if (nla_put_be32(skb, NFQA_IFINDEX_INDEV,
+					 htonl(indev->ifindex)))
+				goto nla_put_failure;
+			if (entskb->nf_bridge && entskb->nf_bridge->physindev &&
+			    nla_put_be32(skb, NFQA_IFINDEX_PHYSINDEV,
+					 htonl(entskb->nf_bridge->physindev->ifindex)))
+				goto nla_put_failure;
 		}
 #endif
 	}
 
 	if (outdev) {
 #ifndef CONFIG_BRIDGE_NETFILTER
-		NLA_PUT_BE32(skb, NFQA_IFINDEX_OUTDEV, htonl(outdev->ifindex));
+		if (nla_put_be32(skb, NFQA_IFINDEX_OUTDEV, htonl(outdev->ifindex)))
+			goto nla_put_failure;
 #else
 		if (entry->pf == PF_BRIDGE) {
 			/* Case 1: outdev is physical output device, we need to
 			 * look for bridge group (when called from
 			 * netfilter_bridge) */
-			NLA_PUT_BE32(skb, NFQA_IFINDEX_PHYSOUTDEV,
-				     htonl(outdev->ifindex));
+			if (nla_put_be32(skb, NFQA_IFINDEX_PHYSOUTDEV,
+					 htonl(outdev->ifindex)) ||
 			/* this is the bridge group "brX" */
 			/* rcu_read_lock()ed by __nf_queue */
-			NLA_PUT_BE32(skb, NFQA_IFINDEX_OUTDEV,
-				     htonl(br_port_get_rcu(outdev)->br->dev->ifindex));
+			    nla_put_be32(skb, NFQA_IFINDEX_OUTDEV,
+					 htonl(br_port_get_rcu(outdev)->br->dev->ifindex)))
+				goto nla_put_failure;
 		} else {
 			/* Case 2: outdev is bridge group, we need to look for
 			 * physical output device (when called from ipv4) */
-			NLA_PUT_BE32(skb, NFQA_IFINDEX_OUTDEV,
-				     htonl(outdev->ifindex));
-			if (entskb->nf_bridge && entskb->nf_bridge->physoutdev)
-				NLA_PUT_BE32(skb, NFQA_IFINDEX_PHYSOUTDEV,
-					     htonl(entskb->nf_bridge->physoutdev->ifindex));
+			if (nla_put_be32(skb, NFQA_IFINDEX_OUTDEV,
+					 htonl(outdev->ifindex)))
+				goto nla_put_failure;
+			if (entskb->nf_bridge && entskb->nf_bridge->physoutdev &&
+			    nla_put_be32(skb, NFQA_IFINDEX_PHYSOUTDEV,
+					 htonl(entskb->nf_bridge->physoutdev->ifindex)))
+				goto nla_put_failure;
 		}
 #endif
 	}
 
-	if (entskb->mark)
-		NLA_PUT_BE32(skb, NFQA_MARK, htonl(entskb->mark));
+	if (entskb->mark &&
+	    nla_put_be32(skb, NFQA_MARK, htonl(entskb->mark)))
+		goto nla_put_failure;
 
 	if (indev && entskb->dev &&
 	    entskb->mac_header != entskb->network_header) {
@@ -347,7 +360,8 @@ nfqnl_build_packet_message(struct nfqnl_instance *queue,
 		int len = dev_parse_header(entskb, phw.hw_addr);
 		if (len) {
 			phw.hw_addrlen = htons(len);
-			NLA_PUT(skb, NFQA_HWADDR, sizeof(phw), &phw);
+			if (nla_put(skb, NFQA_HWADDR, sizeof(phw), &phw))
+				goto nla_put_failure;
 		}
 	}
 
@@ -357,7 +371,8 @@ nfqnl_build_packet_message(struct nfqnl_instance *queue,
 		ts.sec = cpu_to_be64(tv.tv_sec);
 		ts.usec = cpu_to_be64(tv.tv_usec);
 
-		NLA_PUT(skb, NFQA_TIMESTAMP, sizeof(ts), &ts);
+		if (nla_put(skb, NFQA_TIMESTAMP, sizeof(ts), &ts))
+			goto nla_put_failure;
 	}
 
 	if (data_len) {
@@ -366,7 +381,8 @@ nfqnl_build_packet_message(struct nfqnl_instance *queue,
 
 		if (skb_tailroom(skb) < nla_total_size(data_len)) {
 			printk(KERN_WARNING "nf_queue: no tailroom!\n");
-			goto nlmsg_failure;
+			kfree_skb(skb);
+			return NULL;
 		}
 
 		nla = (struct nlattr *)skb_put(skb, nla_total_size(data_len));
@@ -380,7 +396,6 @@ nfqnl_build_packet_message(struct nfqnl_instance *queue,
 	nlh->nlmsg_len = skb->tail - old_tail;
 	return skb;
 
-nlmsg_failure:
 nla_put_failure:
 	if (skb)
 		kfree_skb(skb);
@@ -659,7 +674,7 @@ nfqnl_recv_verdict_batch(struct sock *ctnl, struct sk_buff *skb,
 		   const struct nlmsghdr *nlh,
 		   const struct nlattr * const nfqa[])
 {
-	struct nfgenmsg *nfmsg = NLMSG_DATA(nlh);
+	struct nfgenmsg *nfmsg = nlmsg_data(nlh);
 	struct nf_queue_entry *entry, *tmp;
 	unsigned int verdict, maxid;
 	struct nfqnl_msg_verdict_hdr *vhdr;
@@ -705,7 +720,7 @@ nfqnl_recv_verdict(struct sock *ctnl, struct sk_buff *skb,
 		   const struct nlmsghdr *nlh,
 		   const struct nlattr * const nfqa[])
 {
-	struct nfgenmsg *nfmsg = NLMSG_DATA(nlh);
+	struct nfgenmsg *nfmsg = nlmsg_data(nlh);
 	u_int16_t queue_num = ntohs(nfmsg->res_id);
 
 	struct nfqnl_msg_verdict_hdr *vhdr;
@@ -766,7 +781,7 @@ nfqnl_recv_config(struct sock *ctnl, struct sk_buff *skb,
 		  const struct nlmsghdr *nlh,
 		  const struct nlattr * const nfqa[])
 {
-	struct nfgenmsg *nfmsg = NLMSG_DATA(nlh);
+	struct nfgenmsg *nfmsg = nlmsg_data(nlh);
 	u_int16_t queue_num = ntohs(nfmsg->res_id);
 	struct nfqnl_instance *queue;
 	struct nfqnl_msg_config_cmd *cmd = NULL;

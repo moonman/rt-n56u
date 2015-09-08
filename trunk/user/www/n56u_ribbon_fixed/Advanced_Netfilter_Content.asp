@@ -24,10 +24,8 @@
 var $j = jQuery.noConflict();
 
 $j(document).ready(function() {
+	init_itoggle('wan_nat_x', change_nat_enable);
 	init_itoggle('nf_nat_loop');
-	init_itoggle('fw_pt_pptp');
-	init_itoggle('fw_pt_l2tp');
-	init_itoggle('fw_pt_ipsec');
 	init_itoggle('fw_pt_pppoe');
 	init_itoggle('nf_alg_pptp');
 	init_itoggle('nf_alg_h323');
@@ -38,15 +36,12 @@ $j(document).ready(function() {
 </script>
 <script>
 
-fw_enable_x = '<% nvram_get_x("", "fw_enable_x"); %>';
-
 <% nf_values(); %>
 
 function initial(){
 	show_banner(1);
 	show_menu(5,5,2);
 	show_footer();
-	showhide_div('row_nat_loop', (sw_mode == '4') ? 0 : 1);
 
 	var o = document.form.nf_max_conn;
 	var maxc = support_max_conn();
@@ -61,13 +56,15 @@ function initial(){
 	if (maxc < 32768)
 		o.remove(2);
 
-	if (fw_enable_x == "0"){
-		showhide_div('row_fw_pt_pptp', 0);
-		showhide_div('row_fw_pt_l2tp', 0);
-		showhide_div('row_fw_pt_ipsec', 0);
-	}
+	change_nat_enable();
 
 	$("nf_count").innerHTML = nf_conntrack_count() + ' in use';
+}
+
+function change_nat_enable(){
+	var v = document.form.wan_nat_x[0].checked;
+	showhide_div('row_nat_type', v);
+	showhide_div('row_nat_loop', v);
 }
 
 function applyRule(){
@@ -86,11 +83,9 @@ function validForm(){
 	if (document.form.nf_alg_ftp0.value!="")
 		if(!validate_range(document.form.nf_alg_ftp0, 21, 65535))
 			return false;
-
 	if (document.form.nf_alg_ftp1.value!="")
 		if(!validate_range(document.form.nf_alg_ftp1, 1024, 65535))
 			return false;
-
 	return true;
 }
 
@@ -99,10 +94,10 @@ function done_validating(action){
 }
 </script>
 <style>
-    .nav-tabs > li > a {
-          padding-right: 6px;
-          padding-left: 6px;
-    }
+.nav-tabs > li > a {
+    padding-right: 6px;
+    padding-left: 6px;
+}
 </style>
 </head>
 
@@ -163,7 +158,22 @@ function done_validating(action){
                                             <th colspan="2" style="background-color: #E3E3E3;"><#NFilterConfig#></th>
                                         </tr>
                                         <tr>
-                                        <th width="50%"><#NFilterMaxConn#></th>
+                                            <th><#Enable_NAT#></th>
+                                            <td>
+                                                <div class="main_itoggle">
+                                                    <div id="wan_nat_x_on_of">
+                                                        <input type="checkbox" id="wan_nat_x_fake" <% nvram_match_x("", "wan_nat_x", "1", "value=1 checked"); %><% nvram_match_x("", "wan_nat_x", "0", "value=0"); %>>
+                                                    </div>
+                                                </div>
+
+                                                <div style="position: absolute; margin-left: -10000px;">
+                                                    <input type="radio" name="wan_nat_x" id="wan_nat_x_1" class="input" value="1" <% nvram_match_x("", "wan_nat_x", "1", "checked"); %>/><#checkbox_Yes#>
+                                                    <input type="radio" name="wan_nat_x" id="wan_nat_x_0" class="input" value="0" <% nvram_match_x("", "wan_nat_x", "0", "checked"); %>/><#checkbox_No#>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th width="50%"><#NFilterMaxConn#></th>
                                             <td>
                                                 <select name="nf_max_conn" class="input">
                                                     <option value="8192" <% nvram_match_x("","nf_max_conn", "8192", "selected"); %>>8192</option>
@@ -177,7 +187,7 @@ function done_validating(action){
                                                 &nbsp;&nbsp;<span class="label label-info" style="padding: 6px 7px 8px 7px;" id="nf_count"></span>
                                             </td>
                                         </tr>
-                                        <tr>
+                                        <tr id="row_nat_type">
                                             <th><#NFilterNatType#></th>
                                             <td>
                                                 <select name="nf_nat_type" class="input">
@@ -202,59 +212,8 @@ function done_validating(action){
                                                 </div>
                                             </td>
                                         </tr>
-                                    </table>
-
-                                    <table width="100%" cellpadding="4" cellspacing="0" class="table">
                                         <tr>
-                                            <th colspan="2" style="background-color: #E3E3E3;"><#vpn_passthrough_itemname#></th>
-                                        </tr>
-                                        <tr id="row_fw_pt_pptp">
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,25);"><#VPN_PPTP_Passthrough#></a></th>
-                                            <td>
-                                                <div class="main_itoggle">
-                                                    <div id="fw_pt_pptp_on_of">
-                                                        <input type="checkbox" id="fw_pt_pptp_fake" <% nvram_match_x("", "fw_pt_pptp", "1", "value=1 checked"); %><% nvram_match_x("", "fw_pt_pptp", "0", "value=0"); %>>
-                                                    </div>
-                                                </div>
-
-                                                <div style="position: absolute; margin-left: -10000px;">
-                                                    <input type="radio" id="fw_pt_pptp_1" name="fw_pt_pptp" value="1" <% nvram_match_x("", "fw_pt_pptp", "1", "checked selected"); %>><#checkbox_Yes#>
-                                                    <input type="radio" id="fw_pt_pptp_0" name="fw_pt_pptp" value="0" <% nvram_match_x("", "fw_pt_pptp", "0", "checked selected"); %>><#checkbox_No#>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr id="row_fw_pt_l2tp">
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,26);"><#VPN_L2TP_Passthrough#></a></th>
-                                            <td>
-                                                <div class="main_itoggle">
-                                                    <div id="fw_pt_l2tp_on_of">
-                                                        <input type="checkbox" id="fw_pt_l2tp_fake" <% nvram_match_x("", "fw_pt_l2tp", "1", "value=1 checked"); %><% nvram_match_x("", "fw_pt_l2tp", "0", "value=0"); %>>
-                                                    </div>
-                                                </div>
-
-                                                <div style="position: absolute; margin-left: -10000px;">
-                                                    <input type="radio" id="fw_pt_l2tp_1" name="fw_pt_l2tp" value="1" <% nvram_match_x("", "fw_pt_l2tp", "1", "checked selected"); %>><#checkbox_Yes#>
-                                                    <input type="radio" id="fw_pt_l2tp_0" name="fw_pt_l2tp" value="0" <% nvram_match_x("", "fw_pt_l2tp", "0", "checked selected"); %>><#checkbox_No#>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr id="row_fw_pt_ipsec">
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,27);"><#VPN_IPSec_Passthrough#></a></th>
-                                            <td>
-                                                <div class="main_itoggle">
-                                                    <div id="fw_pt_ipsec_on_of">
-                                                        <input type="checkbox" id="fw_pt_ipsec_fake" <% nvram_match_x("", "fw_pt_ipsec", "1", "value=1 checked"); %><% nvram_match_x("", "fw_pt_ipsec", "0", "value=0"); %>>
-                                                    </div>
-                                                </div>
-
-                                                <div style="position: absolute; margin-left: -10000px;">
-                                                    <input type="radio" id="fw_pt_ipsec_1" name="fw_pt_ipsec" value="1" <% nvram_match_x("", "fw_pt_ipsec", "1", "checked selected"); %>><#checkbox_Yes#>
-                                                    <input type="radio" id="fw_pt_ipsec_0" name="fw_pt_ipsec" value="0" <% nvram_match_x("", "fw_pt_ipsec", "0", "checked selected"); %>><#checkbox_No#>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,11);"><#PPPConnection_x_PPPoERelay_itemname#></a></th>
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,11);"><#PPPConnection_x_PPPoERelay_itemname#></a></th>
                                             <td>
                                                 <div class="main_itoggle">
                                                     <div id="fw_pt_pppoe_on_of">
@@ -277,8 +236,8 @@ function done_validating(action){
                                         <tr>
                                             <th width="50%">FTP ALG (ports)</th>
                                             <td>
-                                                <input type="text" maxlength="5" size="5" style="width: 50px;" name="nf_alg_ftp0" class="input" value="<% nvram_get_x("", "nf_alg_ftp0"); %>" onkeypress="return is_number(this)"/>&nbsp;,&nbsp;
-                                                <input type="text" maxlength="5" size="5" style="width: 50px;" name="nf_alg_ftp1" class="input" value="<% nvram_get_x("", "nf_alg_ftp1"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="5" size="5" style="width: 50px;" name="nf_alg_ftp0" class="input" value="<% nvram_get_x("", "nf_alg_ftp0"); %>" onkeypress="return is_number(this,event);"/>&nbsp;,&nbsp;
+                                                <input type="text" maxlength="5" size="5" style="width: 50px;" name="nf_alg_ftp1" class="input" value="<% nvram_get_x("", "nf_alg_ftp1"); %>" onkeypress="return is_number(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr>

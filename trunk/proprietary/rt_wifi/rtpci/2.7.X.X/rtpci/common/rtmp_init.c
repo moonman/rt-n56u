@@ -3048,6 +3048,15 @@ VOID UserCfgExit(
 
 
 	NdisFreeSpinLock(&pAd->MacTabLock);
+
+#ifdef CONFIG_AP_SUPPORT
+	IF_DEV_CONFIG_OPMODE_ON_AP(pAd)
+	{
+#ifdef BAND_STEERING
+		BndStrg_Release(pAd);
+#endif /* BAND_STEERING */
+	}
+#endif /* CONFIG_AP_SUPPORT */
 }
 
 /*
@@ -3646,7 +3655,14 @@ pAd->BbpResetFlagCountVale = 20;
 	pAd->CommonCfg.MO_Cfg.bEnable = TRUE;
 	pAd->CommonCfg.MO_Cfg.nFalseCCATh = 100;
 #endif /* MICROWAVE_OVEN_SUPPORT */
-	
+
+#ifdef APCLI_SUPPORT
+#ifdef APCLI_AUTO_CONNECT_SUPPORT
+	pAd->ApCfg.ApCliAutoConnectRunning = FALSE;
+	pAd->ApCfg.ApCliAutoConnectChannelSwitching = FALSE;
+#endif /* APCLI_AUTO_CONNECT_SUPPORT */
+#endif /* APCLI_SUPPORT */
+
 	DBGPRINT(RT_DEBUG_TRACE, ("<-- UserCfgInit\n"));
 }
 

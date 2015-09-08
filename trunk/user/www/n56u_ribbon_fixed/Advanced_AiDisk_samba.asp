@@ -46,35 +46,26 @@ function initial(){
 	show_banner(1);
 	show_menu(5,6,2);
 	show_footer();
-	
+
 	// show page's control
 	showShareStatusControl();
 	showAccountControl();
-	
+
 	// show accounts
 	showAccountMenu();
-	
+
 	// show the kinds of permission
 	showPermissionTitle();
-	
+
 	// the click event of the buttons
 	onEvent();
-	
+
 	// show folder's tree
 	setTimeout('get_disk_tree();', 1000);
 }
 
 function submitRules(){
 	document.aidiskForm.submit();
-}
-
-function show_footer(){
-	footer_code = '<div align="center" class="bottom-image"></div>';
-	footer_code +='<div align="center" class="copyright"><#footer_copyright_desc#></div>';
-	
-	$("footer").innerHTML = footer_code;
-
-	flash_button();
 }
 
 function get_accounts(){

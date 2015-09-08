@@ -315,6 +315,14 @@ static void snmp6_free_dev(struct inet6_dev *idev)
 	snmp_mib_free((void __percpu **)idev->stats.ipv6);
 }
 
+static void in6_dev_finish_destroy_rcu(struct rcu_head *head)
+{
+	struct inet6_dev *idev = container_of(head, struct inet6_dev, rcu);
+
+	snmp6_free_dev(idev);
+	kfree(idev);
+}
+
 /* Nobody refers to this device, we may destroy it. */
 
 void in6_dev_finish_destroy(struct inet6_dev *idev)
@@ -332,10 +340,8 @@ void in6_dev_finish_destroy(struct inet6_dev *idev)
 		pr_warning("Freeing alive inet6 device %p\n", idev);
 		return;
 	}
-	snmp6_free_dev(idev);
-	kfree_rcu(idev, rcu);
+	call_rcu(&idev->rcu, in6_dev_finish_destroy_rcu);
 }
-
 EXPORT_SYMBOL(in6_dev_finish_destroy);
 
 static struct inet6_dev * ipv6_add_dev(struct net_device *dev)
@@ -4734,7 +4740,7 @@ int unregister_inet6addr_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(unregister_inet6addr_notifier);
 
-static struct rtnl_af_ops inet6_ops = {
+static struct rtnl_af_ops inet6_ops __read_mostly = {
 	.family		  = AF_INET6,
 	.fill_link_af	  = inet6_fill_link_af,
 	.get_link_af_size = inet6_get_link_af_size,

@@ -75,9 +75,9 @@ unsigned int nf_conntrack_hash_rnd __read_mostly;
 
 #if defined(CONFIG_NAT_CONE)
 unsigned int nf_conntrack_nat_mode __read_mostly = NAT_MODE_LINUX;
-char wan_name[IFNAMSIZ] __read_mostly = {0};
+int cone_man_ifindex __read_mostly = -1;
 #if IS_ENABLED(CONFIG_PPP)
-char wan_name_ppp[IFNAMSIZ] __read_mostly = {0};
+int cone_ppp_ifindex __read_mostly = -1;
 #endif
 #endif
 
@@ -374,6 +374,18 @@ static void death_by_timeout(unsigned long ul_conntrack)
 	nf_ct_put(ct);
 }
 
+static inline bool
+nf_ct_key_equal(struct nf_conntrack_tuple_hash *h,
+			const struct nf_conntrack_tuple *tuple)
+{
+	struct nf_conn *ct = nf_ct_tuplehash_to_ctrack(h);
+
+	/* A conntrack can be recreated with the equal tuple,
+	 * so we need to check that the conntrack is confirmed
+	 */
+	return nf_ct_tuple_equal(tuple, &h->tuple) && nf_ct_is_confirmed(ct);
+}
+
 /*
  * Warning :
  * - Caller must take a reference on returned object
@@ -395,7 +407,7 @@ ____nf_conntrack_find(struct net *net,
 	local_bh_disable();
 begin:
 	hlist_nulls_for_each_entry_rcu(h, n, &net->ct.hash[bucket], hnnode) {
-		if (nf_ct_tuple_equal(tuple, &h->tuple)) {
+		if (nf_ct_key_equal(h, tuple)) {
 			NF_CT_STAT_INC(net, found);
 			local_bh_enable();
 			return h;
@@ -512,7 +524,7 @@ begin:
 			     !atomic_inc_not_zero(&ct->ct_general.use)))
 			h = NULL;
 		else {
-			if (unlikely(!nf_ct_tuple_equal(tuple, &h->tuple))) {
+			if (unlikely(!nf_ct_key_equal(h, tuple))) {
 				nf_ct_put(ct);
 				goto begin;
 			}
@@ -812,7 +824,8 @@ __nf_conntrack_alloc(struct net *net,
 	    unlikely(atomic_read(&net->ct.count) > nf_conntrack_max)) {
 		if (!early_drop(net, hash_bucket(hash, net))) {
 			atomic_dec(&net->ct.count);
-			net_warn_ratelimited("nf_conntrack: table full, dropping packet\n");
+			net_warn_ratelimited("nf_conntrack: table full (%u), dropping packet\n",
+				nf_conntrack_max);
 			return ERR_PTR(-ENOMEM);
 		}
 	}
@@ -1046,9 +1059,9 @@ resolve_normal_ct(struct net *net, struct nf_conn *tmpl,
          */
 	if (protonum == IPPROTO_UDP && nf_conntrack_nat_mode > 0 && skb->dev != NULL &&
 #if IS_ENABLED(CONFIG_PPP)
-	    (strcmp(skb->dev->name, wan_name) == 0 || strcmp(skb->dev->name, wan_name_ppp) == 0)) {
+	    (skb->dev->ifindex == cone_man_ifindex || skb->dev->ifindex == cone_ppp_ifindex)) {
 #else
-	    (strcmp(skb->dev->name, wan_name) == 0)) {
+	    (skb->dev->ifindex == cone_man_ifindex)) {
 #endif
 		/* CASE III To Cone NAT */
 		h = __nf_cone_conntrack_find_get(net, &tuple, hash);
@@ -1365,8 +1378,9 @@ EXPORT_SYMBOL_GPL(__nf_ct_kill_acct);
 int nf_ct_port_tuple_to_nlattr(struct sk_buff *skb,
 			       const struct nf_conntrack_tuple *tuple)
 {
-	NLA_PUT_BE16(skb, CTA_PROTO_SRC_PORT, tuple->src.u.tcp.port);
-	NLA_PUT_BE16(skb, CTA_PROTO_DST_PORT, tuple->dst.u.tcp.port);
+	if (nla_put_be16(skb, CTA_PROTO_SRC_PORT, tuple->src.u.tcp.port) ||
+	    nla_put_be16(skb, CTA_PROTO_DST_PORT, tuple->dst.u.tcp.port))
+		goto nla_put_failure;
 	return 0;
 
 nla_put_failure:
@@ -1823,7 +1837,7 @@ err_stat:
 	return ret;
 }
 
-s16 (*nf_ct_nat_offset)(const struct nf_conn *ct,
+s32 (*nf_ct_nat_offset)(const struct nf_conn *ct,
 			enum ip_conntrack_dir dir,
 			u32 seq);
 EXPORT_SYMBOL_GPL(nf_ct_nat_offset);

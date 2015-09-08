@@ -41,7 +41,6 @@
 #include <net/if.h>
 #include <linux/types.h>
 #include <linux/sockios.h>
-#include <sys/mman.h>
 
 #ifndef __user
 #define __user
@@ -50,32 +49,18 @@
 #include <wireless.h>
 #include <ralink_priv.h>
 #include <notify_rc.h>
+#include <rstats.h>
 #include <bin_sem_asus.h>
 
 #include "common.h"
 #include "nvram_x.h"
 #include "httpd.h"
 
-#ifndef O_BINARY
-#define O_BINARY	0
-#endif
-
-#include <image.h>
-#ifndef MAP_FAILED
-#define MAP_FAILED (-1)
-#endif
-
 #define MAX_GROUP_COUNT		64
 #define GROUP_FLAG_REFRESH 	0
 #define GROUP_FLAG_DELETE 	1
 #define GROUP_FLAG_ADD 		2
 #define GROUP_FLAG_REMOVE 	3
-
-#define IMAGE_HEADER		"HDR0"
-#define PROFILE_HEADER		"HDR1"
-#define PROFILE_HEADER_NEW	"HDR2"
-#define PROFILE_FIFO_UPLOAD	"/tmp/settings_u.prf"
-#define PROFILE_FIFO_DOWNLOAD	"/tmp/settings_d.prf"
 
 static int apply_cgi_group(webs_t wp, int sid, struct variable *var, const char *groupName, int flag);
 static int nvram_generate_table(webs_t wp, char *serviceId, char *groupName);
@@ -441,6 +426,7 @@ static int
 ej_nvram_get_x(int eid, webs_t wp, int argc, char **argv)
 {
 	char *sid, *name, *cn, *c;
+	int ret = 0;
 
 	if (ejArgs(argc, argv, "%s %s", &sid, &name) < 2) {
 		websError(wp, 400, "Insufficient args\n");
@@ -449,16 +435,15 @@ ej_nvram_get_x(int eid, webs_t wp, int argc, char **argv)
 
 	cn = nvram_safe_get(name);
 	for (c = cn; *c; c++) {
-		if (*c == 0x26 || // &
-		    *c == 0x3C || // <
-		    *c == 0x3E)   // >
-			*c = '_';
+		if (*c < 0 || (*c >= 0x20 && *c != '"' && *c != '&' && *c != '<' && *c != '>'))
+			ret += fprintf(wp, "%c", *c);
 		else
-		if (*c == 0x22)   // "
-			*c = ' ';
+			ret += fprintf(wp, "&#%d;", *c);
 	}
 
-	return websWrite(wp, "%s", cn);
+	fflush(wp);
+
+	return ret;
 }
 
 static int
@@ -623,56 +608,12 @@ ej_nvram_match_list_x(int eid, webs_t wp, int argc, char **argv)
 		websError(wp, 400, "Insufficient args\n");
 		return -1;
 	}
-	
+
 	if (nvram_match_list_x(name, match, which))
 		return websWrite(wp, output);
-	else
-		return 0;
+
+	return 0;
 }
-
-static int
-ej_select_channel(int eid, webs_t wp, int argc, char **argv)
-{
-	char *sid, chstr[32];
-	int ret = 0;
-	int idx = 0, channel;
-	char *value = nvram_safe_get("rt_country_code");
-	char *channel_s = nvram_safe_get("rt_channel");
-	
-	if (ejArgs(argc, argv, "%s", &sid) < 1) {
-		websError(wp, 400, "Insufficient args\n");
-		return -1;
-	}
-
-	channel = atoi(channel_s);
-
-	for (idx = 0; idx < 12; idx++)
-	{
-		if (idx == 0)
-			strcpy(chstr, "Auto");
-		else
-			sprintf(chstr, "%d", idx);
-		ret += websWrite(wp, "<option value=\"%d\" %s>%s</option>", idx, (idx == channel)? "selected" : "", chstr);
-	}
-
-	if (    strcasecmp(value, "CA") && strcasecmp(value, "CO") && strcasecmp(value, "DO") &&
-		strcasecmp(value, "GT") && strcasecmp(value, "MX") && strcasecmp(value, "NO") &&
-		strcasecmp(value, "PA") && strcasecmp(value, "PR") && strcasecmp(value, "TW") &&
-		strcasecmp(value, "US") && strcasecmp(value, "UZ") )
-	{
-		for (idx = 12; idx < 14; idx++)
-		{
-			sprintf(chstr, "%d", idx);
-			ret += websWrite(wp, "<option value=\"%d\" %s>%s</option>", idx, (idx == channel)? "selected" : "", chstr);
-		}
-	}
-
-	if ((strcmp(value, "") == 0) || (strcasecmp(value, "DB") == 0)/* || (strcasecmp(value, "JP") == 0)*/)
-		ret += websWrite(wp, "<option value=\"14\" %s>14</option>", (14 == channel)? "selected" : "");
-
-	return ret;
-}
-
 
 static int
 ej_nvram_char_to_ascii(int eid, webs_t wp, int argc, char **argv)
@@ -706,34 +647,18 @@ ej_uptime(int eid, webs_t wp, int argc, char **argv)
 static int
 dump_file(webs_t wp, char *filename)
 {
-	FILE *fp;
 	char *extensions;
-	char buf[MAX_FILE_LINE_SIZE];
-	int ret = 0;
 
 	if (!f_exists(filename)) {
-		ret += websWrite(wp, "%s", "");
-		return ret;
+		return websWrite(wp, "%s", "");
 	}
 
 	extensions = strrchr(filename, '.');
 	if (extensions && strcmp(extensions, ".key") == 0) {
-		ret += websWrite(wp, "%s", "# !!!This is hidden write-only secret key file!!!\n");
-		return ret;
+		return websWrite(wp, "%s", "# !!!This is hidden write-only secret key file!!!\n");
 	}
 
-	fp = fopen(filename, "r");
-	if (!fp) {
-		ret += websWrite(wp, "%s", "");
-		return ret;
-	}
-
-	while (fgets(buf, sizeof(buf), fp)!=NULL)
-		ret += websWrite(wp, buf);
-
-	fclose(fp);
-
-	return ret;
+	return do_f(filename, wp);
 }
 
 static int
@@ -752,9 +677,12 @@ ej_dump(int eid, webs_t wp, int argc, char **argv)
 	if (strlen(script) > 1)
 		sys_script(script);
 
+#if BOARD_HAS_5G_RADIO
 	if (strcmp(file, "wlan11b.log")==0)
 		return (ej_wl_status_5g(eid, wp, 0, NULL));
-	else if (strcmp(file, "wlan11b_2g.log")==0)
+	else
+#endif
+	if (strcmp(file, "wlan11b_2g.log")==0)
 		return (ej_wl_status_2g(eid, wp, 0, NULL));
 	else if (strcmp(file, "eth_wan.log")==0)
 		return ej_eth_status_wan(eid, wp, 0, NULL);
@@ -862,7 +790,7 @@ get_wifi_ifname(int is_5g)
 }
 
 static void
-set_wifi_param_int(char* ifname, char* param, char* value, int val_min, int val_max)
+set_wifi_param_int(const char* ifname, char* param, char* value, int val_min, int val_max)
 {
 	int i_value = atoi(value);
 	if (i_value < val_min) i_value = val_min;
@@ -872,98 +800,15 @@ set_wifi_param_int(char* ifname, char* param, char* value, int val_min, int val_
 }
 
 static void
-set_wifi_mrate(char* ifname, char* value)
+set_wifi_mrate(const char* ifname, const char* value, int is_aband)
 {
-	int i_value = atoi(value);
-	int i_mphy = 2; // OFDM
-	int i_mmcs = 0; // 6 Mbps
+	int i_mphy;
+	int i_mmcs = 0;
 
-	switch (i_value)
-	{
-	case 0: // Auto
-		i_mphy = 0;
-		i_mmcs = 0;
-		break;
-	case 1: // CCK 1 Mbps
-		i_mphy = 1;
-		i_mmcs = 0;
-		break;
-	case 2: // CCK 2 Mbps
-		i_mphy = 1;
-		i_mmcs = 1;
-		break;
-	case 3: // OFDM 6 Mbps
-		i_mphy = 2;
-		i_mmcs = 0;
-		break;
-	case 4: // OFDM 9 Mbps
-		i_mphy = 2;
-		i_mmcs = 1;
-		break;
-	case 5: // OFDM 12 Mbps
-		i_mphy = 2;
-		i_mmcs = 2;
-		break;
-	case 6: // HTMIX (1S) 6.5-15 Mbps
-		i_mphy = 3;
-		i_mmcs = 0;
-		break;
-	case 7: // HTMIX (1S) 15-30 Mbps
-		i_mphy = 3;
-		i_mmcs = 1;
-		break;
-	}
+	i_mphy = calc_mcast_tx_mode(atoi(value), is_aband, &i_mmcs);
 
 	doSystem("iwpriv %s set %s=%d", ifname, "McastPhyMode", i_mphy);
 	doSystem("iwpriv %s set %s=%d", ifname, "McastMcs", i_mmcs);
-}
-
-static void
-set_wifi_mcs_mode(char* ifname, char* value)
-{
-	int i_value = atoi(value);
-	int i_fix = 0;  // FixedTxMode=OFF
-	int i_mcs = 33; // HT_MCS=Auto
-
-	switch (i_value)
-	{
-	case 1: // HTMIX (1S) 19.5-45 Mbps
-		i_mcs = 2;
-		break;
-	case 2: // HTMIX (1S) 15-30 Mbps
-		i_mcs = 1;
-		break;
-	case 3: // HTMIX (1S) 6.5-15 Mbps
-		i_mcs = 0;
-		break;
-	case 4: // OFDM 12 Mbps
-		i_fix = 2;
-		i_mcs = 2;
-		break;
-	case 5: // OFDM 9 Mbps
-		i_fix = 2;
-		i_mcs = 1;
-		break;
-	case 6: // OFDM 6 Mbps
-		i_fix = 2;
-		i_mcs = 0;
-		break;
-	case 7: // CCK 5.5 Mbps
-		i_fix = 1;
-		i_mcs = 2;
-		break;
-	case 8: // CCK 2 Mbps
-		i_fix = 1;
-		i_mcs = 1;
-		break;
-	case 9: // CCK 1 Mbps
-		i_fix = 1;
-		i_mcs = 0;
-		break;
-	}
-
-	doSystem("iwpriv %s set %s=%d", ifname, "FixedTxMode", i_fix);
-	doSystem("iwpriv %s set %s=%d", ifname, "HtMcs", i_mcs);
 }
 
 static void
@@ -1114,6 +959,13 @@ validate_asp_apply(webs_t wp, int sid)
 		if (!strcmp(v->name, "lan_ipaddr") || !strcmp(v->name, "lan_netmask"))
 			lanip_changed = 1;
 		
+		/* update sw_mode before nvram_commit */
+		if (!strcmp(v->name, "wan_nat_x")) {
+			int wan_nat_x = atoi(value);
+			if (nvram_get_int("sw_mode") != 3)
+				nvram_set_int("sw_mode", (wan_nat_x) ? 1 : 4);
+		}
+		
 #if BOARD_HAS_5G_RADIO
 		if (!strncmp(v->name, "wl_", 3) && strcmp(v->name, "wl_ssid2"))
 		{
@@ -1155,13 +1007,7 @@ validate_asp_apply(webs_t wp, int sid)
 #endif
 			else if (!strcmp(v->name, "wl_mrate"))
 			{
-				set_wifi_mrate(IFNAME_5G_MAIN, value);
-				
-				wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
-			}
-			else if (!strcmp(v->name, "wl_guest_mcs_mode"))
-			{
-				set_wifi_mcs_mode(IFNAME_5G_GUEST, value);
+				set_wifi_mrate(IFNAME_5G_MAIN, value, 1);
 				
 				wl_modified |= WIFI_IWPRIV_CHANGE_BIT;
 			}
@@ -1224,13 +1070,7 @@ validate_asp_apply(webs_t wp, int sid)
 #endif
 			else if (!strcmp(v->name, "rt_mrate"))
 			{
-				set_wifi_mrate(IFNAME_2G_MAIN, value);
-				
-				rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
-			}
-			else if (!strcmp(v->name, "rt_guest_mcs_mode"))
-			{
-				set_wifi_mcs_mode(IFNAME_2G_GUEST, value);
+				set_wifi_mrate(IFNAME_2G_MAIN, value, 0);
 				
 				rt_modified |= WIFI_IWPRIV_CHANGE_BIT;
 			}
@@ -1597,6 +1437,7 @@ Internet connection status code:
 6 - Wait PPP interface connection
 7 - Inactive PPP state
 8 - No Default Gateway
+9 - Subnets conflict
 */
 
 #define INET_STATE_CONNECTED		0
@@ -1608,12 +1449,13 @@ Internet connection status code:
 #define INET_STATE_PPP_WAIT		6
 #define INET_STATE_PPP_INACTIVE		7
 #define INET_STATE_NO_DGW		8
+#define INET_STATE_SUBNETS_CONFLICT	9
 
 static int
 wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 {
 	FILE *fp;
-	char wan_dns[512], wan_mac[18], etherlink[32], apclilink[32];
+	char wan_dns[512], wan_mac[18], etherlink[40], apclilink[32];
 	char wan_desc[32], tmp[64], prefix[16];
 	char addr4_wan[INET_ADDRSTRLEN], addr4_man[INET_ADDRSTRLEN];
 	char *wan0_ip, *wanx_ip, *wan0_gw, *wanx_gw, *wan_ip6, *lan_ip6, *wan_ifname, *man_ifname;
@@ -1732,6 +1574,15 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 						(unsigned char)wrq.u.ap_addr.sa_data[3],
 						(unsigned char)wrq.u.ap_addr.sa_data[4],
 						(unsigned char)wrq.u.ap_addr.sa_data[5]);
+						
+#if 0
+					{
+						RT_802_11_MAC_ENTRY me;
+						
+						if (get_apcli_wds_entry(man_ifname, &me)) {
+						}
+					}
+#endif
 				} else {
 					strcpy(apclilink, "---");
 					phy_failed = 2; // STA not connected
@@ -1811,8 +1662,13 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 					status_code = (pids(l2tpd)) ? INET_STATE_PPP_WAIT : INET_STATE_PPP_INACTIVE;
 				} else
 					status_code = (pids("pppd")) ? INET_STATE_PPP_WAIT : INET_STATE_PPP_INACTIVE;
-			} else
-				status_code = (wan_ifstate == IF_STATE_UP) ? INET_STATE_NETIF_WAIT_DHCP : INET_STATE_NETIF_NOT_READY;
+			} else {
+				if (wan_ifstate == IF_STATE_UP) {
+					int wan_err = nvram_get_int(strcat_r(prefix, "err", tmp));
+					status_code = (wan_err == 1) ? INET_STATE_SUBNETS_CONFLICT : INET_STATE_NETIF_WAIT_DHCP;
+				} else
+					status_code = INET_STATE_NETIF_NOT_READY;
+			}
 		}
 		
 		if (need_eth_link) {
@@ -1907,7 +1763,7 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 		int is_first = 1;
 		char line_buf[96], dns_item[80];
 		while (fgets(line_buf, sizeof(line_buf), fp)) {
-			if (sscanf(line_buf, "nameserver %s\n", dns_item) < 1)
+			if (sscanf(line_buf, "nameserver %79s\n", dns_item) < 1)
 				continue;
 			if (strlen(dns_item) < 7)
 				continue;
@@ -1949,11 +1805,11 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 static int
 lanlink_hook(int eid, webs_t wp, int argc, char **argv)
 {
-	char etherlink0[32] = {0};
-	char etherlink1[32] = {0};
-	char etherlink2[32] = {0};
-	char etherlink3[32] = {0};
-	char etherlink4[32] = {0};
+	char etherlink0[40] = {0};
+	char etherlink1[40] = {0};
+	char etherlink2[40] = {0};
+	char etherlink3[40] = {0};
+	char etherlink4[40] = {0};
 
 	fill_eth_port_status(0, etherlink0);
 	fill_eth_port_status(1, etherlink1);
@@ -1991,6 +1847,9 @@ wan_action_hook(int eid, webs_t wp, int argc, char **argv)
 		if (nvram_match("wan_proto", "static"))
 			needed_seconds = 2;
 		notify_rc("manual_wan_disconnect");
+	}
+	else if (!strcmp(wan_action, "WispReassoc")) {
+		notify_rc("manual_wisp_reassoc");
 	}
 #if (BOARD_NUM_USB_PORTS > 0)
 	else if (!strcmp(wan_action, "ModemPrio")) {
@@ -2190,11 +2049,6 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 #else
 	int has_ipv6_ppe = 0;
 #endif
-#if defined(USE_RT3352_MII)
-	int min_vlan_ext = 4;
-#else
-	int min_vlan_ext = 3;
-#endif
 #if (BOARD_RAM_SIZE < 64)
 	int max_conn = 16384;
 #elif (BOARD_RAM_SIZE < 128)
@@ -2203,6 +2057,11 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 	int max_conn = 262144;
 #else
 	int max_conn = 524288;
+#endif
+#if defined (USE_NAND_FLASH)
+	int has_mtd_rwfs = 1;
+#else
+	int has_mtd_rwfs = 0;
 #endif
 #if (BOARD_NUM_USB_PORTS > 0)
 	int has_usb = 1;
@@ -2235,11 +2094,31 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 	int has_inic_mii = 0;
 #endif
 #if defined(USE_RTL8367)
-	int use_switch_type = 0; // Realtek RTL8367
+	int has_switch_type = 0; // Realtek RTL8367
 #elif defined(USE_MTK_ESW)
-	int use_switch_type = 1; // Mediatek MT7620 Embedded ESW
+	int has_switch_type = 1; // Mediatek MT7620 Embedded ESW
 #elif defined(USE_MTK_GSW)
-	int use_switch_type = 2; // Mediatek MT7621 Internal GSW (or MT7530)
+	int has_switch_type = 2; // Mediatek MT7621 Internal GSW (or MT7530)
+#endif
+#if defined(BOARD_GPIO_BTN_ROUTER) || defined(BOARD_GPIO_BTN_AP)
+	int has_btn_mode = 1;
+#else
+	int has_btn_mode = 0;
+#endif
+#if defined(USE_WID_2G) && (USE_WID_2G==7602 || USE_WID_2G==7612)
+	int has_2g_ldpc = 1;
+#else
+	int has_2g_ldpc = 0;
+#endif
+#if defined(USE_WID_5G) && (USE_WID_5G==7612)
+	int has_5g_ldpc = 1;
+#else
+	int has_5g_ldpc = 0;
+#endif
+#if defined(USE_WID_5G) && (USE_WID_5G==7610 || USE_WID_5G==7612) && BOARD_HAS_5G_11AC
+	int has_5g_vht = 1;
+#else
+	int has_5g_vht = 0;
 #endif
 
 	websWrite(wp,
@@ -2281,6 +2160,8 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 		"function support_ddns_ssl() { return %d;}\n"
 		"function support_min_vlan() { return %d;}\n"
 		"function support_max_conn() { return %d;}\n"
+		"function support_mtd_rwfs() { return %d;}\n"
+		"function support_btn_mode() { return %d;}\n"
 		"function support_usb() { return %d;}\n"
 		"function support_usb3() { return %d;}\n"
 		"function support_switch_type() { return %d;}\n"
@@ -2289,6 +2170,8 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 		"function support_2g_inic_mii() { return %d;}\n"
 		"function support_5g_radio() { return %d;}\n"
 		"function support_5g_11ac() { return %d;}\n"
+		"function support_5g_ldpc() { return %d;}\n"
+		"function support_2g_ldpc() { return %d;}\n"
 		"function support_5g_stream_tx() { return %d;}\n"
 		"function support_5g_stream_rx() { return %d;}\n"
 		"function support_2g_stream_tx() { return %d;}\n"
@@ -2298,16 +2181,20 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 		has_peap_ssl,
 		has_http_ssl,
 		has_ddns_ssl,
-		min_vlan_ext,
+		MIN_EXT_VLAN_VID,
 		max_conn,
+		has_mtd_rwfs,
+		has_btn_mode,
 		has_usb,
 		has_usb3,
-		use_switch_type,
+		has_switch_type,
 		BOARD_NUM_ETH_EPHY,
 		BOARD_HAS_EPHY_W1000,
 		has_inic_mii,
 		BOARD_HAS_5G_RADIO,
-		BOARD_HAS_5G_11AC,
+		has_5g_vht,
+		has_5g_ldpc,
+		has_2g_ldpc,
 		BOARD_NUM_ANT_5G_TX,
 		BOARD_NUM_ANT_5G_RX,
 		BOARD_NUM_ANT_2G_TX,
@@ -2350,7 +2237,7 @@ ej_hardware_pins_hook(int eid, webs_t wp, int argc, char **argv)
 #else
 	int has_led_usb = 0;
 #endif
-#if defined (BOARD_GPIO_LED_WIFI)
+#if defined (BOARD_GPIO_LED_WIFI) || defined (BOARD_GPIO_LED_SW2G) || defined (BOARD_GPIO_LED_SW5G)
 	int has_led_wif = 1;
 #else
 	int has_led_wif = 0;
@@ -2468,16 +2355,12 @@ static int openvpn_cli_cert_hook(int eid, webs_t wp, int argc, char **argv)
 
 static int ej_get_parameter(int eid, webs_t wp, int argc, char **argv) {
 	int ret = 0;
-	
-	if (argc < 1) {
-		websError(wp, 400,
-				"get_parameter() used with no arguments, but at least one "
-				"argument is required to specify the parameter name\n");
+
+	if (argc < 1)
 		return -1;
-	}
-	
+
 	char *value = websGetVar(wp, argv[0], "");
-	websWrite(wp, "%s", value);//*/
+	websWrite(wp, "%s", value);
 	return ret;
 }
 
@@ -2647,7 +2530,7 @@ static int ej_get_vpns_client(int eid, webs_t wp, int argc, char **argv)
 {
 	FILE *fp;
 	int first_client;
-	char ifname[16], addr_l[32], addr_r[32], peer_name[64];
+	char ifname[16], addr_l[64], addr_r[64], peer_name[64];
 
 	fp = fopen("/tmp/vpns.leases", "r");
 	if (!fp) {
@@ -2655,7 +2538,7 @@ static int ej_get_vpns_client(int eid, webs_t wp, int argc, char **argv)
 	}
 
 	first_client = 1;
-	while (fscanf(fp, "%s %s %s %[^\n]\n", ifname, addr_l, addr_r, peer_name) == 4) {
+	while (fscanf(fp, "%15s %63s %63s %63[^\n]\n", ifname, addr_l, addr_r, peer_name) == 4) {
 		if (first_client)
 			first_client = 0;
 		else
@@ -2721,23 +2604,22 @@ void get_cpudata(struct cpu_stats *st)
 void get_memdata(struct mem_stats *st)
 {
 	FILE *fp;
-	char buf[32];
 	char line_buf[64];
 
 	fp = fopen("/proc/meminfo", "r");
 	if (fp)
 	{
 		if (fgets(line_buf, sizeof(line_buf), fp) && 
-		    sscanf(line_buf, "MemTotal: %lu %s", &st->total, buf) == 2)
+		    sscanf(line_buf, "MemTotal: %lu %*s", &st->total) == 1)
 		{
 			fgets(line_buf, sizeof(line_buf), fp);
-			sscanf(line_buf, "MemFree: %lu %s", &st->free, buf);
+			sscanf(line_buf, "MemFree: %lu %*s", &st->free);
 			
 			fgets(line_buf, sizeof(line_buf), fp);
-			sscanf(line_buf, "Buffers: %lu %s", &st->buffers, buf);
+			sscanf(line_buf, "Buffers: %lu %*s", &st->buffers);
 			
 			fgets(line_buf, sizeof(line_buf), fp);
-			sscanf(line_buf, "Cached: %lu %s", &st->cached, buf);
+			sscanf(line_buf, "Cached: %lu %*s", &st->cached);
 		}
 		
 		fclose(fp);
@@ -2773,8 +2655,6 @@ void get_wifidata(struct wifi_stats *st, int is_5ghz)
 #define LOAD_INT(x)	(unsigned)((x) >> 16)
 #define LOAD_FRAC(x)	LOAD_INT(((x) & ((1 << 16) - 1)) * 100)
 
-static struct cpu_stats g_cpu_old = {0};
-
 static int ej_system_status_hook(int eid, webs_t wp, int argc, char **argv)
 {
 	struct sysinfo info;
@@ -2784,32 +2664,11 @@ static int ej_system_status_hook(int eid, webs_t wp, int argc, char **argv)
 	struct wifi_stats wifi5;
 	struct stat log;
 	unsigned long updays, uphours, upminutes;
-	unsigned diff_total, u_user, u_nice, u_system, u_idle, u_iowait, u_irq, u_sirq, u_busy;
-
-	if (g_cpu_old.total == 0)
-	{
-		get_cpudata(&g_cpu_old);
-		usleep(100000);
-	}
 
 	get_cpudata(&cpu);
 	get_memdata(&mem);
 	get_wifidata(&wifi2, 0);
 	get_wifidata(&wifi5, 1);
-
-	diff_total = (unsigned)(cpu.total - g_cpu_old.total);
-	if (!diff_total) diff_total = 1;
-
-	u_user = (unsigned)(cpu.user - g_cpu_old.user) * 100 / diff_total;
-	u_nice = (unsigned)(cpu.nice - g_cpu_old.nice) * 100 / diff_total;
-	u_system = (unsigned)(cpu.system - g_cpu_old.system) * 100 / diff_total;
-	u_idle = (unsigned)(cpu.idle - g_cpu_old.idle) * 100 / diff_total;
-	u_iowait = (unsigned)(cpu.iowait - g_cpu_old.iowait) * 100 / diff_total;
-	u_irq = (unsigned)(cpu.irq - g_cpu_old.irq) * 100 / diff_total;
-	u_sirq = (unsigned)(cpu.sirq - g_cpu_old.sirq) * 100 / diff_total;
-	u_busy = (unsigned)(cpu.busy - g_cpu_old.busy) * 100 / diff_total;
-
-	memcpy(&g_cpu_old, &cpu, sizeof(struct cpu_stats));
 
 	sysinfo(&info);
 	updays = (unsigned long) info.uptime / (unsigned long)(60*60*24);
@@ -2823,22 +2682,22 @@ static int ej_system_status_hook(int eid, webs_t wp, int argc, char **argv)
 	if (stat("/tmp/syslog.log", &log) != 0)
 		log.st_mtime = 0;
 
-	websWrite(wp, "{\"lavg\": \"%u.%02u %u.%02u %u.%02u\", "
-			"\"uptime\": {\"days\": %lu, \"hours\": %lu, \"minutes\": %lu}, "
-			"\"ram\": {\"total\": %lu, \"used\": %lu, \"free\": %lu, \"buffers\": %lu, \"cached\": %lu}, "
-			"\"swap\": {\"total\": %lu, \"used\": %lu, \"free\": %lu}, "
-			"\"cpu\": {\"busy\": %u, \"user\": %u, \"nice\": %u, \"system\": %u, "
-				  "\"idle\": %u, \"iowait\": %u, \"irq\": %u, \"sirq\": %u}, "
-			"\"wifi2\": {\"state\": %d, \"guest\": %d}, "
-			"\"wifi5\": {\"state\": %d, \"guest\": %d}, "
-			"\"logmt\": %ld }",
+	websWrite(wp, "{ lavg: \"%u.%02u %u.%02u %u.%02u\", "
+			"uptime: {days: %lu, hours: %lu, minutes: %lu}, "
+			"ram: {total: %lu, used: %lu, free: %lu, buffers: %lu, cached: %lu}, "
+			"swap: {total: %lu, used: %lu, free: %lu}, "
+			"cpu: {busy: 0x%llx, user: 0x%llx, nice: 0x%llx, system: 0x%llx, "
+			      "idle: 0x%llx, iowait: 0x%llx, irq: 0x%llx, sirq: 0x%llx, total: 0x%llx}, "
+			"wifi2: {state: %d, guest: %d}, "
+			"wifi5: {state: %d, guest: %d}, "
+			"logmt: %ld }",
 			LOAD_INT(info.loads[0]), LOAD_FRAC(info.loads[0]),
 			LOAD_INT(info.loads[1]), LOAD_FRAC(info.loads[1]),
 			LOAD_INT(info.loads[2]), LOAD_FRAC(info.loads[2]),
 			updays, uphours, upminutes,
 			mem.total, (mem.total - mem.free), mem.free, mem.buffers, mem.cached,
 			mem.sw_total, (mem.sw_total - mem.sw_free), mem.sw_free,
-			u_busy, u_user, u_nice, u_system, u_idle, u_iowait, u_irq, u_sirq,
+			cpu.busy, cpu.user, cpu.nice, cpu.system, cpu.idle, cpu.iowait, cpu.irq, cpu.sirq, cpu.total,
 			wifi2.radio, wifi2.ap_guest,
 			wifi5.radio, wifi5.ap_guest,
 			log.st_mtime
@@ -2876,7 +2735,7 @@ static int ej_dump_syslog_hook(int eid, webs_t wp, int argc, char **argv)
 					lskip--;
 					continue;
 				}
-				websWrite(wp, buf);
+				fputs(buf, wp);
 				log_lines++;
 			}
 			
@@ -2885,7 +2744,9 @@ static int ej_dump_syslog_hook(int eid, webs_t wp, int argc, char **argv)
 	}
 
 	if (!log_lines)
-		websWrite(wp, "%s", "");
+		fputs("", wp);
+
+	fflush(wp);
 
 	return 0;
 }
@@ -3001,9 +2862,7 @@ apply_cgi(const char *url, webs_t wp)
 	}
 	else if (!strcmp(value, " RestoreStorage "))
 	{
-		websApply(wp, "Restarting.asp");
-		doSystem("/sbin/mtd_storage.sh %s", "erase");
-		sys_reboot();
+		doSystem("/sbin/mtd_storage.sh %s", "reset");
 		return 0;
 	}
 	else if (!strcmp(value, " CommitFlash "))
@@ -3357,6 +3216,13 @@ nvram_generate_table(webs_t wp, char *serviceId, char *groupName)
 }
 
 void
+do_cgi_clear(void)
+{
+	init_cgi(NULL);
+	post_buf[0] = 0;
+}
+
+void
 do_uncgi_query(const char *query)
 {
 	size_t query_len;
@@ -3364,10 +3230,12 @@ do_uncgi_query(const char *query)
 	init_cgi(NULL);
 
 	query_len = MIN(strlen(query), sizeof(post_buf)-1);
-	strncpy(post_buf, query, query_len);
+	if (query_len > 0)
+		strncpy(post_buf, query, query_len);
 	post_buf[query_len] = 0;
 
-	init_cgi(post_buf);
+	if (strlen(post_buf) > 0)
+		init_cgi(post_buf);
 }
 
 static void
@@ -3418,393 +3286,58 @@ do_apply_cgi(const char *url, FILE *stream)
 	apply_cgi(url, stream);
 }
 
-#define SWAP_LONG(x) \
-	((__u32)( \
-		(((__u32)(x) & (__u32)0x000000ffUL) << 24) | \
-		(((__u32)(x) & (__u32)0x0000ff00UL) <<  8) | \
-		(((__u32)(x) & (__u32)0x00ff0000UL) >>  8) | \
-		(((__u32)(x) & (__u32)0xff000000UL) >> 24) ))
-
-static int
-check_nvram_header(char *buf, long *filelen)
-{
-	long *filelenptr;
-
-	if (strncmp(buf, PROFILE_HEADER, 4) && strncmp(buf, PROFILE_HEADER_NEW, 4)) {
-		httpd_log("%s: Incorrect NVRAM profile header!", "NVRAM restore");
-		return -1;
-	}
-
-	filelenptr = (long*)(buf + 4);
-	*filelen = *filelenptr & 0xffffff;
-
-	return 0;
-}
-
-static int
-check_image_header(char *buf, long *filelen)
-{
-	int pid_asus_len;
-	char pid_asus[16];
-	image_header_t *hdr = (image_header_t *)buf;
-
-	/* check header magic */
-	if (SWAP_LONG(hdr->ih_magic) != IH_MAGIC) {
-		httpd_log("%s: Incorrect image header!", "Firmware update");
-		return -1;
-	}
-
-	pid_asus_len = strlen(BOARD_PID);
-	if (pid_asus_len > 12)
-		pid_asus_len = 12;
-
-	strncpy(pid_asus, buf+36, pid_asus_len);
-	pid_asus[pid_asus_len] = 0;
-
-	if (strcmp(pid_asus, BOARD_PID) != 0) {
-		httpd_log("%s: Incorrect image ProductID: %s! Expected is %s.", "Firmware update", pid_asus, BOARD_PID);
-		return -2;
-	}
-
-	*filelen = SWAP_LONG(hdr->ih_size) + sizeof(image_header_t);
-
-	return 0;
-}
-
-static int
-check_image_crc(const char *fw_image)
-{
-	int ifd;
-	uint32_t checksum, datalen;
-	struct stat sbuf;
-	unsigned char *ptr = (unsigned char *)MAP_FAILED;
-	image_header_t header2;
-	image_header_t *hdr, *hdr2=&header2;
-	int ret=0;
-
-	ifd = open(fw_image, O_RDONLY|O_BINARY);
-
-	if (ifd < 0) {
-		ret=-1;
-		goto checkcrc_end;
-	}
-
-	/* We're a bit of paranoid */
-#if defined(_POSIX_SYNCHRONIZED_IO) && !defined(__sun__) && !defined(__FreeBSD__)
-	(void) fdatasync (ifd);
-#else
-	(void) fsync (ifd);
-#endif
-	if (fstat(ifd, &sbuf) < 0) {
-		ret=-1;
-		goto checkcrc_fail;
-	}
-
-	if ((unsigned int)sbuf.st_size < (sizeof(image_header_t) + (2 * 1024 * 1024)) || 
-	    (unsigned int)sbuf.st_size > get_mtd_size(FW_MTD_NAME)) {
-		httpd_log("%s: Firmware image size is invalid!", "Firmware update");
-		ret=-1;
-		goto checkcrc_fail;
-	}
-
-	ptr = (unsigned char *)mmap(0, sbuf.st_size, PROT_READ, MAP_SHARED, ifd, 0);
-	if (ptr == (unsigned char *)MAP_FAILED) {
-		ret=-1;
-		goto checkcrc_fail;
-	}
-
-	hdr = (image_header_t *)ptr;
-
-	memcpy(hdr2, hdr, sizeof(image_header_t));
-	memset(&hdr2->ih_hcrc, 0, sizeof(uint32_t));
-	checksum = crc32_sp(0, (const char *)hdr2, sizeof(image_header_t));
-
-	if (checksum!=SWAP_LONG(hdr->ih_hcrc))
-	{
-		ret=-1;
-		httpd_log("%s: Firmware image %s has invalid CRC!", "Firmware update", "header");
-		goto checkcrc_fail;
-	}
-
-	datalen = SWAP_LONG(hdr->ih_size);
-	if (datalen > ((unsigned int)sbuf.st_size - sizeof(image_header_t)))
-	{
-		ret=-1;
-		httpd_log("%s: Firmware image is corrupted! Please check free space in /tmp!", "Firmware update");
-		goto checkcrc_fail;
-	}
-
-	checksum = crc32_sp(0, (const char *)(ptr + sizeof(image_header_t)), datalen);
-
-	if (checksum!=SWAP_LONG(hdr->ih_dcrc))
-	{
-		ret=-1;
-		httpd_log("%s: Firmware image %s has invalid CRC!", "Firmware update", "body");
-		goto checkcrc_fail;
-	}
-
-checkcrc_fail:
-	if (ptr != (unsigned char *)MAP_FAILED)
-		munmap((void *)ptr, sbuf.st_size);
-
-#if defined(_POSIX_SYNCHRONIZED_IO) && !defined(__sun__) && !defined(__FreeBSD__)
-	(void) fdatasync (ifd);
-#else
-	(void) fsync (ifd);
-#endif
-	if (close(ifd)) {
-		fprintf (stderr, "Read error on %s: %s\n", fw_image, strerror(errno));
-		ret=-1;
-	}
-checkcrc_end:
-	return ret;
-}
-
-static int chk_image_err = 1;
-static int chk_nvram_err = 1;
-
 static void
-do_upgrade_post(const char *url, FILE *stream, int clen, char *boundary)
+do_upgrade_fw_cgi(const char *url, FILE *stream)
 {
-	FILE *fifo = NULL;
-	char upload_fifo[] = FW_IMG_NAME;
-	char buf[4096];
-	int cnt, count, offset, ret, ch;
-	long filelen;
-	int valid_header = 0;
-
-	ret = EINVAL;
-	chk_image_err = 1;
-
-	// delete some files (need free space in /tmp)
-	unlink("/tmp/usb.log");
-	unlink("/tmp/syscmd.log");
-	doSystem("rm -rf %s", "/tmp/xupnpd-cache");
-	doSystem("rm -rf %s", "/tmp/xupnpd-feeds");
-
-	/* Look for our part */
-	while (clen > 0)
-	{
-		if (!fgets(buf, MIN(clen + 1, sizeof(buf)), stream))
-			goto err;
-		clen -= strlen(buf);
-		if (!strncasecmp(buf, "Content-Disposition:", 20) && strstr(buf, "name=\"file\""))
-			break;
-	}
-
-	/* Skip boundary and headers */
-	while (clen > 0) {
-		if (!fgets(buf, MIN(clen + 1, sizeof(buf)), stream))
-			goto err;
-		clen -= strlen(buf);
-		if (!strcmp(buf, "\n") || !strcmp(buf, "\r\n"))
-			break;
-	}
-
-	fput_int("/proc/sys/vm/drop_caches", 1);
-
-	/* copy mtd_write to RAM */
-	doSystem("cp -f %s %s", "/bin/mtd_write", "/tmp");
-
-	if (!(fifo = fopen(upload_fifo, "w+"))) goto err;
-
-	filelen = clen;
-	offset = 0;
-	cnt = 0;
-
-	/* Pipe the rest to the FIFO */
-	while (clen > 0 && filelen > 0)
-	{
-		count = fread(buf + offset, 1, MIN(clen, sizeof(buf)-offset), stream);
-		if(count <= 0)
-			goto err;
-		
-		clen -= count;
-		
-		if (cnt == 0)
-		{
-			if (count + offset < sizeof(image_header_t))
-			{
-				offset += count;
-				continue;
-			}
-			
-			count += offset;
-			offset = 0;
-			cnt++;
-			
-			ret = check_image_header(buf, &filelen);
-			if (ret != 0)
-				goto err;
-			
-			valid_header=1;
-		}
-		
-		filelen -= count;
-		fwrite(buf, 1, count, fifo);
-	}
-
-	if (!valid_header)
-		goto err;
-
-	/* Slurp anything remaining in the request */
-	while (clen-- > 0)
-	{
-		if((ch = fgetc(stream)) == EOF)
-			break;
-		
-		if (filelen > 0) {
-			fwrite(&ch, 1, 1, fifo);
-			filelen--;
-		}
-	}
-
-	fclose(fifo);
-	fifo = NULL;
-
-	ret = check_image_crc(upload_fifo);
-
-err:
-	if (fifo)
-		fclose(fifo);
-
-	/* Slurp anything remaining in the request */
-	while (clen-- > 0)
-		if((ch = fgetc(stream)) == EOF)
-			break;
-
-	if ((ret == 0) && (valid_header))
-		chk_image_err = 0;
-}
-
-static void
-do_upgrade_cgi(const char *url, FILE *stream)
-{
-	if (chk_image_err == 0) {
+	if (f_exists(FW_IMG_NAME)) {
 		notify_rc("flash_firmware");
 		websApply(stream, "Updating.asp");
 	} else {
-		unlink(FW_IMG_NAME);
 		websApply(stream, "UpdateError.asp");
 	}
 }
 
 static void
-do_upload_post(const char *url, FILE *stream, int clen, char *boundary)
+do_restore_nv_cgi(const char *url, FILE *stream)
 {
-	FILE *fifo = NULL;
-	char upload_fifo[] = PROFILE_FIFO_UPLOAD;
-	char buf[1024];
-	int cnt, count, offset, ret, ch;
-	long filelen;
-	char valid_header = 0;
+	char *upload_file = PROFILE_FIFO_UPLOAD;
+	int ret = -1;
 
-	ret = EINVAL;
-	chk_nvram_err = 1;
-
-	/* Look for our part */
-	while (clen > 0) {
-		if (!fgets(buf, MIN(clen + 1, sizeof(buf)), stream))
-			goto err;
-		clen -= strlen(buf);
-		if (!strncasecmp(buf, "Content-Disposition:", 20) && strstr(buf, "name=\"file\""))
-			break;
+	if (f_exists(upload_file)) {
+		doSystem("killall %s %s", "-q", "watchdog");
+		sleep(1);
+		ret = eval("/usr/sbin/nvram", "restore", upload_file);
+		if (ret != 0) {
+			httpd_log("%s: Unable to extract %s file!", "NVRAM restore", "profile");
+			eval("/sbin/watchdog");
+		} else
+			nvram_commit();
+		unlink(upload_file);
 	}
 
-	/* Skip boundary and headers */
-	while (clen > 0) {
-		if (!fgets(buf, MIN(clen + 1, sizeof(buf)), stream))
-			goto err;
-		clen -= strlen(buf);
-		if (!strcmp(buf, "\n") || !strcmp(buf, "\r\n"))
-			break;
+	/* Reboot if successful */
+	if (ret == 0) {
+		websApply(stream, "Uploading.asp");
+		sys_reboot();
+	} else {
+		websApply(stream, "UploadError.asp");
 	}
-
-	if (!(fifo = fopen(upload_fifo, "w+")))
-		goto err;
-
-	filelen = clen;
-	offset = 0;
-	cnt = 0;
-
-	/* Pipe the rest to the FIFO */
-	while (clen > 0 && filelen > 0)
-	{
-		count = fread(buf + offset, 1, MIN(clen, sizeof(buf)-offset), stream);
-		if (count <= 0)
-			goto err;
-		
-		clen -= count;
-		
-		if (cnt == 0)
-		{
-			if (count + offset < 8)
-			{
-				offset += count;
-				continue;
-			}
-			
-			count += offset;
-			offset = 0;
-			cnt++;
-			
-			ret = check_nvram_header(buf, &filelen);
-			if (ret != 0)
-				goto err;
-			
-			valid_header = 1;
-		}
-		
-		filelen -= count;
-		fwrite(buf, 1, count, fifo);
-	}
-
-	if (!valid_header)
-		goto err;
-
-	/* Slurp anything remaining in the request */
-	while (clen-- > 0)
-	{
-		if((ch = fgetc(stream)) == EOF)
-			break;
-		
-		if (filelen > 0) {
-			fwrite(&ch, 1, 1, fifo);
-			filelen--;
-		}
-	}
-
-	ret = 0;
-
-	fclose(fifo);
-	fifo = NULL;
-
-err:
-	if (fifo)
-		fclose(fifo);
-
-	/* Slurp anything remaining in the request */
-	while (clen-- > 0)
-		if((ch = fgetc(stream)) == EOF)
-			break;
-
-	if ((ret == 0) && (valid_header))
-		chk_nvram_err = 0;
 }
 
 static void
-do_upload_cgi(const char *url, FILE *stream)
+do_restore_st_cgi(const char *url, FILE *stream)
 {
-	/* Reboot if successful */
-	if (chk_nvram_err == 0) {
-		doSystem("killall %s %s", "-q", "watchdog");
-		sleep(1);
-		websApply(stream, "Uploading.asp");
-		eval("nvram", "restore", PROFILE_FIFO_UPLOAD);
-		nvram_commit();
-		sys_reboot();
+	const char *upload_file = STORAGE_FIFO_FILENAME;
+	int ret = -1;
+
+	if (f_exists(upload_file)) {
+		ret = eval("/sbin/mtd_storage.sh", "restore");
+		unlink(upload_file);
+	}
+
+	if (ret == 0) {
+		websApply(stream, "UploadDone.asp");
 	} else {
-		unlink(PROFILE_FIFO_UPLOAD);
 		websApply(stream, "UploadError.asp");
 	}
 }
@@ -3812,11 +3345,11 @@ do_upload_cgi(const char *url, FILE *stream)
 static void
 do_nvram_file(const char *url, FILE *stream)
 {
-	const char *nvram_file = PROFILE_FIFO_DOWNLOAD;
+	char *nvram_file = PROFILE_FIFO_DOWNLOAD;
 
 	unlink(nvram_file);
 	if (get_login_safe()) {
-		doSystem("nvram save %s", nvram_file);
+		eval("/usr/sbin/nvram", "save", nvram_file);
 		do_file(nvram_file, stream);
 		unlink(nvram_file);
 	}
@@ -3825,11 +3358,11 @@ do_nvram_file(const char *url, FILE *stream)
 static void
 do_storage_file(const char *url, FILE *stream)
 {
-	const char *storage_file = "/tmp/.storage_tar.bz2";
+	char *storage_file = STORAGE_FIFO_FILENAME;
 
 	unlink(storage_file);
 	if (get_login_safe()) {
-		doSystem("/sbin/mtd_storage.sh %s", "backup");
+		eval("/sbin/mtd_storage.sh", "backup");
 		do_file(storage_file, stream);
 		unlink(storage_file);
 	}
@@ -3871,16 +3404,14 @@ struct mime_handler mime_handlers[] = {
 	{ "jquery.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "**bootstrap.min.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "**engage.itoggle.min.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
-	{ "**highstock.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**highcharts.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
+	{ "**highcharts_theme.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "**formcontrol.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "itoggle.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "modem_isp.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "client_function.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "disk_functions.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 	{ "md5.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
-	{ "tmcal.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
-	{ "tmhist.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
-	{ "tmmenu.js", "text/javascript", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
 
 	/* cached css  */
 	{ "**.css", "text/css", NULL, NULL, do_file, 0 }, // 2012.06 Eagle23
@@ -3909,96 +3440,155 @@ struct mime_handler mime_handlers[] = {
 	/* no-cached POST objects */
 	{ "update.cgi*", "text/javascript", no_cache_IE, do_html_apply_post, do_update_cgi, 1 },
 	{ "apply.cgi*", "text/html", no_cache_IE, do_html_apply_post, do_apply_cgi, 1 },
-	{ "upgrade.cgi*", "text/html", no_cache_IE, do_upgrade_post, do_upgrade_cgi, 1 },
-	{ "upload.cgi*", "text/html", no_cache_IE, do_upload_post, do_upload_cgi, 1 },
+
+	{ "upgrade.cgi*",    "text/html", no_cache_IE, do_upgrade_fw_post, do_upgrade_fw_cgi, 1 },
+	{ "restore_nv.cgi*", "text/html", no_cache_IE, do_restore_nv_post, do_restore_nv_cgi, 1 },
+	{ "restore_st.cgi*", "text/html", no_cache_IE, do_restore_st_post, do_restore_st_cgi, 1 },
 
 	{ NULL, NULL, NULL, NULL, NULL, 0 }
 };
 
 // traffic monitor
-static int 
+static int
 ej_netdev(int eid, webs_t wp, int argc, char **argv)
 {
 	FILE *fp;
 	char buf[256];
 	uint64_t rx, tx;
-	char *p, *ifname;
+	char *p, *ifname, comma;
 	const char *ifdesc;
-	char comma;
-	int ret = 0;
+	int is_ap_mode, ifindex;
+#if !defined(RSTATS_SKIP_ESW)
+	unsigned int i;
+#endif
 
-	ret += websWrite(wp, "\nnetdev = {\n");
-	if ((fp = fopen("/proc/net/dev", "r")) != NULL) {
+	is_ap_mode = get_ap_mode();
+
+	comma = ' ';
+
+	fprintf(wp, "\nnetdevs = {\n");
+	fp = fopen("/proc/net/dev", "r");
+	if (fp) {
 		fgets(buf, sizeof(buf), fp);
 		fgets(buf, sizeof(buf), fp);
-		comma = ' ';
 		while (fgets(buf, sizeof(buf), fp)) {
-			if ((p = strchr(buf, ':')) == NULL) continue;
+			if ((p = strchr(buf, ':')) == NULL)
+				continue;
 			*p = 0;
-			if ((ifname = strrchr(buf, ' ')) == NULL) ifname = buf;
-			else ++ifname;
+			if ((ifname = strrchr(buf, ' ')) == NULL)
+				ifname = buf;
+			else
+				++ifname;
 			
-			ifdesc = get_ifname_descriptor(ifname);
+			if (strcmp(ifname, "lo") == 0)
+				continue;
+			
+			ifindex = 0;
+			ifdesc = get_ifname_descriptor(ifname, is_ap_mode, &ifindex, NULL);
 			if (!ifdesc)
 				continue;
 			
-			if (sscanf(p + 1, "%llu%*u%*u%*u%*u%*u%*u%*u%llu", &rx, &tx) != 2) continue;
-			ret += websWrite(wp, "%c'%s':{rx:0x%llx,tx:0x%llx}", comma, ifdesc, rx, tx);
-			comma = ',';
-			ret += websWrite(wp, "\n");
+			if (sscanf(p + 1, "%llu%*u%*u%*u%*u%*u%*u%*u%llu", &rx, &tx) != 2)
+				continue;
+			
+			fprintf(wp, "%c'%s':{id:%d,rx:0x%llx,tx:0x%llx}\n", comma, ifdesc, ifindex, rx, tx);
+			if (comma != ',')
+				comma = ',';
 		}
 		fclose(fp);
-		ret += websWrite(wp, "};");
 	}
+
+#if !defined(RSTATS_SKIP_ESW)
+	for (i = 0; i < BOARD_NUM_ETH_EPHY; i++) {
+		if (get_eth_port_bytes(i, &rx, &tx) < 0)
+			continue;
+		fprintf(wp, "%c'ESW_P%d':{id:%d,rx:0x%llx,tx:0x%llx}\n", comma, i, 0, rx, tx);
+		if (comma != ',')
+			comma = ',';
+	}
+#endif
+
+	fprintf(wp, "};\n");
+
+	fflush(wp);
+
 	return 0;
 }
 
-static int 
+static int
 ej_bandwidth(int eid, webs_t wp, int argc, char **argv)
 {
-	char *name, *sigs;
-	int is_speed = 0;
+	char *netdev;
+	const char *fname = RSTATS_JS_SPEED, *nvkey = RSTATS_NVKEY_24;
+	int bw_id = 0, sig = SIGUSR1;
 
-	if (strcmp(argv[0], "speed") == 0) {
-		sigs = "-SIGUSR1";
-		name = "/var/spool/rstats-speed.js";
-		is_speed = 1;
-	} else {
-		sigs = "-SIGUSR2";
-		name = "/var/spool/rstats-history.js";
+	if (argc < 1)
+		return 0;
+
+	netdev = "";
+	if (argc > 1)
+		netdev = argv[1];
+
+	if (strcmp(argv[0], "history") == 0) {
+		bw_id = 1;
+		sig = SIGUSR2;
+		fname = RSTATS_JS_HISTORY;
+		nvkey = RSTATS_NVKEY_DM;
 	}
 
-	if (pids("rstats")) {
-		unlink(name);
-		doSystem("killall %s %s", sigs, "rstats");
-		f_wait_exists(name, 5);
-		do_f(name, wp);
+	if (strlen(netdev) > 1)
+		nvram_set_temp(nvkey, netdev);
+
+	unlink(fname);
+	if (kill_pidfile_s(RSTATS_PID_FILE, sig) == 0)
+		f_wait_exists(fname, 5);
+
+	if (f_exists(fname)) {
+		do_f(fname, wp);
 	} else {
-		if (f_exists(name)) {
-			do_f(name, wp);
+		if (bw_id == 0) {
+			websWrite(wp,
+				"\nnetdev = '%s';\n"
+				"speed_history = {'%s': {}};\n"
+				"data_period = %d;\n"
+				"poll_next = %d;\n",
+				IFDESC_LAN,
+				IFDESC_LAN,
+				RSTATS_INTERVAL,
+				RSTATS_INTERVAL
+			);
 		} else {
-			if (is_speed)
-				websWrite(wp, "\nspeed_history = {};\n");
-			else
-				websWrite(wp, "\ndaily_history = [];\nmonthly_history = [];\n");
+			websWrite(wp,
+				"\nnetdev = '%s';\n"
+				"netdevs = ['%s'];\n"
+				"daily_history = [];\n"
+				"monthly_history = [];\n"
+				"poll_next = %d;\n",
+				IFDESC_WAN,
+				IFDESC_WAN,
+				RSTATS_INTERVAL
+			);
 		}
 	}
 
 	return 0;
 }
 
-static int 
+static int
 ej_backup_nvram(int eid, webs_t wp, int argc, char **argv)
 {
 	char *list;
 	char *p, *k;
 	const char *v;
 
-	if ((argc != 1) || ((list = strdup(argv[0])) == NULL)) return 0;
+	if ((argc != 1) || ((list = strdup(argv[0])) == NULL))
+		return 0;
+
 	websWrite(wp, "\nnvram = {\n");
 	p = list;
 	while ((k = strsep(&p, ",")) != NULL) {
-		if (*k == 0) continue;
+		if (*k == 0)
+			continue;
 		v = nvram_safe_get(k);
 		websWrite(wp, "\t%s: '", k);
 		websWrite(wp, v);
@@ -4115,12 +3705,13 @@ struct ej_handler ej_handlers[] =
 	{ "get_static_client", ej_get_static_client},
 	{ "get_static_ccount", ej_get_static_ccount},
 	{ "get_vpns_client", ej_get_vpns_client},
-	{ "select_channel", ej_select_channel},
 	{ "wl_auth_list", ej_wl_auth_list},
+#if BOARD_HAS_5G_RADIO
 	{ "wl_scan_5g", ej_wl_scan_5g},
-	{ "wl_scan_2g", ej_wl_scan_2g},
 	{ "wl_bssid_5g", ej_wl_bssid_5g},
+#endif
 	{ "wl_bssid_2g", ej_wl_bssid_2g},
+	{ "wl_scan_2g", ej_wl_scan_2g},
 	{ "shown_language_option", ej_shown_language_option},
 	{ "hardware_pins", ej_hardware_pins_hook},
 	{ "detect_internet", ej_detect_internet_hook},

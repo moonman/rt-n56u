@@ -202,17 +202,14 @@ stop_udpxy(void)
 void
 start_udpxy(char *wan_ifname)
 {
-	int uport;
-
-	uport = nvram_get_int("udpxy_enable_x");
-	if (uport < 1024)
+	if (nvram_get_int("udpxy_enable_x") < 1024)
 		return;
 
 	eval("/usr/sbin/udpxy",
 		"-m", wan_ifname,
 		"-p", nvram_safe_get("udpxy_enable_x"),
 		"-B", "65536",
-		"-c", "5"
+		"-c", nvram_safe_get("udpxy_clients")
 		);
 }
 
@@ -244,7 +241,7 @@ start_xupnpd(char *wan_ifname)
 	char *dir_dst = "/etc/storage/xupnpd";
 	char *xdir1[] = { "config", "playlists", NULL };
 	char *xdir2[] = { "plugins", "profiles", NULL };
-	char *xlua[] = { "", "_http", "_m3u", "_main", "_mime", "_soap", "_ssdp", "_webapp", NULL };
+	char *xlua[] = { "_http", "_m3u", "_main", "_mime", "_soap", "_ssdp", "_webapp", NULL };
 
 	if (!is_xupnpd_support())
 		return;
@@ -258,15 +255,13 @@ start_xupnpd(char *wan_ifname)
 	if (!check_if_dir_exist(dir_dst))
 		mkdir(dir_dst, 0755);
 
-	for (i=0; xdir1[i]; i++)
-	{
+	for (i=0; xdir1[i]; i++) {
 		snprintf(tmp2, sizeof(tmp2), "%s/%s", dir_dst, xdir1[i]);
 		if (!check_if_dir_exist(tmp2))
 			mkdir(tmp2, 0755);
 	}
 
-	for (i=0; xdir2[i]; i++)
-	{
+	for (i=0; xdir2[i]; i++) {
 		snprintf(tmp2, sizeof(tmp2), "%s/%s", dir_dst, xdir2[i]);
 		if (!check_if_dir_exist(tmp2)) {
 			snprintf(tmp1, sizeof(tmp1), "%s/%s", dir_src, xdir2[i]);
@@ -277,13 +272,15 @@ start_xupnpd(char *wan_ifname)
 		}
 	}
 
-	for (i=0; xlua[i]; i++)
-	{
-		snprintf(tmp1, sizeof(tmp1), "%s/xupnpd%s.lua", dir_src, xlua[i]);
+	for (i=0; xlua[i]; i++) {
 		snprintf(tmp2, sizeof(tmp2), "%s/xupnpd%s.lua", dir_dst, xlua[i]);
-		if (!check_if_file_exist(tmp2))
-			doSystem("cp -f %s %s", tmp1, tmp2);
+		unlink(tmp2);
 	}
+
+	snprintf(tmp1, sizeof(tmp1), "%s/xupnpd%s.lua", dir_src, "");
+	snprintf(tmp2, sizeof(tmp2), "%s/xupnpd%s.lua", dir_dst, "");
+	if (!check_if_file_exist(tmp2))
+		doSystem("cp -f %s %s", tmp1, tmp2);
 
 	snprintf(tmp1, sizeof(tmp1), "%s/config/common.lua.tmp", dir_dst);
 	snprintf(tmp2, sizeof(tmp2), "%s/config/common.lua", dir_dst);
@@ -372,7 +369,7 @@ start_igmpproxy(char *wan_ifname)
 	if (*viptv_iflast && is_interface_exist(viptv_iflast) && strcmp(wan_ifname, viptv_iflast))
 		return;
 
-	/* Allways close old instance of igmpproxy and udpxy (interface may changed) */
+	/* Always close old instance of igmpproxy and udpxy (interface may changed) */
 	stop_igmpproxy(wan_ifname);
 
 	start_udpxy(wan_ifname);
@@ -380,28 +377,28 @@ start_igmpproxy(char *wan_ifname)
 	start_xupnpd(wan_ifname);
 #endif
 
-	if (nvram_match("mr_enable_x", "1")) 
-	{
-		if ((fp = fopen(igmpproxy_conf, "w")))
-		{
-			altnet = nvram_safe_get("mr_altnet_x");
-			if (altnet && strlen(altnet) > 0)
-				altnet_mask = altnet;
-			else
-				altnet_mask = "0.0.0.0/0";
-			fprintf(fp, "# automagically generated from web settings\n"
-				"quickleave\n\n"
-				"phyint %s upstream  ratelimit 0  threshold 1\n"
-				"\taltnet %s\n\n"
-				"phyint %s downstream  ratelimit 0  threshold 1\n\n",
-				wan_ifname, 
-				altnet_mask, 
-				IFNAME_BR);
-			fclose(fp);
-			
-			eval("/bin/igmpproxy", igmpproxy_conf);
-		}
+	if (nvram_invmatch("mr_enable_x", "1"))
+		return;
+
+	fp = fopen(igmpproxy_conf, "w");
+	if (fp) {
+		altnet = nvram_get("mr_altnet_x");
+		if (altnet && strlen(altnet) > 6)
+			altnet_mask = altnet;
+		else
+			altnet_mask = "0.0.0.0/0";
+		fprintf(fp, "# automatically generated\n");
+		if (nvram_invmatch("mr_qleave_x", "0"))
+			fprintf(fp, "quickleave\n");
+		fprintf(fp, "\nphyint %s %s  ratelimit 0  threshold 1\n", wan_ifname, "upstream");
+		fprintf(fp, "\taltnet %s\n", altnet_mask);
+		fprintf(fp, "\nphyint %s %s  ratelimit 0  threshold 1\n", IFNAME_BR, "downstream");
+		fprintf(fp, "\n");
+		
+		fclose(fp);
 	}
+
+	eval("/bin/igmpproxy", igmpproxy_conf);
 }
 
 void
@@ -525,10 +522,8 @@ int
 is_fastnat_allow(void)
 {
 	if ( nvram_match("sw_nat_mode", "1") && nvram_match("sw_mode", "1") )
-	{
 		return 1;
-	}
-	
+
 	return 0;
 }
 
@@ -559,6 +554,7 @@ hwnat_configure(void)
 	}
 
 	module_param_set_int("hw_nat", "wan_vid", get_vlan_vid_wan());
+	module_param_set_int("hw_nat", "ttl_regen", (nvram_get_int("wan_ttl_fix") == 1) ? 0 : 1);
 
 	hw_nat_mode = nvram_get_int("hw_nat_mode");
 	udp_offload = (hw_nat_mode == 3 || hw_nat_mode == 4) ? 1 : 0;
@@ -627,7 +623,7 @@ reload_nat_modules(void)
 	int wan_nat_x = nvram_get_int("wan_nat_x");
 	int hwnat_allow = is_hwnat_allow();
 	int hwnat_loaded = is_hwnat_loaded();
-	
+
 	if (!get_ap_mode())
 	{
 		needed_ftp0 = nvram_get_int("nf_alg_ftp0");
@@ -647,7 +643,7 @@ reload_nat_modules(void)
 		if (nvram_match("nf_alg_sip", "1"))
 			needed_sip = 1;
 	}
-	
+
 	if ((hwnat_loaded) && ((!hwnat_allow) || (hwnat_loaded != hwnat_allow)))
 	{
 		hwnat_loaded = 0;

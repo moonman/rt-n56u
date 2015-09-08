@@ -137,6 +137,7 @@ struct net_bridge_port
 
 	unsigned long 			flags;
 #define BR_HAIRPIN_MODE		0x00000001
+#define BR_ISOLATE_MODE		0x00000002
 #define BR_MULTICAST_FAST_LEAVE	0x00000008
 #define BR_MULTICAST_TO_UCAST	0x00000010
 
@@ -193,7 +194,9 @@ struct net_bridge
 	struct rtable 			fake_rtable;
 	bool				nf_call_iptables;
 	bool				nf_call_ip6tables;
+#if IS_ENABLED(CONFIG_IP_NF_ARPTABLES)
 	bool				nf_call_arptables;
+#endif
 #endif
 	unsigned long			flags;
 #define BR_SET_MAC_ADDR		0x00000001
@@ -515,17 +518,16 @@ static inline bool br_multicast_is_router(struct net_bridge *br)
 
 /* br_netfilter.c */
 #ifdef CONFIG_BRIDGE_NETFILTER
-extern int brnf_call_ebtables;
 extern int br_netfilter_init(void);
 extern void br_netfilter_fini(void);
 extern void br_netfilter_rtable_init(struct net_bridge *);
-extern int br_netfilter_run_hooks(void);
 #else
 #define br_netfilter_init()	(0)
 #define br_netfilter_fini()	do { } while(0)
 #define br_netfilter_rtable_init(x)
-#define br_netfilter_run_hooks()	false
 #endif
+
+extern int br_netfilter_run_hooks(void);
 
 static inline int
 BR_HOOK(uint8_t pf, unsigned int hook, struct sk_buff *skb,

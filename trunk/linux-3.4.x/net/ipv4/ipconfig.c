@@ -807,8 +807,6 @@ static void __init ic_bootp_send_if(struct ic_device *d, unsigned long jiffies_d
 	b->op = BOOTP_REQUEST;
 	if (dev->type < 256) /* check for false types */
 		b->htype = dev->type;
-	else if (dev->type == ARPHRD_IEEE802_TR) /* fix for token ring */
-		b->htype = ARPHRD_IEEE802;
 	else if (dev->type == ARPHRD_FDDI)
 		b->htype = ARPHRD_ETHER;
 	else {
@@ -1194,7 +1192,7 @@ static int __init ic_dynamic(void)
 	d = ic_first_dev;
 	retries = CONF_SEND_RETRIES;
 	get_random_bytes(&timeout, sizeof(timeout));
-	timeout = CONF_BASE_TIMEOUT + (timeout % (unsigned) CONF_TIMEOUT_RANDOM);
+	timeout = CONF_BASE_TIMEOUT + (timeout % (unsigned int) CONF_TIMEOUT_RANDOM);
 	for (;;) {
 		/* Track the device we are configuring */
 		ic_dev_xid = d->xid;

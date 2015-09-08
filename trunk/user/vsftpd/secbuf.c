@@ -51,7 +51,8 @@ vsf_secbuf_alloc(char** p_ptr, unsigned int size)
    */
   *((unsigned int*)p_mmap) = round_up;
   p_no_access_page = p_mmap;
-  vsf_sysutil_memprotect(p_no_access_page, page_size, kVSFSysUtilMapProtNone);
+  /* fix issue with MIPS SCACHE on MT7621 (and no sense to hide value of mapped block size) */
+  vsf_sysutil_memprotect(p_no_access_page, page_size, kVSFSysUtilMapProtReadOnly);
 
   p_mmap += page_size;
   if (page_offset)
@@ -72,6 +73,7 @@ vsf_secbuf_free(char** p_ptr)
   {
     return;
   }
+
   /* Calculate the actual start of the mmap region */
   page_offset = (unsigned long) p_mmap % page_size;
   if (page_offset)
@@ -83,6 +85,7 @@ vsf_secbuf_free(char** p_ptr)
   vsf_sysutil_memprotect(p_mmap, page_size, kVSFSysUtilMapProtReadOnly);
   /* Extract the mapping size */
   map_size = *((unsigned int*)p_mmap);
+
   /* Lose the mapping */
   vsf_sysutil_memunmap(p_mmap, map_size);
 }

@@ -3,13 +3,13 @@
 ROOTDIR=`pwd`
 export ROOTDIR=$ROOTDIR
 
-kernel_id="3.0.x"
+kernel_id="3.4.x"
 kernel_cf=""
 kernel_tf=""
 uclibc_id="0.9.33.2"
 uclibc_cf=""
 uclibc_tf="$ROOTDIR/libc/uClibc-${uclibc_id}/.config"
-busybox_id="1.22.1"
+busybox_id="1.23.x"
 busybox_cf="$ROOTDIR/configs/boards/busybox.config"
 busybox_tf="$ROOTDIR/user/busybox/busybox-${busybox_id}/.config"
 board_h=""
@@ -88,8 +88,8 @@ uclibc_cf="$ROOTDIR/configs/boards/$CONFIG_FIRMWARE_PRODUCT_ID/libc.config"
 kernel_cd="$ROOTDIR/configs/boards/$CONFIG_FIRMWARE_PRODUCT_ID"
 kernel_tf="$ROOTDIR/$CONFIG_LINUXDIR/.config"
 
-if [ "$CONFIG_LINUXDIR" = "linux-3.4.x" ] ; then
-	kernel_id="3.4.x"
+if [ "$CONFIG_LINUXDIR" = "linux-3.0.x" ] ; then
+	kernel_id="3.0.x"
 fi
 
 if [ "$CONFIG_FIRMWARE_TYPE_ROOTFS_IN_RAM" = "y" ] ; then

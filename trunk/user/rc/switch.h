@@ -51,6 +51,8 @@ int phy_status_port_speed_lan2(unsigned int *p_speed_mode);
 int phy_status_port_speed_lan3(unsigned int *p_speed_mode);
 int phy_status_port_speed_lan4(unsigned int *p_speed_mode);
 
+int phy_status_port_bytes(int port_id, uint64_t *rx, uint64_t *tx);
+
 ////////////////////////////////////////////////////////////////////////////////
 // SWITCH CONTROL
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,6 +87,7 @@ int phy_disable_inic(unsigned int inic_disabled);
 int phy_clear_mac_table(void);
 
 int phy_vlan_reset_table(void);
+int phy_vlan_pvid_wan_get(void);
 int phy_vlan_accept_port_mode(int accept_mode, unsigned int port_pask);
 int phy_vlan_create_port_vid(int pvid, int priority, unsigned int member, unsigned int untag, int fid);
 int phy_vlan_create_entry(int vid, unsigned int member, unsigned int untag, int fid);

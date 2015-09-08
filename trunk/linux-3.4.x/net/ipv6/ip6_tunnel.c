@@ -200,7 +200,7 @@ ip6_tnl_bucket(struct ip6_tnl_net *ip6n, const struct ip6_tnl_parm *p)
 {
 	const struct in6_addr *remote = &p->raddr;
 	const struct in6_addr *local = &p->laddr;
-	unsigned h = 0;
+	unsigned int h = 0;
 	int prio = 0;
 
 	if (!ipv6_addr_any(remote) || !ipv6_addr_any(local)) {
@@ -651,8 +651,7 @@ ip6ip6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 
 		icmpv6_send(skb2, rel_type, rel_code, rel_info);
 
-		if (rt)
-			dst_release(&rt->dst);
+		ip6_rt_put(rt);
 
 		kfree_skb(skb2);
 	}
@@ -735,10 +734,12 @@ static int ip6_tnl_rcv(struct sk_buff *skb, __u16 protocol,
 			goto discard;
 		}
 
+#ifdef CONFIG_XFRM
 		if (!xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb)) {
 			rcu_read_unlock();
 			goto discard;
 		}
+#endif
 
 		if (!ip6_tnl_rcv_ctl(t)) {
 			t->dev->stats.rx_dropped++;
@@ -1187,7 +1188,7 @@ static void ip6_tnl_link_config(struct ip6_tnl *t)
 			if (dev->mtu < IPV6_MIN_MTU)
 				dev->mtu = IPV6_MIN_MTU;
 		}
-		dst_release(&rt->dst);
+		ip6_rt_put(rt);
 	}
 }
 

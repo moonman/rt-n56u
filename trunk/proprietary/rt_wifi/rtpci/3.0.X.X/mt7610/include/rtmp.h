@@ -39,6 +39,10 @@
 
 #ifdef CONFIG_AP_SUPPORT
 #include "ap_autoChSel_cmm.h"
+
+#ifdef RT_CFG80211_SUPPORT
+#include <linux/nl80211.h>
+#endif /* RT_CFG80211_SUPPORT */
 #endif /* CONFIG_AP_SUPPORT */
 
 #include "wsc.h"
@@ -754,6 +758,9 @@ typedef struct _MO_CFG_STRUCT {
 	UINT16		nLowFalseCCATh;
 	UINT32		Stored_BBP_R65;
 	UCHAR		Stored_BBP_R66;
+	BOOLEAN		bPreviousTuneVgaUP; /*record previous tune gain action*/
+	UCHAR		TuneGainReverseTimes; /* gain down-up-down-up 2 times, then lock lower gain for 1 min */
+	RALINK_TIMER_STRUCT DyncVgaLockTimer; /* lock 1 min on lower gain */
 } MO_CFG_STRUCT, *PMO_CFG_STRUCT;
 #endif /* DYNAMIC_VGA_SUPPORT */
 
@@ -1161,12 +1168,17 @@ typedef struct _BssCoexChRange_ {
 } BSS_COEX_CH_RANGE;
 #endif /* DOT11N_DRAFT3 */
 
+#define IS_VHT_STA(_pMacEntry)	(_pMacEntry->MaxHTPhyMode.field.MODE == MODE_VHT)
 #define IS_HT_STA(_pMacEntry)	\
 	(_pMacEntry->MaxHTPhyMode.field.MODE >= MODE_HTMIX)
 
 #define IS_HT_RATE(_pMacEntry)	\
 	(_pMacEntry->HTPhyMode.field.MODE >= MODE_HTMIX)
 
+#ifdef DOT11_VHT_AC
+#define IS_VHT_RATE(_pMacEntry)	\
+	(_pMacEntry->HTPhyMode.field.MODE == MODE_VHT)
+#endif
 #define PEER_IS_HT_RATE(_pMacEntry)	\
 	(_pMacEntry->HTPhyMode.field.MODE >= MODE_HTMIX)
 
@@ -1357,7 +1369,8 @@ typedef struct _MULTISSID_STRUCT {
 	UCHAR PortSecured;
 	NDIS_802_11_PRIVACY_FILTER PrivacyFilter;
 	UCHAR BANClass3Data;
-	ULONG IsolateInterStaTraffic;
+	BOOLEAN IsolateInterStaTraffic;
+	BOOLEAN IsolateInterStaMBCast;
 
 	UCHAR RSNIE_Len[2];
 	UCHAR RSN_IE[2][MAX_LEN_OF_RSNIE];
@@ -1483,6 +1496,19 @@ typedef struct _MULTISSID_STRUCT {
 #ifdef MAC_REPEATER_SUPPORT
 	UINT8 ApCliIdx;
 #endif /* MAC_REPEATER_SUPPORT */
+
+#ifdef RT_CFG80211_SUPPORT
+	BOOLEAN CFG_HOSTAPD;
+
+	/* Extra IEs for Probe Response provided by wpa_supplicant. E.g, WPS & P2P & WFD...etc */
+    UCHAR ProbRespExtraIe[512];
+    UINT32 ProbRespExtraIeLen;
+
+    /* Extra IEs for (Re)Association Response provided by wpa_supplicant. E.g, WPS & P2P & WFD...etc */
+    UCHAR AssocRespExtraIe[512];
+    UINT32 AssocRespExtraIeLen;
+	enum nl80211_hidden_ssid ignore_broadcast_ssid;
+#endif /* RT_CFG80211_SUPPORT */
 } MULTISSID_STRUCT, *PMULTISSID_STRUCT;
 #endif /* CONFIG_AP_SUPPORT */
 
@@ -1563,6 +1589,7 @@ typedef struct _COMMON_CONFIG {
 	UCHAR TxPower;		/* in unit of mW */
 	ULONG TxPowerPercentage;	/* 0~100 % */
 	ULONG TxPowerDefault;	/* keep for TxPowerPercentage */
+	BOOLEAN TxPowerPercentageWithBBP;  /* if true , we're using BBP 2710 to do power percentage, disable TSSI */
 	UINT8 PwrConstraint;
 
 #ifdef DOT11_N_SUPPORT
@@ -1578,6 +1605,8 @@ typedef struct _COMMON_CONFIG {
 	UCHAR vht_bw_signal;
 	UCHAR vht_cent_ch;
 	UCHAR vht_cent_ch2;
+	UCHAR disable_vht_256QAM; /* 0x0: normal, 0x1: disable vht80 256-QAM, 0x2: disable vht40 256-QAM, 0x4: disable vht20 256-QAM */
+	UCHAR vht_max_mcs_cap;
 #endif /* DOT11_VHT_AC */
 
 	IOT_STRUC IOTestParm;	/* 802.11n InterOpbility Test Parameter; */
@@ -1598,6 +1627,12 @@ typedef struct _COMMON_CONFIG {
 	BOOLEAN bWmmCapable;	/* 0:disable WMM, 1:enable WMM */
 	QOS_CAPABILITY_PARM APQosCapability;	/* QOS capability of the current associated AP */
 	EDCA_PARM APEdcaParm;	/* EDCA parameters of the current associated AP */
+#ifdef MULTI_CLIENT_SUPPORT
+	BOOLEAN	bWmm;        		/* have BSS enable/disable WMM */
+	UCHAR	APCwmin;			/* record ap cwmin */
+	UCHAR	APCwmax;			/* record ap cwmax */
+	UCHAR	BSSCwmin;			/* record BSS cwmin */
+#endif /* MULTI_CLIENT_SUPPORT */
 	QBSS_LOAD_PARM APQbssLoad;	/* QBSS load of the current associated AP */
 	UCHAR AckPolicy[4];	/* ACK policy of the specified AC. see ACK_xxx */
 	/* a bitmap of BOOLEAN flags. each bit represent an operation status of a particular */
@@ -1668,7 +1703,9 @@ typedef struct _COMMON_CONFIG {
 	BOOLEAN bMIMOPSEnable;
 	BOOLEAN bBADecline;
 	BOOLEAN bDisableReordering;
+#ifdef DOT11N_DRAFT3
 	BOOLEAN bForty_Mhz_Intolerant;
+#endif /* DOT11N_DRAFT3 */
 	BOOLEAN bExtChannelSwitchAnnouncement;
 	BOOLEAN bRcvBSSWidthTriggerEvents;
 	ULONG LastRcvBSSWidthTriggerEventsTime;
@@ -1805,6 +1842,10 @@ typedef struct _COMMON_CONFIG {
 #ifdef DYNAMIC_VGA_SUPPORT
 	MO_CFG_STRUCT MO_Cfg;	/* data structure for mitigating microwave interference */
 #endif /* DYNAMIC_VGA_SUPPORT */
+
+#ifdef MULTI_CLIENT_SUPPORT
+	UINT txRetryCfg;
+#endif /* MULTI_CLIENT_SUPPORT */
 } COMMON_CONFIG, *PCOMMON_CONFIG;
 
 #ifdef DBG_CTRL_SUPPORT
@@ -1899,6 +1940,16 @@ typedef struct _MAC_TABLE_ENTRY {
 	/* WPA/WPA2 4-way database */
 	UCHAR EnqueueEapolStartTimerRunning;	/* Enqueue EAPoL-Start for triggering EAP SM */
 	RALINK_TIMER_STRUCT EnqueueStartForPSKTimer;	/* A timer which enqueue EAPoL-Start for triggering PSK SM */
+
+#ifdef DROP_MASK_SUPPORT
+	BOOLEAN 		tx_fail_drop_mask_enabled;
+	NDIS_SPIN_LOCK		drop_mask_lock;
+	BOOLEAN 		ps_drop_mask_enabled;
+	RALINK_TIMER_STRUCT dropmask_timer;
+#endif /* DROP_MASK_SUPPORT */
+#ifdef PS_ENTRY_MAITENANCE
+	UINT8	continuous_ps_count;
+#endif /* PS_ENTRY_MAITENANCE */
 
 	/*jan for wpa */
 	/* record which entry revoke MIC Failure , if it leaves the BSS itself, AP won't update aMICFailTime MIB */
@@ -2027,8 +2078,12 @@ typedef struct _MAC_TABLE_ENTRY {
 #endif /* NEW_RATE_ADAPT_SUPPORT */
 	enum RATE_ADAPT_ALG rateAlg;
 
+	UCHAR ContinuelowTrafficCnt;
+	BOOLEAN ContinuelowTraffic;
+	
 #ifdef PEER_DELBA_TX_ADAPT
 	BOOLEAN bPeerDelBaTxAdaptEn;
+	RALINK_TIMER_STRUCT DelBA_tx_AdaptTimer;
 #endif /* PEER_DELBA_TX_ADAPT */
 
 #ifdef MFB_SUPPORT
@@ -2277,7 +2332,9 @@ typedef struct _MAC_TABLE {
 	BOOLEAN fAnyStation20Only;	/* Check if any Station can't support GF. */
 	BOOLEAN fAnyStationMIMOPSDynamic;	/* Check if any Station is MIMO Dynamic */
 	BOOLEAN fAnyBASession;	/* Check if there is BA session.  Force turn on RTS/CTS */
+#ifdef DOT11N_DRAFT3
 	BOOLEAN fAnyStaFortyIntolerant;	/* Check if still has any station set the Intolerant bit on! */
+#endif /* DOT11N_DRAFT3 */
 	BOOLEAN fAllStationGainGoodMCS; /* Check if all stations more than MCS threshold */
 
 #ifdef CONFIG_AP_SUPPORT
@@ -2290,6 +2347,12 @@ typedef struct _MAC_TABLE {
 #ifdef WAPI_SUPPORT
 	BOOLEAN fAnyWapiStation;
 #endif				/* WAPI_SUPPORT */
+
+#ifdef CONFIG_AP_SUPPORT	
+	BOOLEAN fAllStaIsHighTraffic;
+	UCHAR fStationHighTrafficCount;
+#endif /* CONFIG_AP_SUPPORT */
+
 } MAC_TABLE, *PMAC_TABLE;
 
 
@@ -2546,6 +2609,9 @@ typedef struct _APCLI_STRUCT {
     HEADER_802_11 NullFrame;
 
 	UAPSD_INFO	UapsdInfo;
+
+	BOOLEAN bPeerExist; /* TRUE if we hear Root AP's beacon */
+
 #ifdef MAC_REPEATER_SUPPORT
 	REPEATER_CLIENT_ENTRY RepeaterCli[MAX_EXT_MAC_ADDR_SIZE];
 	REPEATER_CLIENT_ENTRY_MAP RepeaterCliMap[MAX_EXT_MAC_ADDR_SIZE];
@@ -2561,15 +2627,14 @@ typedef struct _AP_ADMIN_CONFIG {
 	UCHAR BssidNum;
 	UCHAR MacMask;
 	MULTISSID_STRUCT MBSSID[HW_BEACON_MAX_NUM];
-	ULONG IsolateInterStaTrafficBTNBSSID;
+	BOOLEAN IsolateInterStaTrafficBTNBSSID;
 
 #ifdef APCLI_SUPPORT
 	UCHAR ApCliInfRunned;	/* Number of  ApClient interface which was running. value from 0 to MAX_APCLI_INTERFACE */
 	BOOLEAN FlgApCliIsUapsdInfoUpdated;
 	/*AP-client */
 	APCLI_STRUCT ApCliTab[MAX_APCLI_NUM];
-	RALINK_TIMER_STRUCT	ApCliScanTimer;
-#ifdef APCLI_AUTO_CONNECT_SUPPORT	
+#ifdef APCLI_AUTO_CONNECT_SUPPORT
 	BOOLEAN		ApCliAutoConnectRunning;
 	BOOLEAN		ApCliAutoConnectChannelSwitching;
 #endif /* APCLI_AUTO_CONNECT_SUPPORT */
@@ -2606,7 +2671,6 @@ typedef struct _AP_ADMIN_CONFIG {
 	BOOLEAN	bImprovedScan;
 #endif /* AP_SCAN_SUPPORT */
 	BOOLEAN bAvoidDfsChannel;	/* 0: disable, 1: enable */
-	BOOLEAN bIsolateInterStaTraffic;
 	BOOLEAN bHideSsid;
 
 	/* temporary latch for Auto channel selection */
@@ -2712,6 +2776,12 @@ typedef struct _AP_ADMIN_CONFIG {
 	BOOLEAN BandSteering; 
 	BND_STRG_CLI_TABLE BndStrgTable;
 #endif /* BAND_STEERING */
+
+	UCHAR ChangeTxOpClient;
+	BOOLEAN fAllStatIsHighTraffic;
+	UCHAR fStaHighTrafficCount;
+	BOOLEAN fDisableTrafficCnt;
+	USHORT StalowTrafficThrd;
 } AP_ADMIN_CONFIG, *PAP_ADMIN_CONFIG;
 
 #ifdef IGMP_SNOOP_SUPPORT
@@ -3054,6 +3124,13 @@ typedef struct _BBP_RESET_CTL
 	BOOLEAN	AsicCheckEn;
 } BBP_RESET_CTL, *PBBP_RESET_CTL;
 
+#ifdef ED_MONITOR
+enum ed_state
+{
+	ED_OFF_AND_LEARNING=0,
+	ED_TESTING=1
+};
+#endif /* ED_MONITOR */
 
 typedef struct tx_agc_ctrl{
 	BOOLEAN bAutoTxAgc;	/* Enable driver auto Tx Agc control */
@@ -3064,6 +3141,35 @@ typedef struct tx_agc_ctrl{
 	CHAR TxAgcComp;	/* Store the compensation (TxAgcStep * (idx-1)) */
 }TX_AGC_CTRL;
 
+#ifdef RT_CFG80211_SUPPORT
+typedef struct _CFG80211_VIF_DEV
+{
+	struct _CFG80211_VIF_DEV *pNext;
+	BOOLEAN isMainDev;
+	UINT32 devType;
+	struct wireless_dev *pWdev;
+	PNET_DEV net_dev;
+	UCHAR CUR_MAC[MAC_ADDR_LEN];	
+
+	/* ProbeReq Frame */	
+	BOOLEAN Cfg80211RegisterProbeReqFrame;
+	CHAR Cfg80211ProbeReqCount;
+	
+	/* Action Frame */
+	BOOLEAN Cfg80211RegisterActionFrame;	
+	CHAR Cfg80211ActionCount;
+} CFG80211_VIF_DEV, *PCFG80211_VIF_DEV;
+
+typedef struct _CFG80211_VIF_DEV_SET
+{
+#define MAX_CFG80211_VIF_DEV_NUM  2
+
+	BOOLEAN inUsed;
+	UINT32 vifDevNum;
+	LIST_HEADER vifDevList;	
+	BOOLEAN isGoingOn;
+} CFG80211_VIF_DEV_SET;
+#endif /* RT_CFG80211_SUPPORT */
 
 /*
 	The miniport adapter structure
@@ -3392,6 +3498,9 @@ struct _RTMP_ADAPTER {
 
 
 #endif /* CONFIG_AP_SUPPORT */
+#ifdef PS_ENTRY_MAITENANCE
+	UINT32	ps_timeout;
+#endif /* PS_ENTRY_MAITENANCE */
 
 /*=======STA=========== */
 
@@ -3713,6 +3822,23 @@ struct _RTMP_ADAPTER {
 	BOOLEAN FlgCfg80211Scanning;
 	BOOLEAN FlgCfg80211Connecting;
 	UCHAR Cfg80211_Alpha2[2];
+
+	/* For add_virtual_intf */
+	CFG80211_VIF_DEV_SET Cfg80211VifDevSet;
+	BOOLEAN Cfg80211RegisterProbeReqFrame;
+	BOOLEAN Cfg80211RegisterActionFrame;
+	UCHAR Cfg80211ProbeReqCount;
+	UCHAR Cfg80211ActionCount;
+
+	UINT32 TxStatusSeq;	
+	UCHAR *pTxStatusBuf;
+	UINT32 TxStatusBufLen;	
+	BOOLEAN TxStatusInUsed;
+
+	UINT8 VifNextMode;
+
+	UCHAR *beacon_tail_buf;
+	UINT32 beacon_tail_len;
 #endif /* RT_CFG80211_SUPPORT */
 #endif /* LINUX */
 
@@ -3766,6 +3892,9 @@ struct _RTMP_ADAPTER {
 
 #ifdef ED_MONITOR
 	BOOLEAN ed_chk;
+	BOOLEAN ed_debug;
+	BOOLEAN	ed_vga_at_lowest_gain;
+	UINT ed_learning_time_threshold; //50 * 100ms = 5 sec
 
 //for AP Mode's threshold
 #ifdef CONFIG_AP_SUPPORT
@@ -3774,8 +3903,11 @@ struct _RTMP_ADAPTER {
 #endif /* CONFIG_AP_SUPPORT */
 
 //for STA Mode's threshold
+	//move to common part!
+	CHAR ed_rssi_threshold;
 
 	UCHAR ed_threshold;
+	UINT ed_false_cca_threshold;
 	UINT false_cca_threshold;
 	UINT ed_block_tx_threshold;
 	INT ed_chk_period;  // in unit of ms
@@ -3798,6 +3930,12 @@ struct _RTMP_ADAPTER {
 	ULONG chk_time[ED_STAT_CNT];
 	RALINK_TIMER_STRUCT ed_timer;
 	BOOLEAN ed_timer_inited;
+	enum ed_state ed_current_state;
+#define EDCCA_OFF 0
+#define EDCCA_ON  1
+#ifdef ED_SMART
+#define EDCCA_SMART 2
+#endif /* ED_SMART */
 #endif /* ED_MONITOR */
 
 #ifdef FPGA_MODE
@@ -3850,6 +3988,14 @@ struct _RTMP_ADAPTER {
 INT ed_status_read(RTMP_ADAPTER *pAd);
 INT ed_monitor_init(RTMP_ADAPTER *pAd);
 INT ed_monitor_exit(RTMP_ADAPTER *pAd);
+#ifdef ED_SMART
+INT ed_state_judge(RTMP_ADAPTER *pAd);
+VOID ed_testing_timeout(
+	IN PVOID SystemSpecific1, 
+	IN PVOID FunctionContext, 
+	IN PVOID SystemSpecific2, 
+	IN PVOID SystemSpecific3);
+#endif /* ED_SMART */
 #endif /* ED_MONITOR */
 
 #if defined(RTMP_INTERNAL_TX_ALC) || defined(RTMP_TEMPERATURE_COMPENSATION) 
@@ -5246,6 +5392,12 @@ VOID AsicVCORecalibration(
 	IN PRTMP_ADAPTER pAd);
 #endif /* VCORECAL_SUPPORT */
 
+#ifdef MCS_LUT_SUPPORT
+VOID asic_mcs_lut_update(
+	IN RTMP_ADAPTER *pAd, 
+	IN MAC_TABLE_ENTRY *pEntry);
+#endif /* MCS_LUT_SUPPORT */
+
 #ifdef STREAM_MODE_SUPPORT
 UINT32 StreamModeRegVal(
 	IN RTMP_ADAPTER *pAd);
@@ -5321,7 +5473,8 @@ VOID BATableExit(
 
 #ifdef ED_MONITOR
 ULONG BssChannelAPCount(
-	IN BSS_TABLE *Tab, 
+	IN PRTMP_ADAPTER pAd,
+	IN BSS_TABLE *Tab, 	
 	IN UCHAR Channel);
 #endif /* ED_MONITOR */
 
@@ -5678,6 +5831,14 @@ VOID APPeerDlsTearDownAction(
 #endif /* QOS_DLS_SUPPORT */
 #endif /* CONFIG_AP_SUPPORT */
 
+
+#ifdef DYNAMIC_VGA_SUPPORT
+VOID DyncVgaLockTimeout(
+	IN PVOID SystemSpecific1,
+	IN PVOID FunctionContext,
+	IN PVOID SystemSpecific2,
+	IN PVOID SystemSpecific3);
+#endif /* DYNAMIC_VGA_SUPPORT */
 
 #ifdef QOS_DLS_SUPPORT
 BOOLEAN PeerDlsReqSanity(
@@ -6438,6 +6599,7 @@ INT RT_CfgSetWirelessMode(
 	IN	PRTMP_ADAPTER	pAd, 
 	IN	PSTRING			arg);
 
+RT_802_11_PHY_MODE wmode_2_cfgmode(UCHAR wmode);
 UCHAR cfgmode_2_wmode(UCHAR cfg_mode);
 UCHAR *wmode_2_str(UCHAR wmode);
 
@@ -7922,7 +8084,9 @@ VOID dynamic_tune_be_tx_op(
 
 
 #ifdef DOT11_N_SUPPORT
+#ifdef DOT11N_DRAFT3
 VOID Handle_BSS_Width_Trigger_Events(RTMP_ADAPTER *pAd);
+#endif /* DOT11N_DRAFT3 */
 
 void build_ext_channel_switch_ie(
 	IN RTMP_ADAPTER *pAd,
@@ -8646,6 +8810,9 @@ VOID mgmt_tb_set_mcast_entry(RTMP_ADAPTER *pAd);
 VOID set_entry_phy_cfg(RTMP_ADAPTER *pAd, MAC_TABLE_ENTRY *pEntry);
 VOID MacTableReset(RTMP_ADAPTER *pAd);
 MAC_TABLE_ENTRY *MacTableLookup(RTMP_ADAPTER *pAd, UCHAR *pAddr);
+#ifdef MULTI_CLIENT_SUPPORT
+VOID changeTxRetry(IN PRTMP_ADAPTER pAd, IN USHORT num);
+#endif
 BOOLEAN MacTableDeleteEntry(RTMP_ADAPTER *pAd, USHORT wcid, UCHAR *pAddr);
 MAC_TABLE_ENTRY *MacTableInsertEntry(
     IN RTMP_ADAPTER *pAd,
@@ -8757,6 +8924,59 @@ INT set_force_ip_assemble(RTMP_ADAPTER *pAd, PSTRING arg);
 #endif /* WFA_VHT_PF */
 
 
+
+#ifdef DROP_MASK_SUPPORT
+VOID asic_set_drop_mask(
+	RTMP_ADAPTER *ad,
+	USHORT	wcid,
+	BOOLEAN enable);
+
+VOID asic_drop_mask_reset(
+	RTMP_ADAPTER *ad);
+
+VOID drop_mask_init_per_client(
+	RTMP_ADAPTER *ad,
+	MAC_TABLE_ENTRY *entry);
+
+VOID drop_mask_release_per_client(
+	RTMP_ADAPTER *ad,
+	MAC_TABLE_ENTRY *entry);
+
+VOID drop_mask_per_client_reset(
+	RTMP_ADAPTER *ad);
+
+VOID set_drop_mask_per_client(
+	RTMP_ADAPTER *ad,
+	MAC_TABLE_ENTRY *entry,
+	UINT8 type,
+	BOOLEAN enable);
+
+VOID drop_mask_timer_action(
+	PVOID SystemSpecific1, 
+	PVOID FunctionContext, 
+	PVOID SystemSpecific2, 
+	PVOID SystemSpecific3);
+#endif /* DROP_MASK_SUPPORT */
+
+#ifdef PEER_DELBA_TX_ADAPT
+VOID Peer_DelBA_Tx_Adapt_Init(
+	IN RTMP_ADAPTER *pAd,
+	IN PMAC_TABLE_ENTRY pEntry);
+	
+VOID Peer_DelBA_Tx_Adapt_Enable(
+	IN PRTMP_ADAPTER pAd,
+	IN PMAC_TABLE_ENTRY pEntry);
+
+VOID Peer_DelBA_Tx_Adapt_Disable(
+	IN PRTMP_ADAPTER pAd,
+	IN PMAC_TABLE_ENTRY pEntry);
+
+VOID PeerDelBATxAdaptTimeOut(
+	IN PVOID SystemSpecific1,
+	IN PVOID FunctionContext,
+	IN PVOID SystemSpecific2,
+	IN PVOID SystemSpecific3);   
+#endif /* PEER_DELBA_TX_ADAPT */
 
 #ifdef RLT_RF
 INT set_rf(RTMP_ADAPTER *pAd, PSTRING arg);

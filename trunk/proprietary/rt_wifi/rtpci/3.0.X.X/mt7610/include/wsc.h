@@ -377,6 +377,7 @@ static inline BOOLEAN WscCheckWSCHeader(
 #define WSC_ENTRY_GET_EAPOL_START   0x1
 #define WSC_ENTRY_GET_EAP_RSP_ID    0x2
 
+#define WSC_WR_FILE_MAX_BUF 		1500
 /* Pack struct to align at byte */
 /*#pragma pack(1) */
 
@@ -686,6 +687,9 @@ typedef	struct	_WSC_CTRL
 	RALINK_TIMER_STRUCT M2DTimer;
 	BOOLEAN				bM2DTimerRunning;
 	INT					M2DACKBalance;
+#ifdef CONFIG_AP_SUPPORT
+	BOOLEAN				bWscAutoTriggerDisable; /* Default setting is FALSE */
+#endif /* CONFIG_AP_SUPPORT */
 }	WSC_CTRL, *PWSC_CTRL;
 
 typedef struct GNU_PACKED _WSC_CONFIGURED_VALUE {

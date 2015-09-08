@@ -5,124 +5,164 @@ mtd_part_name="Storage"
 mtd_part_dev="/dev/mtdblock5"
 mtd_part_size=65536
 dir_storage="/etc/storage"
-ers="/tmp/.storage_erase"
-tmp="/tmp/.storage_tar"
+slk="/tmp/.storage_locked"
+tmp="/tmp/storage.tar"
+tbz="${tmp}.bz2"
 hsh="/tmp/hashes/storage_md5"
 
 func_get_mtd()
 {
-	local mtd_part mtd_char mtd_index
+	local mtd_part mtd_char mtd_idx mtd_hex
 	mtd_part=`cat /proc/mtd | grep \"$mtd_part_name\"`
-	mtd_char=`echo $mtd_part | awk -F':' '{ print $1 }'`
-	if [ -n "$mtd_char" ] ; then
-		mtd_index=${mtd_char/mtd/}
-		if [ -n "$mtd_index" ] && [ $mtd_index -ge 4 ] ; then
-			mtd_part_dev="/dev/mtdblock${mtd_index}"
-			mtd_part_size=`echo $mtd_part | awk '{ printf("0x%d\n",$2) }' | awk '{ printf("%d\n",$1) }'`
-		fi
+	mtd_char=`echo $mtd_part | cut -d':' -f1`
+	mtd_hex=`echo $mtd_part | cut -d' ' -f2`
+	mtd_idx=`echo $mtd_char | cut -c4-5`
+	if [ -n "$mtd_idx" ] && [ $mtd_idx -ge 4 ] ; then
+		mtd_part_dev="/dev/mtdblock${mtd_idx}"
+		mtd_part_size=`echo $((0x$mtd_hex))`
+	else
+		logger -t "Storage" "Cannot find MTD partition: $mtd_part_name"
+		exit 1
 	fi
+}
+
+func_mdir()
+{
+	[ ! -d "$dir_storage" ] && mkdir -p -m 755 $dir_storage
 }
 
 func_load()
 {
 	local fsz
 
-	[ ! -d "$dir_storage" ] && mkdir -p -m 755 $dir_storage
-	echo "Loading files from mtd partition \"$mtd_part_dev\""
-
 	bzcat $mtd_part_dev > $tmp 2>/dev/null
 	fsz=`stat -c %s $tmp 2>/dev/null`
 	if [ -n "$fsz" ] && [ $fsz -gt 0 ] ; then
 		md5sum $tmp > $hsh
 		tar xf $tmp -C $dir_storage 2>/dev/null
-		echo "Done."
 	else
 		result=1
 		rm -f $hsh
-		echo "Error! Invalid storage data"
+		logger -t "Storage load" "Invalid storage data in MTD partition: $mtd_part_dev"
 	fi
 	rm -f $tmp
-	rm -f $ers
+	rm -f $slk
+}
+
+func_tarb()
+{
+	rm -f $tmp
+	cd $dir_storage
+	find * -print0 | xargs -0 touch -c -h -t 201001010000.00
+	find * ! -type d -print0 | sort -z | xargs -0 tar -cf $tmp 2>/dev/null
+	cd - >>/dev/null
+	if [ ! -f "$tmp" ] ; then
+		logger -t "Storage" "Cannot create tarball file: $tmp"
+		exit 1
+	fi
 }
 
 func_save()
 {
-	local fsz tbz2
+	local fsz
 
-	[ -f "$ers" ] && return 1
-
-	[ ! -d "$dir_storage" ] && mkdir -p -m 755 $dir_storage
-	echo "Save files to mtd partition \"$mtd_part_dev\""
-
-	tbz2="${tmp}.bz2"
-	rm -f $tmp
-	rm -f $tbz2
-	cd $dir_storage
-	find * -print0 | xargs -0 touch -c -h -t 201001010000.00
-	find * ! -type d -print0 | sort -z | xargs -0 tar -cf $tmp 2>/dev/null
-	cd - >>/dev/null
+	echo "Save storage files to MTD partition \"$mtd_part_dev\""
+	rm -f $tbz
 	md5sum -c -s $hsh 2>/dev/null
 	if [ $? -eq 0 ] ; then
-		echo "Storage hash is not changed, skip write to mtd partition. Exit."
+		echo "Storage hash is not changed, skip write to MTD partition. Exit."
 		rm -f $tmp
 		return 0
 	fi
-	[ -f "$tmp" ] && md5sum $tmp > $hsh
+	md5sum $tmp > $hsh
 	bzip2 -9 $tmp 2>/dev/null
-	fsz=`stat -c %s $tbz2 2>/dev/null`
-	if [ -n "$fsz" ] && [ $fsz -gt 0 ] && [ $fsz -lt $mtd_part_size ] ; then
-		mtd_write write $tbz2 $mtd_part_name
+	fsz=`stat -c %s $tbz 2>/dev/null`
+	if [ -n "$fsz" ] && [ $fsz -ge 16 ] && [ $fsz -le $mtd_part_size ] ; then
+		mtd_write write $tbz $mtd_part_name
 		if [ $? -eq 0 ] ; then
 			echo "Done."
 		else
 			result=1
-			echo "Error! mtd write FAILED"
+			echo "Error! MTD write FAILED"
+			logger -t "Storage save" "Error write to MTD partition: $mtd_part_dev"
 		fi
 	else
 		result=1
-		echo "Error! Invalid storage data size: $fsz"
+		echo "Error! Invalid storage final data size: $fsz"
+		logger -t "Storage save" "Invalid storage final data size: $fsz"
 	fi
 	rm -f $tmp
-	rm -f $tbz2
+	rm -f $tbz
 }
 
 func_backup()
 {
-	local tbz2
-
-	[ ! -d "$dir_storage" ] && mkdir -p -m 755 $dir_storage
-
-	tbz2="${tmp}.bz2"
-	rm -f $tmp
-	rm -f $tbz2
-	cd $dir_storage
-	find * -print0 | xargs -0 touch -c -h -t 201001010000.00
-	find * ! -type d -print0 | sort -z | xargs -0 tar -cf $tmp 2>/dev/null
-	cd - >>/dev/null
+	rm -f $tbz
 	bzip2 -9 $tmp 2>/dev/null
+	if [ $? -ne 0 ] ; then
+		result=1
+		logger -t "Storage backup" "Cannot create BZ2 file!"
+	fi
 	rm -f $tmp
+}
+
+func_restore()
+{
+	local fsz tmp_storage
+
+	[ ! -f "$tbz" ] && exit 1
+
+	fsz=`stat -c %s $tbz 2>/dev/null`
+	if [ -z "$fsz" ] || [ $fsz -lt 16 ] || [ $fsz -gt $mtd_part_size ] ; then
+		result=1
+		rm -f $tbz
+		logger -t "Storage restore" "Invalid BZ2 file size: $fsz"
+		return 1
+	fi
+
+	tmp_storage="/tmp/storage"
+	rm -rf $tmp_storage
+	mkdir -p -m 755 $tmp_storage
+	tar xjf $tbz -C $tmp_storage 2>/dev/null
+	if [ $? -ne 0 ] ; then
+		result=1
+		rm -f $tbz
+		rm -rf $tmp_storage
+		logger -t "Storage restore" "Unable to extract BZ2 file: $tbz"
+		return 1
+	fi
+	if [ ! -f "$tmp_storage/start_script.sh" ] ; then
+		result=1
+		rm -f $tbz
+		rm -rf $tmp_storage
+		logger -t "Storage restore" "Invalid content of BZ2 file: $tbz"
+		return 1
+	fi
+
+	rm -f $slk
+	rm -f $tbz
+	rm -rf $dir_storage
+	mkdir -p -m 755 $dir_storage
+	cp -rf $tmp_storage /etc
+	rm -rf $tmp_storage
 }
 
 func_erase()
 {
-	echo "Erase mtd partition \"$mtd_part_dev\""
-
 	mtd_write erase $mtd_part_name
 	if [ $? -eq 0 ] ; then
 		rm -f $hsh
 		rm -rf $dir_storage
 		mkdir -p -m 755 $dir_storage
-		touch "$ers"
-		echo "Done."
+		touch "$slk"
 	else
 		result=1
-		echo "Error! mtd erase FAILED"
 	fi
 }
 
 func_reset()
 {
-	rm -f $ers
+	rm -f $slk
 	rm -rf $dir_storage
 	mkdir -p -m 755 $dir_storage
 }
@@ -144,10 +184,11 @@ func_fill()
 	script_inets="$dir_storage/inet_state_script.sh"
 	script_vpnsc="$dir_storage/vpns_client_script.sh"
 	script_vpncs="$dir_storage/vpnc_server_script.sh"
-	config_qos="$dir_storage/qos.conf"
-	
+	script_ezbtn="$dir_storage/ez_buttons_script.sh"
+
 	user_hosts="$dir_dnsmasq/hosts"
 	user_dnsmasq_conf="$dir_dnsmasq/dnsmasq.conf"
+	user_dnsmasq_serv="$dir_dnsmasq/dnsmasq.servers"
 	user_ovpnsvr_conf="$dir_ovpnsvr/server.conf"
 	user_ovpncli_conf="$dir_ovpncli/client.conf"
 	user_inadyn_conf="$dir_inadyn/inadyn.conf"
@@ -324,6 +365,21 @@ EOF
 		chmod 755 "$script_vpncs"
 	fi
 
+	# create Ez-Buttons script
+	if [ ! -f "$script_ezbtn" ] ; then
+		cat > "$script_ezbtn" <<EOF
+#!/bin/sh
+
+### Custom user script
+### Called on WPS or Wi-Fi button pressed
+### \$1 - button param
+
+[ -x /opt/bin/on_wps.sh ] && /opt/bin/on_wps.sh \$1 &
+
+EOF
+		chmod 755 "$script_ezbtn"
+	fi
+
 	# create user dnsmasq.conf
 	[ ! -d "$dir_dnsmasq" ] && mkdir -p -m 755 "$dir_dnsmasq"
 	for i in dnsmasq.conf hosts ; do
@@ -345,9 +401,6 @@ dhcp-option=252,"\n"
 
 ### Examples:
 
-### Tells dnsmasq to forward queries for this domains to DNS 10.25.11.30
-#server=/mit.ru/izmuroma.ru/10.25.11.30
-
 ### Enable built-in TFTP server
 #enable-tftp
 
@@ -362,6 +415,17 @@ dhcp-option=252,"\n"
 
 EOF
 		chmod 644 "$user_dnsmasq_conf"
+	fi
+
+	# create user dns servers
+	if [ ! -f "$user_dnsmasq_serv" ] ; then
+		cat > "$user_dnsmasq_serv" <<EOF
+# Custom user servers file for dnsmasq
+# Example:
+#server=/mit.ru/izmuroma.ru/10.25.11.30
+
+EOF
+		chmod 644 "$user_dnsmasq_serv"
 	fi
 
 	# create user inadyn.conf"
@@ -392,6 +456,7 @@ EOF
 # Custom user hosts file
 # Example:
 # 192.168.1.100		Boo
+
 EOF
 		chmod 644 "$user_hosts"
 	fi
@@ -401,6 +466,7 @@ EOF
 	if [ ! -f "$dir_wlan/AP.dat" ] ; then
 		cat > "$dir_wlan/AP.dat" <<EOF
 # Custom user AP conf file
+
 EOF
 		chmod 644 "$dir_wlan/AP.dat"
 	fi
@@ -408,6 +474,7 @@ EOF
 	if [ ! -f "$dir_wlan/AP_5G.dat" ] ; then
 		cat > "$dir_wlan/AP_5G.dat" <<EOF
 # Custom user AP conf file
+
 EOF
 		chmod 644 "$dir_wlan/AP_5G.dat"
 	fi
@@ -467,148 +534,28 @@ EOF
 			chmod 644 "$user_ovpncli_conf"
 		fi
 	fi
-
-       # create qos config file
-        if [ ! -f "$config_qos" ] && [ -f "/lib/modules/$(uname -r)/kernel/net/sched/sch_htb.ko" ] ; then
-                cat > "$config_qos" << 'EOF'
-################################################################################
-##
-## User configuration of the QoS script
-##
-## At a minimum, set the DOWNLOAD and UPLOAD variables below. Setting these
-## slightly slower than the actual line speeds is critical to good QoS
-## performance. With download and upload speeds set too high, the traffic queues
-## in the modem (upload) and on the ISP side (download) will quickly fill up. As
-## these queues can be very long --on the order of several seconds-- filling
-## them will prohibit any meaningful traffic shaping.
-##
-## The default configuration, with the proper upload and download speeds set,
-## should be adequate for most situations to separate out low-priority peer-to
-## -peer traffic (eMule, Bittorrent, etc.) from interactive traffic such as web
-## browsing and SSH sessions.
-##
-## The configuration can be refined by modifying the settings below. As an
-## example, consider including support for VoIP. This may be accomplished by
-## adding the IP address of a VoIP adapter to the IP_EXPR variable (e.g.
-## IP_EXPR="192.168.1.10"). Doing so will elevate the status of traffic to and
-## from the VoIP box to 'express'.
-##
-## In general, the configuration of the QoS script requires the setting of
-## several variables. Most variables expect a space separated list of elements
-## (ports, IP addresses, protocols). Adding an element to a list will, based on
-## the variable name, either promote a certain connection to 'express' (highest
-## priority) or 'priority' status, or demote it to 'bulk' status. The default
-## status for all traffic is 'normal'. An example of setting a configuration
-## variable to classify traffic is the statement
-##
-## TCP_PRIO="80 443"
-##
-## Including this line in the configuration will ensure that all TCP traffic to
-## the listed ports (in this particular case for the http and https protocols)
-## will be treated as 'priority' traffic.
-##
-## Another example (from the default configuration) is:
-##
-## TCP_BULK="1024: 21"
-##
-## which adds port 21 (the port used for ftp) and all ports 1024 and up to the
-## list of destination ports for 'bulk' traffic. The result is that ftp
-## downloads get a low priority, as does traffic to non-reserved ports (mostly
-## peer-to-peer protocols). The notation '1024:' indicates a port range, in this
-## case including all ports 1024 and higher. Another example of a port range is
-## ':10' which means all ports from 0 to 10. A range from 10 to 20 is denoted as
-## '10:20'.
-##
-## It is important to note that some variables take precedence over others. This
-## becomes significant in cases where the same traffic is identified by
-## different rules. An example is adding a UDP game port above 1024 to the
-## express list. In the default configuration, all high ports (1024:) are
-## included in the UDP_BULK variable. Without knowing the order of the rules, it
-## is not possible to determine what the status of traffic to the game port will
-## be. It turns out, the traffic will be classified as priority, since UDP_EXPR
-## takes precedence over UDP_BULK.
-##
-## The order of the variables is (lowest precedence first):
-## TCP_BULK, UDP_BULK, TCP_PRIO, UDP_PRIO, TCP_EXPR, UDP_EXPR,
-## TOS_BULK, TOS_PRIO, TOS_EXPR, DSCP_BULK, DSCP_PRIO, DSCP_EXPR, 
-## IP_BULK, IP_PRIO, IP_EXPR
-##
-################################################################################
-
-# Enable or disable qos script
-# Set this to YES to enable QOS
-QOS_ENABLED="NO"
-
-# Download speed in kilobits per second
-# Set 5% - 10% lower than *measured* line speed (set to zero to disable)
-DOWNLOAD=5000
-
-# Upload speed in kilobits per second
-# Set 5% - 10% lower than *measured* line speed (set to zero to disable)
-UPLOAD=700
-
-# Destination ports for classifying 'bulk' traffic
-TCP_BULK="1024: 21"
-UDP_BULK="1024:"
-
-# Destination ports for classifying 'priority' traffic
-TCP_PRIO="22 23 4040 5800:5810 5900:5910"
-UDP_PRIO=""
-
-# Destination ports for classifying 'express' traffic
-TCP_EXPR="53"
-UDP_EXPR="53"
-
-# ToS (Type of Service) matches (egress only)
-#TOS_BULK="0x02"
-#TOS_PRIO=""
-#TOS_EXPR="0x10"
-
-# DSCP (Differentiated Services Code Point) matches (egress only)
-DSCP_BULK=""
-DSCP_PRIO=""
-DSCP_EXPR=""
-
-# LAN IP addresses for 'bulk', 'priority' and 'express' traffic
-# IP address can include a port number or range, such as 192.168.1.1:80 or
-# 192.168.1.1:5900:5910. To include all ports, specify the IP address only.
-IP_BULK=""
-IP_PRIO=""
-IP_EXPR=""
-
-# Define custom QoS interface. Defaults to wan interface automatically.
-#QOS_IF=eth3
-
-# Enable 'small UDP packets get priority' feature.
-# Sets the maximum length for priority UDP packets. Set to 0 to disable.
-UDP_LENGTH=256
-
-# Enable 'small TCP packets get priority on certain ports' feature.
-# Sets the maximum length for priority TCP packets. Set to 0 to disable.
-TCP_LENGTH=512
-
-# Sets the ports with prioritized small packets.
-# Has no effect if TCP_LENGTH=0
-TCP_LENGTH_PORTS="80 443"
-
-# Set to 1 to enable logging of packets to syslog
-DEBUG=0
-
-EOF
-        fi
 }
 
 case "$1" in
 load)
 	func_get_mtd
+	func_mdir
 	func_load
 	;;
 save)
+	[ -f "$slk" ] && exit 1
 	func_get_mtd
+	func_mdir
+	func_tarb
 	func_save
 	;;
 backup)
+	func_mdir
+	func_tarb
 	func_backup
+	;;
+restore)
+	func_restore
 	;;
 erase)
 	func_get_mtd
@@ -619,10 +566,11 @@ reset)
 	func_fill
 	;;
 fill)
+	func_mdir
 	func_fill
 	;;
 *)
-	echo "Usage: $0 {load|save|backup|erase|reset|fill}"
+	echo "Usage: $0 {load|save|backup|restore|erase|reset|fill}"
 	exit 1
 	;;
 esac

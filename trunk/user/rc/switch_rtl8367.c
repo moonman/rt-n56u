@@ -23,6 +23,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <ctype.h>
 
 #include "rc.h"
 #include "switch.h"
@@ -271,6 +272,40 @@ int phy_link_port_lan4(unsigned int link_mode, unsigned int flow_mode)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+int phy_status_port_bytes(int port_id, uint64_t *rx, uint64_t *tx)
+{
+	port_bytes_t pb;
+	int ioctl_result;
+	unsigned int port_mask = SWAPI_PORTMASK_WAN;
+
+	switch (port_id)
+	{
+	case 1:
+		port_mask = SWAPI_PORTMASK_LAN1;
+		break;
+	case 2:
+		port_mask = SWAPI_PORTMASK_LAN2;
+		break;
+	case 3:
+		port_mask = SWAPI_PORTMASK_LAN3;
+		break;
+	case 4:
+		port_mask = SWAPI_PORTMASK_LAN4;
+		break;
+	}
+
+	ioctl_result = rtl8367_ioctl(RTL8367_IOCTL_STATUS_PORT_BYTES, port_mask, (unsigned int *)&pb);
+	if (ioctl_result < 0)
+		return ioctl_result;
+
+	*rx = pb.RX;
+	*tx = pb.TX;
+
+	return ioctl_result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 int phy_storm_unicast_unknown(unsigned int storm_rate_mbps)
 {
 	return rtl8367_ioctl(RTL8367_IOCTL_STORM_UNICAST_UNK, 0, &storm_rate_mbps);
@@ -404,6 +439,13 @@ int phy_vlan_reset_table(void)
 	return rtl8367_ioctl(RTL8367_IOCTL_VLAN_RESET_TABLE, 0, &unused);
 }
 
+int phy_vlan_pvid_wan_get(void)
+{
+	unsigned int pvid = 2;
+	rtl8367_ioctl(RTL8367_IOCTL_VLAN_PVID_WAN_GET, 0, &pvid);
+	return (int)pvid;
+}
+
 int phy_vlan_accept_port_mode(int accept_mode, unsigned int port_pask)
 {
 	return rtl8367_ioctl(RTL8367_IOCTL_VLAN_ACCEPT_PORT_MODE, accept_mode, &port_pask);
@@ -411,7 +453,7 @@ int phy_vlan_accept_port_mode(int accept_mode, unsigned int port_pask)
 
 int phy_vlan_create_port_vid(int pvid, int priority, unsigned int member, unsigned int untag, int fid)
 {
-	unsigned int vlan4k_info = (((fid & 0xFF) << 16) | ((priority & 0x07) << 12) | (pvid & 0x0FFF));
+	unsigned int vlan4k_info = (((fid & 0x0FFF) << 16) | ((priority & 0x07) << 12) | (pvid & 0x0FFF));
 	unsigned int vlan4k_mask = (((untag & 0xFF) << 16) | (member & 0xFF));
 	
 	return rtl8367_ioctl(RTL8367_IOCTL_VLAN_CREATE_PORT_VID, vlan4k_info, &vlan4k_mask);
@@ -419,7 +461,7 @@ int phy_vlan_create_port_vid(int pvid, int priority, unsigned int member, unsign
 
 int phy_vlan_create_entry(int vid, unsigned int member, unsigned int untag, int fid)
 {
-	unsigned int vlan4k_info = (((fid & 0xFF) << 16) | (vid & 0x0FFF));
+	unsigned int vlan4k_info = (((fid & 0x0FFF) << 16) | (vid & 0x0FFF));
 	unsigned int vlan4k_mask = (((untag & 0xFF) << 16) | (member & 0xFF));
 	
 	return rtl8367_ioctl(RTL8367_IOCTL_VLAN_CREATE_ENTRY, vlan4k_info, &vlan4k_mask);
@@ -460,7 +502,7 @@ int cpu_gpio_get_pin(int pin, unsigned int *p_value)
 // STATUS
 ////////////////////////////////////////////////////////////////////////////////
 
-int show_usage(char *cmd)
+static int show_usage(char *cmd)
 {
 	printf("Usage: %s COMMAND [ARG1] [ARG2]\n"
 	" COMMAND:\n"
@@ -512,6 +554,7 @@ int show_usage(char *cmd)
 	"   55 [MASK] [PORT] Set port forward mask\n"
 	"\n"
 	"   60               Reset VLAN table and init VLAN1\n"
+	"   61               Show untagged WAN PVID\n"
 	"   62 [MASK] [0..2] Set VLAN accept mode for ports mask\n"
 	"   63 [MASK] [DATA] Create port-based VLAN entry\n"
 	"   64 [MASK] [DATA] Create VLAN entry\n"
@@ -554,7 +597,7 @@ int show_usage(char *cmd)
 	return 1;
 }
 
-int show_status_gpio_mode(void)
+static int show_status_gpio_mode(void)
 {
 	int retVal;
 	unsigned int arg = 0;
@@ -566,7 +609,7 @@ int show_status_gpio_mode(void)
 	return retVal;
 }
 
-int show_status_gpio_pin(unsigned int par)
+static int show_status_gpio_pin(unsigned int par)
 {
 	int retVal;
 	unsigned int arg = 0;
@@ -578,109 +621,116 @@ int show_status_gpio_pin(unsigned int par)
 	return retVal;
 }
 
-int show_status_link(unsigned int cmd)
+static int show_status_link(unsigned int cmd)
 {
 	int retVal;
-	unsigned int arg = 0;
-	char *portname = "";
+	unsigned int link_value = 0;
+	const char *portname = "";
 
-	retVal = rtl8367_ioctl(cmd, 0, &arg);
-	if (retVal == 0)
+	retVal = rtl8367_ioctl(cmd, 0, &link_value);
+	if (retVal != 0)
+		return retVal;
+
+	switch (cmd)
 	{
-		switch (cmd)
-		{
-		case RTL8367_IOCTL_STATUS_LINK_PORT_WAN:
-			portname = "WAN port";
-			break;
-		case RTL8367_IOCTL_STATUS_LINK_PORT_LAN1:
-			portname = "LAN1 port";
-			break;
-		case RTL8367_IOCTL_STATUS_LINK_PORT_LAN2:
-			portname = "LAN2 port";
-			break;
-		case RTL8367_IOCTL_STATUS_LINK_PORT_LAN3:
-			portname = "LAN3 port";
-			break;
-		case RTL8367_IOCTL_STATUS_LINK_PORT_LAN4:
-			portname = "LAN4 port";
-			break;
-		case RTL8367_IOCTL_STATUS_LINK_PORTS_WAN:
-			portname = "WAN ports";
-			break;
-		case RTL8367_IOCTL_STATUS_LINK_PORTS_LAN:
-			portname = "LAN ports";
-			break;
-		}
-		
-		printf("%s link state: %d\n", portname, arg);
+	case RTL8367_IOCTL_STATUS_LINK_PORT_WAN:
+		portname = "WAN port";
+		break;
+	case RTL8367_IOCTL_STATUS_LINK_PORT_LAN1:
+		portname = "LAN1 port";
+		break;
+	case RTL8367_IOCTL_STATUS_LINK_PORT_LAN2:
+		portname = "LAN2 port";
+		break;
+	case RTL8367_IOCTL_STATUS_LINK_PORT_LAN3:
+		portname = "LAN3 port";
+		break;
+	case RTL8367_IOCTL_STATUS_LINK_PORT_LAN4:
+		portname = "LAN4 port";
+		break;
+	case RTL8367_IOCTL_STATUS_LINK_PORTS_WAN:
+		portname = "WAN ports";
+		break;
+	case RTL8367_IOCTL_STATUS_LINK_PORTS_LAN:
+		portname = "LAN ports";
+		break;
 	}
+
+	printf("%s link state: %d\n", portname, link_value);
 
 	return retVal;
 }
 
-int show_status_speed(unsigned int cmd)
+static int show_status_speed(unsigned int cmd)
 {
 	int retVal;
-	unsigned int arg = 0;
-	int lspeed;
-	char *portname = "";
-	char lstatus[32];
+	unsigned int link_value = 0;
+	const char *portname = "";
+	char linkstate[20];
 
-	retVal = rtl8367_ioctl(cmd, 0, &arg);
-	if (retVal == 0)
+	retVal = rtl8367_ioctl(cmd, 0, &link_value);
+	if (retVal != 0)
+		return retVal;
+
+	switch (cmd)
 	{
-		switch (cmd)
-		{
-		case RTL8367_IOCTL_STATUS_SPEED_PORT_WAN:
-			portname = "WAN port";
-			break;
-		case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN1:
-			portname = "LAN1 port";
-			break;
-		case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN2:
-			portname = "LAN2 port";
-			break;
-		case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN3:
-			portname = "LAN3 port";
-			break;
-		case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN4:
-			portname = "LAN4 port";
-			break;
-		}
-		
-		if ((arg >> 16) & 0x01)
-		{
-			switch (arg & 0x03)
-			{
-			case 2:
-				lspeed = 1000;
-				break;
-			case 1:
-				lspeed = 100;
-				break;
-			default:
-				lspeed = 10;
-				break;
-			}
-			
-			sprintf(lstatus, "link: %d %s", lspeed, ((arg >> 8) & 0x01) ? "FD" : "HD" );
-		}
-		else
-		{
-			sprintf(lstatus, "link: %s", "NO");
-		}
-		
-		printf("%s %s\n", portname, lstatus);
+	case RTL8367_IOCTL_STATUS_SPEED_PORT_WAN:
+		portname = "WAN port";
+		break;
+	case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN1:
+		portname = "LAN1 port";
+		break;
+	case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN2:
+		portname = "LAN2 port";
+		break;
+	case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN3:
+		portname = "LAN3 port";
+		break;
+	case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN4:
+		portname = "LAN4 port";
+		break;
 	}
+
+	if ((link_value >> 16) & 0x01) {
+		int lspeed;
+		const char *text_fc = "";
+		const char *text_dup = "HD";
+		
+		switch (link_value & 0x03)
+		{
+		case 2:
+			lspeed = 1000;
+			break;
+		case 1:
+			lspeed = 100;
+			break;
+		default:
+			lspeed = 10;
+			break;
+		}
+		
+		if ((link_value >> 8) & 0x01) {
+			unsigned int link_fc = (link_value >> 9) & 0x03;
+			if (link_fc)
+				text_fc = ", FC";
+			text_dup = "FD";
+		}
+		
+		/* 1000FD, FC */
+		snprintf(linkstate, sizeof(linkstate), "%d%s%s", lspeed, text_dup, text_fc);
+	} else
+		strcpy(linkstate, "NO");
+
+	printf("%s link: %s\n", portname, linkstate);
 
 	return retVal;
 }
 
-int show_mib_counters(unsigned int cmd)
+static int show_mib_counters(unsigned int cmd)
 {
 	int retVal;
 	mib_counters_t mibc;
-	char *portname = "";
+	const char *portname = "";
 
 	memset(&mibc, 0, sizeof(mib_counters_t));
 	retVal = rtl8367_ioctl(cmd, 0, (unsigned int *)&mibc);
@@ -777,6 +827,20 @@ int show_mib_counters(unsigned int cmd)
 	return retVal;
 }
 
+static int show_vlan_pvid_wan(unsigned int cmd)
+{
+	int retVal;
+	unsigned int arg = 2;
+
+	retVal = rtl8367_ioctl(cmd, 0, &arg);
+	if (retVal != 0)
+		arg = 2;
+
+	printf("%d\n", arg);
+
+	return retVal;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // RTL8367 PROCESS
 ////////////////////////////////////////////////////////////////////////////////
@@ -793,14 +857,18 @@ int rtl8367_main(int argc, char **argv)
 	if (argc < 2)
 		return show_usage(argv[0]);
 
-	cmd = atoi(argv[1]);
-	if (!cmd && argc < 3)
+	if (!isdigit(argv[1][0]))
 		return show_usage(argv[0]);
+
+	cmd = atoi(argv[1]);
 
 	if (argc > 2)
 		arg = get_param_int_hex(argv[2]);
 	if (argc > 3)
 		par = get_param_int_hex(argv[3]);
+
+	if (cmd == 0 && arg == 0)
+		return show_usage(argv[0]);
 
 	switch (cmd)
 	{
@@ -809,6 +877,9 @@ int rtl8367_main(int argc, char **argv)
 	
 	case RTL8367_IOCTL_GPIO_PIN_GET_VAL:
 		return show_status_gpio_pin(arg);
+	
+	case RTL8367_IOCTL_STATUS_PORT_BYTES:
+		return 1;
 	
 	case RTL8367_IOCTL_STATUS_LINK_PORT_WAN:
 	case RTL8367_IOCTL_STATUS_LINK_PORT_LAN1:
@@ -835,6 +906,9 @@ int rtl8367_main(int argc, char **argv)
 	case RTL8367_IOCTL_STATUS_CNT_PORT_CPU_LAN:
 	case RTL8367_IOCTL_STATUS_CNT_PORT_INIC:
 		return show_mib_counters(cmd);
+	
+	case RTL8367_IOCTL_VLAN_PVID_WAN_GET:
+		return show_vlan_pvid_wan(cmd);
 	}
 
 	return rtl8367_ioctl(cmd, par, &arg);

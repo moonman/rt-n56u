@@ -2110,8 +2110,9 @@ static int __ip6mr_fill_mroute(struct mr6_table *mrt, struct sk_buff *skb,
 	if (c->mf6c_parent >= MAXMIFS)
 		return -ENOENT;
 
-	if (MIF_EXISTS(mrt, c->mf6c_parent))
-		RTA_PUT(skb, RTA_IIF, 4, &mrt->vif6_table[c->mf6c_parent].dev->ifindex);
+	if (MIF_EXISTS(mrt, c->mf6c_parent) &&
+	    nla_put_u32(skb, RTA_IIF, mrt->vif6_table[c->mf6c_parent].dev->ifindex) < 0)
+		return -EMSGSIZE;
 
 	mp_head = (struct rtattr *)skb_put(skb, RTA_LENGTH(0));
 
@@ -2222,14 +2223,15 @@ static int ip6mr_fill_mroute(struct mr6_table *mrt, struct sk_buff *skb,
 	rtm->rtm_src_len  = 128;
 	rtm->rtm_tos      = 0;
 	rtm->rtm_table    = mrt->id;
-	NLA_PUT_U32(skb, RTA_TABLE, mrt->id);
+	if (nla_put_u32(skb, RTA_TABLE, mrt->id))
+		goto nla_put_failure;
 	rtm->rtm_scope    = RT_SCOPE_UNIVERSE;
 	rtm->rtm_protocol = RTPROT_UNSPEC;
 	rtm->rtm_flags    = 0;
 
-	NLA_PUT(skb, RTA_SRC, 16, &c->mf6c_origin);
-	NLA_PUT(skb, RTA_DST, 16, &c->mf6c_mcastgrp);
-
+	if (nla_put(skb, RTA_SRC, 16, &c->mf6c_origin) ||
+	    nla_put(skb, RTA_DST, 16, &c->mf6c_mcastgrp))
+		goto nla_put_failure;
 	if (__ip6mr_fill_mroute(mrt, skb, c, rtm) < 0)
 		goto nla_put_failure;
 

@@ -24,7 +24,6 @@
 var $j = jQuery.noConflict();
 
 $j(document).ready(function() {
-	init_itoggle('wan_nat_x');
 	init_itoggle('gw_arp_ping');
 	init_itoggle('x_DHCPClient', change_wan_dhcp_auto);
 	init_itoggle('wan_dnsenable_x', change_wan_dns_auto);
@@ -99,6 +98,7 @@ function validForm(){
 	var addr_obj;
 	var mask_obj;
 	var gate_obj;
+	var vlan_obj;
 
 	if($("tbl_dhcp_sect").style.display != "none" && !document.form.x_DHCPClient[0].checked){
 		addr_obj = document.form.wan_ipaddr;
@@ -180,23 +180,26 @@ function validForm(){
 			return false;
 
 	if(document.form.vlan_filter[0].checked){
-		if(document.form.vlan_vid_cpu.value.length > 0){
-			if(!validate_range(document.form.vlan_vid_cpu, min_vlan, 4094))
+		vlan_obj = document.form.vlan_vid_cpu;
+		if(vlan_obj.value.length > 0){
+			if(vlan_obj.value!="2" && !validate_range(vlan_obj, min_vlan, 4094))
 				return false;
 			if(!validate_range(document.form.vlan_pri_cpu, 0, 7))
 				return false;
 		}
 		
-		if(document.form.vlan_vid_iptv.value.length > 0){
-			if(!validate_range(document.form.vlan_vid_iptv, min_vlan, 4094))
+		vlan_obj = document.form.vlan_vid_iptv;
+		if(vlan_obj.value.length > 0){
+			if(vlan_obj.value!="2" && !validate_range(vlan_obj, min_vlan, 4094))
 				return false;
 			if(!validate_range(document.form.vlan_pri_iptv, 0, 7))
 				return false;
 		}
 		
 		if (wan_stb_x == "1" || wan_stb_x == "6" || wan_stb_x == "7"){
-			if(document.form.vlan_vid_lan1.value.length > 0){
-				if(!validate_range(document.form.vlan_vid_lan1, min_vlan, 4094))
+			vlan_obj = document.form.vlan_vid_lan1;
+			if(vlan_obj.value.length > 0){
+				if(vlan_obj.value!="2" && !validate_range(vlan_obj, min_vlan, 4094))
 					return false;
 				if(!validate_range(document.form.vlan_pri_lan1, 0, 7))
 					return false;
@@ -204,8 +207,9 @@ function validForm(){
 		}
 		
 		if (wan_stb_x == "2" || wan_stb_x == "6" || wan_stb_x == "7"){
-			if(document.form.vlan_vid_lan2.value.length > 0){
-				if(!validate_range(document.form.vlan_vid_lan2, min_vlan, 4094))
+			vlan_obj = document.form.vlan_vid_lan2;
+			if(vlan_obj.value.length > 0){
+				if(vlan_obj.value!="2" && !validate_range(vlan_obj, min_vlan, 4094))
 					return false;
 				if(!validate_range(document.form.vlan_pri_lan2, 0, 7))
 					return false;
@@ -213,8 +217,9 @@ function validForm(){
 		}
 		
 		if (wan_stb_x == "3" || wan_stb_x == "5" || wan_stb_x == "7"){
-			if(document.form.vlan_vid_lan3.value.length > 0){
-				if(!validate_range(document.form.vlan_vid_lan3, min_vlan, 4094))
+			vlan_obj = document.form.vlan_vid_lan3;
+			if(vlan_obj.value.length > 0){
+				if(vlan_obj.value!="2" && !validate_range(vlan_obj, min_vlan, 4094))
 					return false;
 				if(!validate_range(document.form.vlan_pri_lan3, 0, 7))
 					return false;
@@ -222,8 +227,9 @@ function validForm(){
 		}
 		
 		if (wan_stb_x == "4" || wan_stb_x == "5"){
-			if(document.form.vlan_vid_lan4.value.length > 0){
-				if(!validate_range(document.form.vlan_vid_lan4, min_vlan, 4094))
+			vlan_obj = document.form.vlan_vid_lan4;
+			if(vlan_obj.value.length > 0){
+				if(vlan_obj.value!="2" && !validate_range(vlan_obj, min_vlan, 4094))
 					return false;
 				if(!validate_range(document.form.vlan_pri_lan4, 0, 7))
 					return false;
@@ -517,142 +523,94 @@ function change_wan_dns_enable(wan_type){
 }
 
 function change_stb_port_and_vlan(){
-	var wan_stb_x = document.form.wan_stb_x.value;
+	var wan_stb_x = parseInt(document.form.wan_stb_x.value);
 	var vlan_filter = document.form.vlan_filter[0].checked;
+	var vlan_l1 = 0, vlan_l2 = 0, vlan_l3 = 0, vlan_l4 = 0;
+	var o_wsp = document.form.wan_src_phy;
 
-	free_options(document.form.wan_src_phy);
-	add_option(document.form.wan_src_phy, "WAN", "0", 0);
+	free_options(o_wsp);
+	add_option(o_wsp, "WAN", "0", 0);
 
-	showhide_div("wan_stb_iso", !(wan_stb_x == "0" || vlan_filter));
+	showhide_div("wan_stb_iso", !(wan_stb_x == 0 || vlan_filter));
+	showhide_div("wan_src_phy", (wan_stb_x != 0));
 
-	if(wan_stb_x == "0") {
-		$("wan_src_phy").style.display = "none";
-		document.form.wan_src_phy.SelectedIndex = 0;
-	} else {
-		$("wan_src_phy").style.display = "";
+	if(wan_stb_x == 0) {
+		o_wsp.SelectedIndex = 0;
 	}
-
-	if(!vlan_filter) {
-		$("vlan_cpu").style.display = "none";
-		$("vlan_iptv").style.display = "none";
-		$("vlan_lan1").style.display = "none";
-		$("vlan_lan2").style.display = "none";
-		$("vlan_lan3").style.display = "none";
-		$("vlan_lan4").style.display = "none";
+	else if(wan_stb_x == 1) {
+		vlan_l1 = vlan_filter;
+		add_option(o_wsp, "LAN1", "1", (original_wan_src_phy == 1) ? 1 : 0);
 	}
-
-	if(wan_stb_x == "0") {
-		if(vlan_filter) {
-			$("vlan_cpu").style.display = "";
-			$("vlan_iptv").style.display = "";
-		}
-		$("vlan_lan1").style.display = "none";
-		$("vlan_lan2").style.display = "none";
-		$("vlan_lan3").style.display = "none";
-		$("vlan_lan4").style.display = "none";
+	else if(wan_stb_x == 2) {
+		vlan_l2 = vlan_filter;
+		add_option(o_wsp, "LAN2", "2", (original_wan_src_phy == 2) ? 1 : 0);
 	}
-	else if(wan_stb_x == "1") {
-		if(vlan_filter) {
-			$("vlan_cpu").style.display = "";
-			$("vlan_iptv").style.display = "";
-			$("vlan_lan1").style.display = "";
-		}
-		$("vlan_lan2").style.display = "none";
-		$("vlan_lan3").style.display = "none";
-		$("vlan_lan4").style.display = "none";
-		add_option(document.form.wan_src_phy, "LAN1", "1", (original_wan_src_phy == 1) ? 1 : 0);
+	else if(wan_stb_x == 3) {
+		vlan_l3 = vlan_filter;
+		add_option(o_wsp, "LAN3", "3", (original_wan_src_phy == 3) ? 1 : 0);
 	}
-	else if(wan_stb_x == "2") {
-		if(vlan_filter) {
-			$("vlan_cpu").style.display = "";
-			$("vlan_iptv").style.display = "";
-			$("vlan_lan2").style.display = "";
-		}
-		$("vlan_lan1").style.display = "none";
-		$("vlan_lan3").style.display = "none";
-		$("vlan_lan4").style.display = "none";
-		add_option(document.form.wan_src_phy, "LAN2", "2", (original_wan_src_phy == 2) ? 1 : 0);
+	else if(wan_stb_x == 4) {
+		vlan_l4 = vlan_filter;
+		add_option(o_wsp, "LAN4", "4", (original_wan_src_phy == 4) ? 1 : 0);
 	}
-	else if(wan_stb_x == "3") {
-		if(vlan_filter) {
-			$("vlan_cpu").style.display = "";
-			$("vlan_iptv").style.display = "";
-			$("vlan_lan3").style.display = "";
-		}
-		$("vlan_lan1").style.display = "none";
-		$("vlan_lan2").style.display = "none";
-		$("vlan_lan4").style.display = "none";
-		add_option(document.form.wan_src_phy, "LAN3", "3", (original_wan_src_phy == 3) ? 1 : 0);
+	else if(wan_stb_x == 5) {
+		vlan_l3 = vlan_filter;
+		vlan_l4 = vlan_filter;
+		add_option(o_wsp, "LAN3", "3", (original_wan_src_phy == 3) ? 1 : 0);
+		add_option(o_wsp, "LAN4", "4", (original_wan_src_phy == 4) ? 1 : 0);
 	}
-	else if(wan_stb_x == "4") {
-		if(vlan_filter) {
-			$("vlan_cpu").style.display = "";
-			$("vlan_iptv").style.display = "";
-			$("vlan_lan4").style.display = "";
-		}
-		$("vlan_lan1").style.display = "none";
-		$("vlan_lan2").style.display = "none";
-		$("vlan_lan3").style.display = "none";
-		add_option(document.form.wan_src_phy, "LAN4", "4", (original_wan_src_phy == 4) ? 1 : 0);
+	else if(wan_stb_x == 6) {
+		vlan_l1 = vlan_filter;
+		vlan_l2 = vlan_filter;
+		add_option(o_wsp, "LAN1", "1", (original_wan_src_phy == 1) ? 1 : 0);
+		add_option(o_wsp, "LAN2", "2", (original_wan_src_phy == 2) ? 1 : 0);
 	}
-	else if(wan_stb_x == "5") {
-		if(vlan_filter) {
-			$("vlan_cpu").style.display = "";
-			$("vlan_iptv").style.display = "";
-			$("vlan_lan3").style.display = "";
-			$("vlan_lan4").style.display = "";
-		}
-		$("vlan_lan1").style.display = "none";
-		$("vlan_lan2").style.display = "none";
-		add_option(document.form.wan_src_phy, "LAN3", "3", (original_wan_src_phy == 3) ? 1 : 0);
-		add_option(document.form.wan_src_phy, "LAN4", "4", (original_wan_src_phy == 4) ? 1 : 0);
-	}
-	else if(wan_stb_x == "6") {
-		if(vlan_filter) {
-			$("vlan_cpu").style.display = "";
-			$("vlan_iptv").style.display = "";
-			$("vlan_lan1").style.display = "";
-			$("vlan_lan2").style.display = "";
-		}
-		$("vlan_lan3").style.display = "none";
-		$("vlan_lan4").style.display = "none";
-		add_option(document.form.wan_src_phy, "LAN1", "1", (original_wan_src_phy == 1) ? 1 : 0);
-		add_option(document.form.wan_src_phy, "LAN2", "2", (original_wan_src_phy == 2) ? 1 : 0);
-	}
-	else if(wan_stb_x == "7") {
-		if(vlan_filter) {
-			$("vlan_cpu").style.display = "";
-			$("vlan_iptv").style.display = "";
-			$("vlan_lan1").style.display = "";
-			$("vlan_lan2").style.display = "";
-			$("vlan_lan3").style.display = "";
-		}
-		$("vlan_lan4").style.display = "none";
-		add_option(document.form.wan_src_phy, "LAN1", "1", (original_wan_src_phy == 1) ? 1 : 0);
-		add_option(document.form.wan_src_phy, "LAN2", "2", (original_wan_src_phy == 2) ? 1 : 0);
-		add_option(document.form.wan_src_phy, "LAN3", "3", (original_wan_src_phy == 3) ? 1 : 0);
+	else if(wan_stb_x == 7) {
+		vlan_l1 = vlan_filter;
+		vlan_l2 = vlan_filter;
+		vlan_l3 = vlan_filter;
+		add_option(o_wsp, "LAN1", "1", (original_wan_src_phy == 1) ? 1 : 0);
+		add_option(o_wsp, "LAN2", "2", (original_wan_src_phy == 2) ? 1 : 0);
+		add_option(o_wsp, "LAN3", "3", (original_wan_src_phy == 3) ? 1 : 0);
 	}
 
-	change_viptv_mode(vlan_filter);
+	showhide_div("vlan_inet", vlan_filter);
+	showhide_div("vlan_iptv", vlan_filter);
+	showhide_div("vlan_lan1", vlan_l1);
+	showhide_div("vlan_lan2", vlan_l2);
+	showhide_div("vlan_lan3", vlan_l3);
+	showhide_div("vlan_lan4", vlan_l4);
+
+	change_viptv_tag(vlan_filter);
 }
 
-function change_viptv_mode(vf){
-	var v = (document.form.viptv_mode.value == "2" && vf) ? 1 : 0;
+function change_viptv_tag(v){
+	if (v)
+		v = (document.form.vlan_vid_cpu.value !== document.form.vlan_vid_iptv.value);
+	showhide_div("viptv_mode", v);
+	inputCtrl(document.form.viptv_mode, v);
+	change_viptv_mode(v);
+}
+
+function change_viptv_mode(v){
+	if (v)
+		v = (document.form.viptv_mode.value == "2");
 	showhide_div("tbl_viptv_sect", v);
 	inputCtrl(document.form.viptv_ipaddr, v);
 	inputCtrl(document.form.viptv_netmask, v);
 	inputCtrl(document.form.viptv_gateway, v);
 }
 
-function click_untag_lan(lan_port) {
-	if (lan_port == 1)
-		document.form.vlan_tag_lan1.value = (document.form.untag_lan1.checked) ? "0" : "1";
-	else if (lan_port == 2)
-		document.form.vlan_tag_lan2.value = (document.form.untag_lan2.checked) ? "0" : "1";
-	else if (lan_port == 3)
-		document.form.vlan_tag_lan3.value = (document.form.untag_lan3.checked) ? "0" : "1";
-	else if (lan_port == 4)
-		document.form.vlan_tag_lan4.value = (document.form.untag_lan4.checked) ? "0" : "1";
+function click_untag_lan(o,lp) {
+	var v = (o.checked) ? "0" : "1";
+	if (lp == 1)
+		document.form.vlan_tag_lan1.value = v;
+	else if (lp == 2)
+		document.form.vlan_tag_lan2.value = v;
+	else if (lp == 3)
+		document.form.vlan_tag_lan3.value = v;
+	else if (lp == 4)
+		document.form.vlan_tag_lan4.value = v;
 }
 
 function AuthSelection(auth){
@@ -699,11 +657,9 @@ function simplyMAC(fullMAC){
 
 
 </script>
-
 <style>
-    .wlan_filter {width: 50px;}
+.wlan_filter {width: 50px;}
 </style>
-
 </head>
 
 <body onload="initial();" onunLoad="return unload_body();">
@@ -718,7 +674,7 @@ function simplyMAC(fullMAC){
     <div class="container-fluid" style="padding-right: 0px">
         <div class="row-fluid">
             <div class="span3"><center><div id="logo"></div></center></div>
-            <div class="span9" >
+            <div class="span9">
                 <div id="TopBanner"></div>
             </div>
         </div>
@@ -793,21 +749,6 @@ function simplyMAC(fullMAC){
                                             </td>
                                         </tr>
                                         <tr>
-                                            <th><#Enable_NAT#></th>
-                                            <td>
-                                                <div class="main_itoggle">
-                                                    <div id="wan_nat_x_on_of">
-                                                        <input type="checkbox" id="wan_nat_x_fake" <% nvram_match_x("", "wan_nat_x", "1", "value=1 checked"); %><% nvram_match_x("", "wan_nat_x", "0", "value=0"); %>>
-                                                    </div>
-                                                </div>
-
-                                                <div style="position: absolute; margin-left: -10000px;">
-                                                    <input type="radio" name="wan_nat_x" id="wan_nat_x_1" class="input" value="1" <% nvram_match_x("", "wan_nat_x", "1", "checked"); %>/><#checkbox_Yes#>
-                                                    <input type="radio" name="wan_nat_x" id="wan_nat_x_0" class="input" value="0" <% nvram_match_x("", "wan_nat_x", "0", "checked"); %>/><#checkbox_No#>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,23);"><#HardwareNAT#></a></th>
                                             <td>
                                                 <select name="hw_nat_mode" class="input">
@@ -857,20 +798,20 @@ function simplyMAC(fullMAC){
                                         </tr>
                                         <tr id="row_wan_ipaddr">
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,1);"><#IPConnection_ExternalIPAddress_itemname#></a></th>
-                                            <td><input type="text" name="wan_ipaddr" maxlength="15" class="input" size="15" value="<% nvram_get_x("","wan_ipaddr"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);"/></td>
+                                            <td><input type="text" name="wan_ipaddr" maxlength="15" class="input" size="15" value="<% nvram_get_x("","wan_ipaddr"); %>" onKeyPress="return is_ipaddr(this,event);"/></td>
                                         </tr>
                                         <tr id="row_wan_netmask">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,2);"><#IPConnection_x_ExternalSubnetMask_itemname#></a></th>
-                                            <td><input type="text" name="wan_netmask" maxlength="15" class="input" size="15" value="<% nvram_get_x("","wan_netmask"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);"/></td>
+                                            <td><input type="text" name="wan_netmask" maxlength="15" class="input" size="15" value="<% nvram_get_x("","wan_netmask"); %>" onKeyPress="return is_ipaddr(this,event);"/></td>
                                         </tr>
                                         <tr id="row_wan_gateway">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,3);"><#IPConnection_x_ExternalGateway_itemname#></a></th>
-                                            <td><input type="text" name="wan_gateway" maxlength="15" class="input" size="15" value="<% nvram_get_x("","wan_gateway"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);"/></td>
+                                            <td><input type="text" name="wan_gateway" maxlength="15" class="input" size="15" value="<% nvram_get_x("","wan_gateway"); %>" onKeyPress="return is_ipaddr(this,event);"/></td>
                                         </tr>
                                         <tr id="row_wan_mtu">
                                             <th>MTU:</th>
                                             <td>
-                                                <input type="text" name="wan_mtu" maxlength="4" class="input" size="5" value="<% nvram_get_x("","wan_mtu"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" name="wan_mtu" maxlength="4" class="input" size="5" value="<% nvram_get_x("","wan_mtu"); %>" onkeypress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1300..1500]</span>
                                             </td>
                                         </tr>
@@ -898,19 +839,19 @@ function simplyMAC(fullMAC){
                                         <tr id="row_wan_dns1">
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,13);"><#IPConnection_x_DNSServer1_itemname#> 1:</a></th>
                                             <td>
-                                              <input type="text" maxlength="15" class="input" size="15" name="wan_dns1_x" value="<% nvram_get_x("","wan_dns1_x"); %>" onkeypress="return is_ipaddr(this)" onkeyup="change_ipaddr(this)"/>
+                                              <input type="text" maxlength="15" class="input" size="15" name="wan_dns1_x" value="<% nvram_get_x("","wan_dns1_x"); %>" onkeypress="return is_ipaddr(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_wan_dns2">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,14);"><#IPConnection_x_DNSServer1_itemname#> 2:</a></th>
                                             <td>
-                                               <input type="text" maxlength="15" class="input" size="15" name="wan_dns2_x" value="<% nvram_get_x("","wan_dns2_x"); %>" onkeypress="return is_ipaddr(this)" onkeyup="change_ipaddr(this)"/>
+                                               <input type="text" maxlength="15" class="input" size="15" name="wan_dns2_x" value="<% nvram_get_x("","wan_dns2_x"); %>" onkeypress="return is_ipaddr(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_wan_dns3">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,15);"><#IPConnection_x_DNSServer1_itemname#> 3:</a></th>
                                             <td>
-                                               <input type="text" maxlength="15" class="input" size="15" name="wan_dns3_x" value="<% nvram_get_x("","wan_dns3_x"); %>" onkeypress="return is_ipaddr(this)" onkeyup="change_ipaddr(this)"/>
+                                               <input type="text" maxlength="15" class="input" size="15" name="wan_dns3_x" value="<% nvram_get_x("","wan_dns3_x"); %>" onkeypress="return is_ipaddr(this,event);"/>
                                             </td>
                                         </tr>
                                     </table>
@@ -931,13 +872,13 @@ function simplyMAC(fullMAC){
                                         <tr id="row_ppp_peer">
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,20);"><#PPPConnection_x_HeartBeat_itemname#></a></th>
                                             <td>
-                                                <input type="text" name="wan_ppp_peer" class="input" maxlength="256" size="32" value="<% nvram_get_x("","wan_ppp_peer"); %>" onKeyPress="return is_string(this)"/>
+                                                <input type="text" name="wan_ppp_peer" class="input" maxlength="256" size="32" value="<% nvram_get_x("","wan_ppp_peer"); %>" onKeyPress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,4);"><#PPPConnection_UserName_itemname#></a></th>
                                             <td>
-                                               <input type="text" maxlength="64" class="input" size="32" name="wan_pppoe_username" value="<% nvram_get_x("","wan_pppoe_username"); %>" onkeypress="return is_string(this)"/>
+                                               <input type="text" maxlength="64" class="input" size="32" name="wan_pppoe_username" value="<% nvram_get_x("","wan_pppoe_username"); %>" onkeypress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr>
@@ -974,42 +915,42 @@ function simplyMAC(fullMAC){
                                         <tr id="row_pppoe_mtu">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,7);"><#PPPConnection_x_PPPoEMTU_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wan_pppoe_mtu" class="input" value="<% nvram_get_x("", "wan_pppoe_mtu"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="4" size="5" name="wan_pppoe_mtu" class="input" value="<% nvram_get_x("", "wan_pppoe_mtu"); %>" onkeypress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1000..1492]</span>
                                             </td>
                                         </tr>
                                         <tr id="row_pppoe_mru">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,8);"><#PPPConnection_x_PPPoEMRU_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wan_pppoe_mru" class="input" value="<% nvram_get_x("", "wan_pppoe_mru"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="4" size="5" name="wan_pppoe_mru" class="input" value="<% nvram_get_x("", "wan_pppoe_mru"); %>" onkeypress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1000..1492]</span>
                                             </td>
                                         </tr>
                                         <tr id="row_pptp_mtu" style="display:none">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,7);"><#PPPConnection_x_PPPoEMTU_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wan_pptp_mtu" class="input" value="<% nvram_get_x("", "wan_pptp_mtu"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="4" size="5" name="wan_pptp_mtu" class="input" value="<% nvram_get_x("", "wan_pptp_mtu"); %>" onkeypress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1000..1476]</span>
                                             </td>
                                         </tr>
                                         <tr id="row_pptp_mru" style="display:none">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,8);"><#PPPConnection_x_PPPoEMRU_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wan_pptp_mru" class="input" value="<% nvram_get_x("", "wan_pptp_mru"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="4" size="5" name="wan_pptp_mru" class="input" value="<% nvram_get_x("", "wan_pptp_mru"); %>" onkeypress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1000..1500]</span>
                                             </td>
                                         </tr>
                                         <tr id="row_l2tp_mtu" style="display:none">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,7);"><#PPPConnection_x_PPPoEMTU_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wan_l2tp_mtu" class="input" value="<% nvram_get_x("", "wan_l2tp_mtu"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="4" size="5" name="wan_l2tp_mtu" class="input" value="<% nvram_get_x("", "wan_l2tp_mtu"); %>" onkeypress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1000..1460]</span>
                                             </td>
                                         </tr>
                                         <tr id="row_l2tp_mru" style="display:none">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,8);"><#PPPConnection_x_PPPoEMRU_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wan_l2tp_mru" class="input" value="<% nvram_get_x("", "wan_l2tp_mru"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="4" size="5" name="wan_l2tp_mru" class="input" value="<% nvram_get_x("", "wan_l2tp_mru"); %>" onkeypress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1000..1500]</span>
                                             </td>
                                         </tr>
@@ -1023,26 +964,26 @@ function simplyMAC(fullMAC){
                                         <tr id="row_pppoe_svc">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,9);"><#PPPConnection_x_ServiceName_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="32" class="input" size="32" name="wan_pppoe_service" value="<% nvram_get_x("","wan_pppoe_service"); %>" onkeypress="return is_string(this)"/>
+                                                <input type="text" maxlength="32" class="input" size="32" name="wan_pppoe_service" value="<% nvram_get_x("","wan_pppoe_service"); %>" onkeypress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_pppoe_ac">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,10);"><#PPPConnection_x_AccessConcentrator_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="32" class="input" size="32" name="wan_pppoe_ac" value="<% nvram_get_x("","wan_pppoe_ac"); %>" onkeypress="return is_string(this)"/>
+                                                <input type="text" maxlength="32" class="input" size="32" name="wan_pppoe_ac" value="<% nvram_get_x("","wan_pppoe_ac"); %>" onkeypress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_pppoe_it" style="display:none">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,6);"><#PPPConnection_IdleDisconnectTime_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="10" class="input" size="32" name="wan_pppoe_idletime" value="<% nvram_get_x("","wan_pppoe_idletime"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="10" class="input" size="32" name="wan_pppoe_idletime" value="<% nvram_get_x("","wan_pppoe_idletime"); %>" onkeypress="return is_number(this,event);"/>
                                                &nbsp;<span style="color:#888;">[0..86400]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,19);"><#PPPConnection_x_AdditionalOptions_itemname#></a></th>
                                             <td>
-                                                <input type="text" name="wan_ppp_pppd" value="<% nvram_get_x("", "wan_ppp_pppd"); %>" class="input" maxlength="255" size="32" onKeyPress="return is_string(this)" onBlur="validate_string(this)"/>
+                                                <input type="text" name="wan_ppp_pppd" value="<% nvram_get_x("", "wan_ppp_pppd"); %>" class="input" maxlength="255" size="32" onKeyPress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                     </table>
@@ -1069,20 +1010,20 @@ function simplyMAC(fullMAC){
                                         <tr id="row_auth_host">
                                             <th><#ISP_Authentication_host#></th>
                                             <td>
-                                                <input type="text" name="wan_auth_host" class="input" maxlength="15" size="32" value="<% nvram_get_x("","wan_auth_host"); %>"  onKeyUp="change_ipaddr(this);"/>
+                                                <input type="text" name="wan_auth_host" class="input" maxlength="15" size="32" value="<% nvram_get_x("","wan_auth_host"); %>" onKeyPress="return is_ipaddr(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_auth_user">
                                             <th><#ISP_Authentication_user#></th>
                                             <td>
-                                                <input type="text" maxlength="64" class="input" size="32" name="wan_auth_user" value="<% nvram_get_x("","wan_auth_user"); %>" onKeyPress="return is_string(this)"/>
+                                                <input type="text" maxlength="64" class="input" size="32" name="wan_auth_user" value="<% nvram_get_x("","wan_auth_user"); %>" onKeyPress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_auth_pass">
                                             <th><#ISP_Authentication_pass#></th>
                                             <td>
                                                 <div class="input-append">
-                                                    <input type="password" maxlength="64" class="input" size="32" name="wan_auth_pass" id="wan_auth_pass" style="width: 175px;" value="<% nvram_get_x("","wan_auth_pass"); %>" onKeyPress="return is_string(this)"/>
+                                                    <input type="password" maxlength="64" class="input" size="32" name="wan_auth_pass" id="wan_auth_pass" style="width: 175px;" value="<% nvram_get_x("","wan_auth_pass"); %>" onKeyPress="return is_string(this,event);"/>
                                                     <button style="margin-left: -5px;" class="btn" type="button" onclick="passwordShowHide('wan_auth_pass')"><i class="icon-eye-close"></i></button>
                                                 </div>
                                             </td>
@@ -1090,20 +1031,30 @@ function simplyMAC(fullMAC){
                                         <tr id="row_hostname">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,16);"><#PPPConnection_x_HostNameForISP_itemname#></a></th>
                                             <td>
-                                                <input type="text" name="wan_hostname" class="input" maxlength="32" size="32" value="<% nvram_get_x("","wan_hostname"); %>" onkeypress="return is_string(this)"/>
+                                                <input type="text" name="wan_hostname" class="input" maxlength="32" size="32" value="<% nvram_get_x("","wan_hostname"); %>" onkeypress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_vci">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,19);">Vendor Class Identifier:</a></th>
                                             <td>
-                                                <input type="text" name="wan_vci" class="input" maxlength="128" size="32" value="<% nvram_get_x("","wan_vci"); %>" onkeypress="return is_string(this)"/>
+                                                <input type="text" name="wan_vci" class="input" maxlength="128" size="32" value="<% nvram_get_x("","wan_vci"); %>" onkeypress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,17);"><#PPPConnection_x_MacAddressForISP_itemname#></a></th>
                                             <td>
-                                                <input type="text" name="wan_hwaddr_x" class="input" style="float: left; margin-right: 5px;" maxlength="12" size="15" value="<% nvram_get_x("","wan_hwaddr_x"); %>" onKeyPress="return is_hwaddr()"/>
+                                                <input type="text" name="wan_hwaddr_x" class="input" style="float: left; margin-right: 5px;" maxlength="12" size="15" value="<% nvram_get_x("","wan_hwaddr_x"); %>" onKeyPress="return is_hwaddr(event);"/>
                                                 <button type="button" class="btn" onclick="showMAC();"><i class="icon icon-plus"></i></button>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th><#WAN_TTL_Fix#></th>
+                                            <td>
+                                                <select name="wan_ttl_fix" class="input">
+                                                    <option value="0" <% nvram_match_x("", "wan_ttl_fix", "0", "selected"); %>><#WAN_TTL_Item0#> (*)</option>
+                                                    <option value="1" <% nvram_match_x("", "wan_ttl_fix", "1", "selected"); %>><#WAN_TTL_Item1#></option>
+                                                    <option value="2" <% nvram_match_x("", "wan_ttl_fix", "2", "selected"); %>><#WAN_TTL_Item2#></option>
+                                                </select>
                                             </td>
                                         </tr>
                                     </table>
@@ -1114,15 +1065,15 @@ function simplyMAC(fullMAC){
                                         </tr>
                                         <tr>
                                             <th width="50%"><#IPConnection_ExternalIPAddress_itemname#></th>
-                                            <td><input type="text" name="viptv_ipaddr" maxlength="15" class="input" size="15" value="<% nvram_get_x("","viptv_ipaddr"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);"/></td>
+                                            <td><input type="text" name="viptv_ipaddr" maxlength="15" class="input" size="15" value="<% nvram_get_x("","viptv_ipaddr"); %>" onKeyPress="return is_ipaddr(this,event);"/></td>
                                         </tr>
                                         <tr>
                                             <th><#IPConnection_x_ExternalSubnetMask_itemname#></th>
-                                            <td><input type="text" name="viptv_netmask" maxlength="15" class="input" size="15" value="<% nvram_get_x("","viptv_netmask"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);"/></td>
+                                            <td><input type="text" name="viptv_netmask" maxlength="15" class="input" size="15" value="<% nvram_get_x("","viptv_netmask"); %>" onKeyPress="return is_ipaddr(this,event);"/></td>
                                         </tr>
                                         <tr>
                                             <th><#IPConnection_x_ExternalGateway_itemname#></th>
-                                            <td><input type="text" name="viptv_gateway" maxlength="15" class="input" size="15" value="<% nvram_get_x("","viptv_gateway"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);"/></td>
+                                            <td><input type="text" name="viptv_gateway" maxlength="15" class="input" size="15" value="<% nvram_get_x("","viptv_gateway"); %>" onKeyPress="return is_ipaddr(this,event);"/></td>
                                         </tr>
                                     </table>
 
@@ -1177,20 +1128,20 @@ function simplyMAC(fullMAC){
                                                 </div>
                                             </td>
                                         </tr>
-                                        <tr id="vlan_cpu">
+                                        <tr id="vlan_inet">
                                             <th>VLAN CPU (Internet):</th>
                                             <td>
-                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_cpu" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_cpu"); %>"/>&nbsp;&nbsp;</span>
-                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_cpu" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_cpu"); %>"/></span>
+                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_cpu" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_cpu"); %>" onkeypress="return is_number(this,event);" onblur="change_viptv_tag(1);"/>&nbsp;&nbsp;</span>
+                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_cpu" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_cpu"); %>" onkeypress="return is_number(this,event);"/></span>
                                             </td>
                                         </tr>
                                         <tr id="vlan_iptv">
                                             <th>VLAN CPU (IPTV):</th>
                                             <td>
-                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_iptv" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_iptv"); %>"/>&nbsp;&nbsp;</span>
-                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_iptv" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_iptv"); %>"/></span>
+                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_iptv" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_iptv"); %>" onkeypress="return is_number(this,event);" onblur="change_viptv_tag(1);"/>&nbsp;&nbsp;</span>
+                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_iptv" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_iptv"); %>" onkeypress="return is_number(this,event);"/></span>
                                                 <span class="input-prepend">&nbsp;
-                                                <select name="viptv_mode" class="input" style="width: 95px;" onchange="change_viptv_mode(1);">
+                                                <select name="viptv_mode" id="viptv_mode" class="input" style="width: 95px;" onchange="change_viptv_mode(1);">
                                                     <option value="0" <% nvram_match_x("", "viptv_mode", "0", "selected"); %>>DHCP (*)</option>
                                                     <option value="1" <% nvram_match_x("", "viptv_mode", "1", "selected"); %>>ZeroConf</option>
                                                     <option value="2" <% nvram_match_x("", "viptv_mode", "2", "selected"); %>>Static IP</option>
@@ -1201,33 +1152,33 @@ function simplyMAC(fullMAC){
                                         <tr id="vlan_lan1">
                                             <th>VLAN LAN1:</th>
                                             <td>
-                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_lan1" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_lan1"); %>"/>&nbsp;&nbsp;</span>
-                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_lan1" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_lan1"); %>"/>&nbsp;&nbsp;</span>
-                                                <label class="checkbox inline"><input type="checkbox" name="untag_lan1" value="" style="margin-left:10;" onclick="click_untag_lan(1);" <% nvram_match_x("", "vlan_tag_lan1", "0", "checked"); %>/><#UntagVLAN#></label>
+                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_lan1" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_lan1"); %>" onkeypress="return is_number(this,event);"/>&nbsp;&nbsp;</span>
+                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_lan1" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_lan1"); %>" onkeypress="return is_number(this,event);"/>&nbsp;&nbsp;</span>
+                                                <label class="checkbox inline"><input type="checkbox" name="untag_lan1" value="" style="margin-left:10;" onclick="click_untag_lan(this,1);" <% nvram_match_x("", "vlan_tag_lan1", "0", "checked"); %>/><#UntagVLAN#></label>
                                             </td>
                                         </tr>
                                         <tr id="vlan_lan2">
                                             <th>VLAN LAN2:</th>
                                             <td>
-                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_lan2" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_lan2"); %>"/>&nbsp;&nbsp;</span>
-                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_lan2" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_lan2"); %>"/>&nbsp;&nbsp;</span>
-                                                <label class="checkbox inline"><input type="checkbox" name="untag_lan2" value="" style="margin-left:10;" onclick="click_untag_lan(2);" <% nvram_match_x("", "vlan_tag_lan2", "0", "checked"); %>/><#UntagVLAN#></label>
+                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_lan2" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_lan2"); %>" onkeypress="return is_number(this,event);"/>&nbsp;&nbsp;</span>
+                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_lan2" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_lan2"); %>" onkeypress="return is_number(this,event);"/>&nbsp;&nbsp;</span>
+                                                <label class="checkbox inline"><input type="checkbox" name="untag_lan2" value="" style="margin-left:10;" onclick="click_untag_lan(this,2);" <% nvram_match_x("", "vlan_tag_lan2", "0", "checked"); %>/><#UntagVLAN#></label>
                                             </td>
                                         </tr>
                                         <tr id="vlan_lan3">
                                             <th>VLAN LAN3:</th>
                                             <td>
-                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_lan3" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_lan3"); %>"/>&nbsp;&nbsp;</span>
-                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_lan3" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_lan3"); %>"/>&nbsp;&nbsp;</span>
-                                                <label class="checkbox inline"><input type="checkbox" name="untag_lan3" value="" style="margin-left:10;" onclick="click_untag_lan(3);" <% nvram_match_x("", "vlan_tag_lan3", "0", "checked"); %>/><#UntagVLAN#></label>
+                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_lan3" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_lan3"); %>" onkeypress="return is_number(this,event);"/>&nbsp;&nbsp;</span>
+                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_lan3" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_lan3"); %>" onkeypress="return is_number(this,event);"/>&nbsp;&nbsp;</span>
+                                                <label class="checkbox inline"><input type="checkbox" name="untag_lan3" value="" style="margin-left:10;" onclick="click_untag_lan(this,3);" <% nvram_match_x("", "vlan_tag_lan3", "0", "checked"); %>/><#UntagVLAN#></label>
                                             </td>
                                         </tr>
                                         <tr id="vlan_lan4">
                                             <th>VLAN LAN4:</th>
                                             <td>
-                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_lan4" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_lan4"); %>"/>&nbsp;&nbsp;</span>
-                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_lan4" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_lan4"); %>"/>&nbsp;&nbsp;</span>
-                                                <label class="checkbox inline"><input type="checkbox" name="untag_lan4" value="" style="margin-left:10;" onclick="click_untag_lan(4);" <% nvram_match_x("", "vlan_tag_lan4", "0", "checked"); %>/><#UntagVLAN#></label>
+                                                <span class="input-prepend"><span class="add-on">VID</span><input type="text" name="vlan_vid_lan4" class="wlan_filter" size="4" maxlength="4" value="<% nvram_get_x("", "vlan_vid_lan4"); %>" onkeypress="return is_number(this,event);"/>&nbsp;&nbsp;</span>
+                                                <span class="input-prepend"><span class="add-on">PRIO</span><input type="text" name="vlan_pri_lan4" class="wlan_filter" size="2" maxlength="1" value="<% nvram_get_x("", "vlan_pri_lan4"); %>" onkeypress="return is_number(this,event);"/>&nbsp;&nbsp;</span>
+                                                <label class="checkbox inline"><input type="checkbox" name="untag_lan4" value="" style="margin-left:10;" onclick="click_untag_lan(this,4);" <% nvram_match_x("", "vlan_tag_lan4", "0", "checked"); %>/><#UntagVLAN#></label>
                                             </td>
                                         </tr>
                                     </table>

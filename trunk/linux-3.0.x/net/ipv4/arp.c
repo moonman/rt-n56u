@@ -330,7 +330,7 @@ static void arp_error_report(struct neighbour *neigh, struct sk_buff *skb)
 static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 {
 	__be32 saddr = 0;
-	u8  *dst_ha = NULL;
+	u8 dst_ha[MAX_ADDR_LEN], *dst_hw = NULL;
 	struct net_device *dev = neigh->dev;
 	__be32 target = *(__be32 *)neigh->primary_key;
 	int probes = atomic_read(&neigh->probes);
@@ -373,8 +373,8 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 		if (!(neigh->nud_state & NUD_VALID))
 			printk(KERN_DEBUG
 			       "trying to ucast probe in NUD_INVALID\n");
-		dst_ha = neigh->ha;
-		read_lock_bh(&neigh->lock);
+		neigh_ha_snapshot(dst_ha, neigh, dev);
+		dst_hw = dst_ha;
 	} else {
 		probes -= neigh->parms->app_probes;
 		if (probes < 0) {
@@ -386,9 +386,7 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 	}
 
 	arp_send(ARPOP_REQUEST, ETH_P_ARP, target, dev, saddr,
-		 dst_ha, dev->dev_addr, NULL);
-	if (dst_ha)
-		read_unlock_bh(&neigh->lock);
+		 dst_hw, dev->dev_addr, NULL);
 }
 
 static int arp_ignore(struct in_device *in_dev, __be32 sip, __be32 tip)
@@ -1108,14 +1106,16 @@ static int arp_req_get(struct arpreq *r, struct net_device *dev)
 
 	neigh = neigh_lookup(&arp_tbl, &ip, dev);
 	if (neigh) {
-		read_lock_bh(&neigh->lock);
-		memcpy(r->arp_ha.sa_data, neigh->ha, dev->addr_len);
-		r->arp_flags = arp_state_to_flags(neigh);
-		read_unlock_bh(&neigh->lock);
-		r->arp_ha.sa_family = dev->type;
-		strlcpy(r->arp_dev, dev->name, sizeof(r->arp_dev));
+		if (!(neigh->nud_state & NUD_NOARP)) {
+			read_lock_bh(&neigh->lock);
+			memcpy(r->arp_ha.sa_data, neigh->ha, dev->addr_len);
+			r->arp_flags = arp_state_to_flags(neigh);
+			read_unlock_bh(&neigh->lock);
+			r->arp_ha.sa_family = dev->type;
+			strlcpy(r->arp_dev, dev->name, sizeof(r->arp_dev));
+			err = 0;
+		}
 		neigh_release(neigh);
-		err = 0;
 	}
 	return err;
 }

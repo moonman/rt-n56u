@@ -52,7 +52,7 @@ check_root_partition(const char *devname)
 	{
 		while (fgets(line, sizeof(line), procpt))
 		{
-			if (sscanf(line, " %d %d %d %[^\n ]", &ma, &mi, &sz, ptname) != 4)
+			if (sscanf(line, " %d %d %d %31[^\n ]", &ma, &mi, &sz, ptname) != 4)
 				continue;
 			
 			for (i=1;i<15;i++) {
@@ -141,8 +141,8 @@ detach_swap_partition(char *part_name)
 int mdev_sd_main(int argc, char **argv)
 {
 	int isLock;
-	char aidisk_cmd[64], partno;
-	char *device_name, *action;
+	char aidisk_cmd[64];
+	char *device_name, *action, *partno;
 
 	if (argc != 3){
 		printf("Usage: %s [device_name] [action]\n", argv[0]);
@@ -175,18 +175,19 @@ int mdev_sd_main(int argc, char **argv)
 		goto out_unlock;
 	}
 
-	partno = device_name[3];
-	if (partno == '\0') {
+	if (device_name[3] == '\0') {
 		// sda, sdb, sdc...
 		system("/sbin/hddtune.sh $MDEV");
 		
 		if (check_root_partition(device_name))
 			goto out_unlock;
 		
-		partno = '1';
+		partno = "1";
+	} else {
+		partno = device_name + 3;
 	}
 
-	snprintf(aidisk_cmd, sizeof(aidisk_cmd), "/sbin/automount.sh $MDEV AiDisk_%c%c", device_name[2], partno);
+	snprintf(aidisk_cmd, sizeof(aidisk_cmd), "/sbin/automount.sh $MDEV AiDisk_%c%s", device_name[2], partno);
 
 	umask(0000);
 	if (system(aidisk_cmd) == 0)
@@ -368,7 +369,7 @@ int mdev_wdm_main(int argc, char **argv)
 	}
 
 	// Write node file.
-	mkdir_if_none(MODEM_NODE_DIR);
+	mkdir_if_none(MODEM_NODE_DIR, "777");
 	fp = fopen(node_fname, "w+");
 	if (fp) {
 		fprintf(fp, "pref=%d\n", 1);
@@ -414,8 +415,6 @@ int mdev_net_main(int argc, char **argv)
 	if(!check_hotplug_action(action)){
 		unlink(node_fname);
 		
-		create_file(FLAG_FILE_WWAN_GONE);
-		
 		ifconfig(device_name, 0, "0.0.0.0", NULL);
 		
 		if (get_usb_modem_wan(0))
@@ -431,7 +430,7 @@ int mdev_net_main(int argc, char **argv)
 		devnum = get_usb_devnum(usb_port_id);
 
 	// Write node file.
-	mkdir_if_none(MODEM_NODE_DIR);
+	mkdir_if_none(MODEM_NODE_DIR, "777");
 	fp = fopen(node_fname, "w+");
 	if (fp) {
 		fprintf(fp, "pref=%d\n", 1);
@@ -480,8 +479,6 @@ int mdev_tty_main(int argc, char **argv)
 	if(!check_hotplug_action(action)){
 		unlink(node_fname);
 		
-		create_file(FLAG_FILE_WWAN_GONE);
-		
 		if (get_usb_modem_wan(0))
 			notify_rc("on_unplug_usb_modem");
 		
@@ -501,7 +498,7 @@ int mdev_tty_main(int argc, char **argv)
 	}
 
 	// Write node file.
-	mkdir_if_none(MODEM_NODE_DIR);
+	mkdir_if_none(MODEM_NODE_DIR, "777");
 	fp = fopen(node_fname, "w+");
 	if (fp) {
 		fprintf(fp, "pref=%d\n", (has_int_pipe) ? 1 : 0);

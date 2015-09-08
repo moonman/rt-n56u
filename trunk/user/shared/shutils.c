@@ -41,7 +41,7 @@
 #include <syslog.h>
 #include <utime.h>
 
-#include "nvram/bcmnvram.h"
+#include "nvram_linux.h"
 #include "shutils.h"
 
 /* Activate 64-bit file support on Linux/32bit plus others */
@@ -296,8 +296,7 @@ _eval(char *const argv[], char *path, int timeout, int *ppid)
 		}
 		
 		/* execute command */
-		dprintf("%s\n", argv[0]);
-		setenv("PATH", "/sbin:/bin:/usr/sbin:/usr/bin", 1);
+		setenv("PATH", SYS_EXEC_PATH, 1);
 		alarm(timeout);
 		execvp(argv[0], argv);
 		perror(argv[0]);
@@ -475,7 +474,7 @@ get_mtd_size(const char *mtd)
 		fgets(line, sizeof(line), fp); //skip the 1st line
 		while (fgets(line, sizeof(line), fp)) {
 			unsigned int bsz = 0;
-			if (sscanf(line, "mtd%d: %x %*s \"%s\"", &idx, &bsz, bnm) > 2) {
+			if (sscanf(line, "mtd%d: %x %*s \"%63s\"", &idx, &bsz, bnm) > 2) {
 				/* strip tailed " character, if present. */
 				char *p = strchr(bnm, '"');
 				if (p)

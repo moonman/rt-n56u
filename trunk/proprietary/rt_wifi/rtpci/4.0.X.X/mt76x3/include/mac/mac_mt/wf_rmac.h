@@ -73,6 +73,7 @@
 #define RMAC_CB2R1		(WF_RMAC_BASE + 0x18)
 #define RMAC_CB3R0		(WF_RMAC_BASE + 0x1c)
 #define RMAC_CB3R1		(WF_RMAC_BASE + 0x20)
+#define RMAC_RFCR1		(WF_RMAC_BASE + 0xa4)
 
 typedef struct _RMAC_CBxR0_STRUC {
 	UINT32 addr_31_0;
@@ -99,6 +100,8 @@ typedef union _RMAC_CBxR1_STRUC {
 #define RMAC_OMA2R1	(WF_RMAC_BASE + 0x038)
 #define RMAC_OMA3R0	(WF_RMAC_BASE + 0x03c)
 #define RMAC_OMA3R1	(WF_RMAC_BASE + 0x040)
+#define RMAC_OMA4R0	(WF_RMAC_BASE + 0x044)
+#define RMAC_OMA4R1	(WF_RMAC_BASE + 0x048)
 #define RMAC_B01AR_B1AR	(WF_RMAC_BASE + 0x04c)
 #define RMAC_B23AR_B1AR	(WF_RMAC_BASE + 0x050)
 #define RMAC_ACBEN		(WF_RMAC_BASE + 0x054)
@@ -144,6 +147,7 @@ typedef union _RMAC_MAR1_STRUC{
 #define RMACDR_MBSSID_MASK (0x3 << 24)
 #define RMACDR_MBSSID(p) (((p) & 0x3) << 24)
 #define CHK_HTC_BY_RATE (1 << 26)
+#define SELECT_RXMAXLEN_20BIT (1 << 30)
 
 #define RMAC_RMCR (WF_RMAC_BASE + 0x080)
 #define RMAC_RMCR_SMPS_MODE_MASK (0x3 << 20)
@@ -176,6 +180,10 @@ typedef union _RMAC_MORE_STRUC {
 #define RMAC_CHFREQ		(WF_RMAC_BASE + 0x090)
 #define RMAC_MISC		(WF_RMAC_BASE + 0x094)
 #define RMAC_MAXMINLEN	(WF_RMAC_BASE + 0x098)
+#define RMAC_DROP_MIN_LEN   0xe
+#define RMAC_DROP_MIN_LEN_MASK  (0xff << 24)
+#define RMAC_DROP_MAX_LEN   0x19000
+#define RMAC_DROP_MAX_LEN_MASK  (0xfffff)
 #define RMAC_PHY_DELAY	(WF_RMAC_BASE + 0x0a8)
 #define RMAC_TMR_PA     (WF_RMAC_BASE + 0x0e0)
 

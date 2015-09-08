@@ -658,7 +658,7 @@ ssize_t tcp_splice_read(struct socket *sock, loff_t *ppos,
 				ret = -EAGAIN;
 				break;
 			}
-			sk_wait_data(sk, &timeo);
+			sk_wait_data(sk, &timeo, NULL);
 			if (signal_pending(current)) {
 				ret = sock_intr_errno(timeo);
 				break;
@@ -1271,9 +1271,9 @@ static inline struct sk_buff *tcp_recv_skb(struct sock *sk, u32 seq, u32 *off)
 
 	skb_queue_walk(&sk->sk_receive_queue, skb) {
 		offset = seq - TCP_SKB_CB(skb)->seq;
-		if (tcp_hdr(skb)->syn)
+		if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)
 			offset--;
-		if (offset < skb->len || tcp_hdr(skb)->fin) {
+		if (offset < skb->len || (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)) {
 			*off = offset;
 			return skb;
 		}
@@ -1318,7 +1318,7 @@ int tcp_read_sock(struct sock *sk, read_descriptor_t *desc,
 					break;
 			}
 			used = recv_actor(desc, skb, offset, len);
-			if (used < 0) {
+			if (used <= 0) {
 				if (!copied)
 					copied = used;
 				break;
@@ -1327,17 +1327,21 @@ int tcp_read_sock(struct sock *sk, read_descriptor_t *desc,
 				copied += used;
 				offset += used;
 			}
-			/*
-			 * If recv_actor drops the lock (e.g. TCP splice
+			/* If recv_actor drops the lock (e.g. TCP splice
 			 * receive) the skb pointer might be invalid when
 			 * getting here: tcp_collapse might have deleted it
 			 * while aggregating skbs from the socket queue.
 			 */
-			skb = tcp_recv_skb(sk, seq-1, &offset);
-			if (!skb || (offset+1 != skb->len))
+			skb = tcp_recv_skb(sk, seq - 1, &offset);
+			if (!skb)
 				break;
+			/* TCP coalescing might have appended data to the skb.
+			 * Try to splice more frags
+			 */
+			if (offset + 1 != skb->len)
+				continue;
 		}
-		if (tcp_hdr(skb)->fin) {
+		if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN) {
 			sk_eat_skb(sk, skb);
 			++seq;
 			break;
@@ -1378,7 +1382,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int target;		/* Read at least this many bytes */
 	long timeo;
 	struct task_struct *user_recv = NULL;
-	struct sk_buff *skb;
+	struct sk_buff *skb, *last;
 	u32 urg_hole = 0;
 
 	lock_sock(sk);
@@ -1416,7 +1420,9 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		/* Next get a buffer. */
 
+		last = skb_peek_tail(&sk->sk_receive_queue);
 		skb_queue_walk(&sk->sk_receive_queue, skb) {
+			last = skb;
 			/* Now that we have two receive queues this
 			 * shouldn't happen.
 			 */
@@ -1427,11 +1433,11 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				break;
 
 			offset = *seq - TCP_SKB_CB(skb)->seq;
-			if (tcp_hdr(skb)->syn)
+			if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)
 				offset--;
 			if (offset < skb->len)
 				goto found_ok_skb;
-			if (tcp_hdr(skb)->fin)
+			if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
 				goto found_fin_ok;
 			WARN(!(flags & MSG_PEEK),
 			     "recvmsg bug 2: copied %X seq %X rcvnxt %X fl %X\n",
@@ -1535,8 +1541,9 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			/* Do not sleep, just process backlog. */
 			release_sock(sk);
 			lock_sock(sk);
-		} else
-			sk_wait_data(sk, &timeo);
+		} else {
+			sk_wait_data(sk, &timeo, last);
+		}
 
 		if (user_recv) {
 			int chunk;
@@ -1618,7 +1625,7 @@ skip_copy:
 		if (used + offset < skb->len)
 			continue;
 
-		if (tcp_hdr(skb)->fin)
+		if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
 			goto found_fin_ok;
 		if (!(flags & MSG_PEEK))
 			sk_eat_skb(sk, skb);
@@ -1801,8 +1808,10 @@ void tcp_close(struct sock *sk, long timeout)
 	 *  reader process may not have drained the data yet!
 	 */
 	while ((skb = __skb_dequeue(&sk->sk_receive_queue)) != NULL) {
-		u32 len = TCP_SKB_CB(skb)->end_seq - TCP_SKB_CB(skb)->seq -
-			  tcp_hdr(skb)->fin;
+		u32 len = TCP_SKB_CB(skb)->end_seq - TCP_SKB_CB(skb)->seq;
+
+		if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
+			len--;
 		data_was_unread += len;
 		__kfree_skb(skb);
 	}
@@ -2438,7 +2447,7 @@ struct sk_buff *tcp_tso_segment(struct sk_buff *skb,
 {
 	struct sk_buff *segs = ERR_PTR(-EINVAL);
 	struct tcphdr *th;
-	unsigned thlen;
+	unsigned int thlen;
 	unsigned int seq;
 	__be32 delta;
 	unsigned int oldlen;
@@ -2799,9 +2808,9 @@ int tcp_md5_hash_skb_data(struct tcp_md5sig_pool *hp,
 	struct scatterlist sg;
 	const struct tcphdr *tp = tcp_hdr(skb);
 	struct hash_desc *desc = &hp->md5_desc;
-	unsigned i;
-	const unsigned head_data_len = skb_headlen(skb) > header_len ?
-				       skb_headlen(skb) - header_len : 0;
+	unsigned int i;
+	const unsigned int head_data_len = skb_headlen(skb) > header_len ?
+					   skb_headlen(skb) - header_len : 0;
 	const struct skb_shared_info *shi = skb_shinfo(skb);
 	struct sk_buff *frag_iter;
 

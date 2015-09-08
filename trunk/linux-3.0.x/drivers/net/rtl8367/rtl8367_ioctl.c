@@ -7,9 +7,8 @@ static long rtl8367_ioctl(struct file *file, unsigned int req, unsigned long arg
 
 	rtk_api_ret_t         retVal;
 	rtk_port_linkStatus_t port_link = 0;
-	rtk_data_t            port_speed = 0;
-	rtk_data_t            port_duplex = 0;
 	rtk_stat_port_cntr_t  port_counters;
+	port_bytes_t port_bytes = {0};
 
 	unsigned int uint_param = (req >> RTL8367_IOCTL_CMD_LENGTH_BITS);
 	req &= ((1u << RTL8367_IOCTL_CMD_LENGTH_BITS)-1);
@@ -99,49 +98,44 @@ static long rtl8367_ioctl(struct file *file, unsigned int req, unsigned long arg
 		break;
 
 	case RTL8367_IOCTL_STATUS_SPEED_PORT_WAN:
-		retVal = asic_status_speed_port(WAN_PORT_X, &port_link, &port_speed, &port_duplex);
-		port_speed |= (port_duplex << 8);
-		port_speed |= (port_link << 16);
+		retVal = asic_status_speed_port(WAN_PORT_X, &uint_result);
 		if (retVal == RT_ERR_OK)
-			put_user(port_speed, (unsigned int __user *)arg);
+			put_user(uint_result, (unsigned int __user *)arg);
 		else
 			ioctl_result = -EIO;
 		break;
 	case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN1:
-		retVal = asic_status_speed_port(LAN_PORT_1, &port_link, &port_speed, &port_duplex);
-		port_speed |= (port_duplex << 8);
-		port_speed |= (port_link << 16);
+		retVal = asic_status_speed_port(LAN_PORT_1, &uint_result);
 		if (retVal == RT_ERR_OK)
-			put_user(port_speed, (unsigned int __user *)arg);
+			put_user(uint_result, (unsigned int __user *)arg);
 		else
 			ioctl_result = -EIO;
 		break;
 	case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN2:
-		retVal = asic_status_speed_port(LAN_PORT_2, &port_link, &port_speed, &port_duplex);
-		port_speed |= (port_duplex << 8);
-		port_speed |= (port_link << 16);
+		retVal = asic_status_speed_port(LAN_PORT_2, &uint_result);
 		if (retVal == RT_ERR_OK)
-			put_user(port_speed, (unsigned int __user *)arg);
+			put_user(uint_result, (unsigned int __user *)arg);
 		else
 			ioctl_result = -EIO;
 		break;
 	case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN3:
-		retVal = asic_status_speed_port(LAN_PORT_3, &port_link, &port_speed, &port_duplex);
-		port_speed |= (port_duplex << 8);
-		port_speed |= (port_link << 16);
+		retVal = asic_status_speed_port(LAN_PORT_3, &uint_result);
 		if (retVal == RT_ERR_OK)
-			put_user(port_speed, (unsigned int __user *)arg);
+			put_user(uint_result, (unsigned int __user *)arg);
 		else
 			ioctl_result = -EIO;
 		break;
 	case RTL8367_IOCTL_STATUS_SPEED_PORT_LAN4:
-		retVal = asic_status_speed_port(LAN_PORT_4, &port_link, &port_speed, &port_duplex);
-		port_speed |= (port_duplex << 8);
-		port_speed |= (port_link << 16);
+		retVal = asic_status_speed_port(LAN_PORT_4, &uint_result);
 		if (retVal == RT_ERR_OK)
-			put_user(port_speed, (unsigned int __user *)arg);
+			put_user(uint_result, (unsigned int __user *)arg);
 		else
 			ioctl_result = -EIO;
+		break;
+
+	case RTL8367_IOCTL_STATUS_PORT_BYTES:
+		ioctl_result = asic_status_port_bytes(uint_param, &port_bytes);
+		copy_to_user((port_bytes_t __user *)arg, &port_bytes, sizeof(port_bytes_t));
 		break;
 
 	case RTL8367_IOCTL_STATUS_CNT_PORT_WAN:
@@ -255,6 +249,10 @@ static long rtl8367_ioctl(struct file *file, unsigned int req, unsigned long arg
 
 	case RTL8367_IOCTL_VLAN_RESET_TABLE:
 		asic_vlan_reset_table();
+		break;
+	case RTL8367_IOCTL_VLAN_PVID_WAN_GET:
+		uint_result = g_vlan_pvid_wan_untagged;
+		put_user(uint_result, (unsigned int __user *)arg);
 		break;
 	case RTL8367_IOCTL_VLAN_ACCEPT_PORT_MODE:
 		copy_from_user(&uint_value, (int __user *)arg, sizeof(int));

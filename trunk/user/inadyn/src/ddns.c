@@ -364,7 +364,7 @@ static int send_update(ddns_t *ctx, ddns_info_t *info, ddns_alias_t *alias, int 
 static int update_alias_table(ddns_t *ctx)
 {
 	int i, j;
-	int rc = 0, remember = 0;
+	int rc = 0, remember = RC_OK;
 	int anychange = 0;
 
 	/* Issue #15: On external trig. force update to random addr. */
@@ -417,10 +417,10 @@ static int update_alias_table(ddns_t *ctx)
 						 ctx->bind_interface);
 		}
 
-		if (RC_DYNDNS_RSP_NOTOK == rc)
+		if (rc != RC_OK && rc != RC_DYNDNS_RSP_RETRY_LATER)
 			remember = rc;
 
-		if (RC_DYNDNS_RSP_RETRY_LATER == rc && !remember)
+		if (rc == RC_DYNDNS_RSP_RETRY_LATER && remember == RC_OK)
 			remember = rc;
 	}
 
@@ -587,6 +587,14 @@ static int check_error(ddns_t *ctx, int rc)
 	case RC_IP_CONNECT_FAILED:      /* Cannot connect to DDNS server atm. */
 	case RC_IP_SEND_ERROR:
 	case RC_IP_RECV_ERROR:
+	case RC_HTTPS_NO_SSL_SUPPORT:
+#ifdef ENABLE_SSL
+	case RC_HTTPS_SNI_ERROR:
+	case RC_HTTPS_FAILED_CONNECT:
+	case RC_HTTPS_FAILED_GETTING_CERT:
+	case RC_HTTPS_SEND_ERROR:
+	case RC_HTTPS_RECV_ERROR:
+#endif
 	case RC_OS_INVALID_IP_ADDRESS:
 	case RC_DYNDNS_INVALID_RSP_FROM_IP_SERVER:
 		ctx->sleep_sec = DYNDNS_FAILED_UPDATE_PERIOD;
@@ -642,7 +650,8 @@ int ddns_main_loop(ddns_t *ctx, int argc, char *argv[])
 	}
 
 	/* Check file system permissions and create pidfile */
-	DO(os_check_perms(ctx));
+	if (!ctx->update_once)
+		DO(os_check_perms(ctx));
 
 	/* if logfile provided, redirect output to log file */
 	if (strlen(ctx->dbg.p_logfilename) != 0)
@@ -734,10 +743,23 @@ int ddns_main_loop(ddns_t *ctx, int argc, char *argv[])
 			
 			/* else minimal sleep for try again */
 			ctx->sleep_sec = DYNDNS_MIN_SLEEP;
+		} else {
+			/* dynamic increase interval after 3x errors (upper limit 60 min) */
+			if (iterations_err > 3) {
+				int sleep_sec = ctx->sleep_sec * (iterations_err - 2);
+				if (sleep_sec > 3600)
+					sleep_sec = 3600;
+				ctx->sleep_sec = sleep_sec;
+			}
 		}
 
-		if (rc != RC_OK)
-			logit(LOG_WARNING, "Will retry again in %d sec...", ctx->sleep_sec);
+		if (rc != RC_OK) {
+			int minutes = ctx->sleep_sec / 60;
+			if (!minutes)
+				logit(LOG_WARNING, "Will retry again after %d %s...", ctx->sleep_sec, "sec");
+			else
+				logit(LOG_WARNING, "Will retry again after %d %s...", minutes, "min");
+		}
 
 		/* Now sleep a while. Using the time set in sleep_sec data member */
 		wait_for_cmd(ctx);

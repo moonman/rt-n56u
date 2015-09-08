@@ -54,6 +54,8 @@
 #define MTK_ESW_IOCTL_STATUS_SPEED_PORT_LAN3	23
 #define MTK_ESW_IOCTL_STATUS_SPEED_PORT_LAN4	24
 
+#define MTK_ESW_IOCTL_STATUS_PORT_BYTES		26
+
 #define MTK_ESW_IOCTL_STATUS_CNT_PORT_WAN	30
 #define MTK_ESW_IOCTL_STATUS_CNT_PORT_LAN1	31
 #define MTK_ESW_IOCTL_STATUS_CNT_PORT_LAN2	32
@@ -83,6 +85,7 @@
 /////////////////////////////////////////////////
 
 #define MTK_ESW_IOCTL_VLAN_RESET_TABLE		60
+#define MTK_ESW_IOCTL_VLAN_PVID_WAN_GET		61
 #define MTK_ESW_IOCTL_VLAN_ACCEPT_PORT_MODE	62
 #define MTK_ESW_IOCTL_VLAN_CREATE_PORT_VID	63
 #define MTK_ESW_IOCTL_VLAN_CREATE_ENTRY		64
@@ -181,9 +184,10 @@
 #define SWAPI_LINK_SPEED_MODE_FORCE_100_HD	(7)
 #define SWAPI_LINK_SPEED_MODE_FORCE_10_FD	(8)
 #define SWAPI_LINK_SPEED_MODE_FORCE_10_HD	(9)
+#define SWAPI_LINK_SPEED_MODE_FORCE_POWER_OFF	(15)
 
 #define SWAPI_LINK_FLOW_CONTROL_TX_RX		(0)
-#define SWAPI_LINK_FLOW_CONTROL_RX_ASYNC	(1)
+#define SWAPI_LINK_FLOW_CONTROL_TX_ASYNC	(1)
 #define SWAPI_LINK_FLOW_CONTROL_DISABLE		(2)
 
 /////////////////////////////////////////////////
@@ -192,6 +196,14 @@
 
 #define SWAPI_LED_LINK_ACT			(7)
 #define SWAPI_LED_OFF				(11)
+
+/////////////////////////////////////////////////
+
+typedef struct port_bytes_s
+{
+	uint64_t RX;
+	uint64_t TX;
+} port_bytes_t;
 
 #endif
 

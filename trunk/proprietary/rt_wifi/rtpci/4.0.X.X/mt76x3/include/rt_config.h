@@ -42,7 +42,9 @@
 #ifdef AGS_SUPPORT
 #include "ags.h"
 #endif /* AGS_SUPPORT */
-
+#ifdef BAND_STEERING
+#include "band_steering_def.h"
+#endif /* BAND_STEERING */
 #ifdef CONFIG_FPGA_MODE
 #include "fpga/fpga_ctl.h"
 #endif
@@ -148,6 +150,9 @@
 #include "wapi.h"
 #endif /* WAPI_SUPPORT */
 
+#ifdef DOT11K_RRM_SUPPORT
+#include "rrm.h"
+#endif /* DOT11K_RRM_SUPPORT */
 
 
 #if defined(AP_WSC_INCLUDED) || defined(STA_WSC_INCLUDED)
@@ -185,12 +190,21 @@
 #include "vr_ikans.h"
 #endif /* IKANOS_VX_1X0 */
 
+#ifdef DOT11R_FT_SUPPORT
+#include	"ft.h"
+#endif /* DOT11R_FT_SUPPORT */
 
+#ifdef DOT11K_RRM_SUPPORT
+#include "rrm.h"
+#endif /* DOT11K_RRM_SUPPORT */
 
 #ifdef DOT11W_PMF_SUPPORT
 #include "pmf.h"
 #endif /* DOT11W_PMF_SUPPORT */
 
+#ifdef DOT11V_WNM_SUPPORT
+#include "wnm.h"
+#endif /* DOT11V_WNM_SUPPORT */
 
 #ifdef WAPI_SUPPORT
 #include "wapi.h"
@@ -210,6 +224,10 @@
 #endif /* WORKQUEUE_BH / */
 
 
+#ifdef BAND_STEERING
+#include "band_steering.h"
+#endif /* BAND_STEERING */
+
 
 
 #ifdef RLT_MAC
@@ -218,11 +236,24 @@
 
 #ifdef MT_MAC
 #include "mt_io.h"
+#include "mt_ps.h"
 #endif
 
 #ifdef CONFIG_SNIFFER_SUPPORT
 #include "sniffer/sniffer.h"
 #endif /* CONFIG_SNIFFER_SUPPORT */
+
+#ifdef ACL_V2_SUPPORT
+#include "ap_acl_v2.h"
+#endif /* ACL_V2_SUPPORT */
+
+#ifdef SNIFFER_MIB_CMD
+#include "sniffer_mib.h"
+#endif /* SNIFFER_MIB_CMD */
+
+#ifdef ALL_NET_EVENT
+#include "all_net_event.h"
+#endif /* ALL_NET_EVENT */
 
 #ifdef LINUX
 #ifdef RT_CFG80211_SUPPORT
@@ -243,12 +274,6 @@
 
 #ifdef CONFIG_HOTSPOT
 #include "hotspot.h"
-#endif
-
-#ifdef LINUX
-#ifdef CONFIG_TRACE_SUPPORT
-#include "os/trace.h"
-#endif
 #endif
 
 #endif	/* __RT_CONFIG_H__ */

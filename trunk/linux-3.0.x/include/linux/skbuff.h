@@ -403,9 +403,11 @@ struct sk_buff {
 	struct nf_queue_entry	*nf_queue_entry;
 #endif
 
-#if defined(CONFIG_BRIDGE_NETFILTER) || defined(CONFIG_RTDEV_MII)
-	/* Needed ON for iNIC_mii.obj compatible */
+#if defined(CONFIG_BRIDGE_NETFILTER)
 	struct nf_bridge_info	*nf_bridge;
+#elif defined(CONFIG_RTDEV_MII)
+	/* Needed ON for iNIC_mii.obj compatible */
+	void			*nf_bridge_fake;
 #endif
 
 	int			skb_iif;
@@ -1937,12 +1939,6 @@ static inline void skb_frag_list_init(struct sk_buff *skb)
 	skb_shinfo(skb)->frag_list = NULL;
 }
 
-static inline void skb_frag_add_head(struct sk_buff *skb, struct sk_buff *frag)
-{
-	frag->next = skb_shinfo(skb)->frag_list;
-	skb_shinfo(skb)->frag_list = frag;
-}
-
 #define skb_walk_frags(skb, iter)	\
 	for (iter = skb_shinfo(skb)->frag_list; iter; iter = iter->next)
 
@@ -2332,6 +2328,7 @@ static inline int skb_is_gso_v6(const struct sk_buff *skb)
 	return skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6;
 }
 
+#ifdef CONFIG_INET_LRO
 extern void __skb_warn_lro_forwarding(const struct sk_buff *skb);
 
 static inline bool skb_warn_if_lro(const struct sk_buff *skb)
@@ -2347,6 +2344,7 @@ static inline bool skb_warn_if_lro(const struct sk_buff *skb)
 	}
 	return false;
 }
+#endif
 
 static inline void skb_forward_csum(struct sk_buff *skb)
 {

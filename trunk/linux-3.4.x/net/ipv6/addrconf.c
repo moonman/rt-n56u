@@ -316,6 +316,14 @@ static void snmp6_free_dev(struct inet6_dev *idev)
 	snmp_mib_free((void __percpu **)idev->stats.ipv6);
 }
 
+static void in6_dev_finish_destroy_rcu(struct rcu_head *head)
+{
+	struct inet6_dev *idev = container_of(head, struct inet6_dev, rcu);
+
+	snmp6_free_dev(idev);
+	kfree(idev);
+}
+
 /* Nobody refers to this device, we may destroy it. */
 
 void in6_dev_finish_destroy(struct inet6_dev *idev)
@@ -333,10 +341,8 @@ void in6_dev_finish_destroy(struct inet6_dev *idev)
 		pr_warning("Freeing alive inet6 device %p\n", idev);
 		return;
 	}
-	snmp6_free_dev(idev);
-	kfree_rcu(idev, rcu);
+	call_rcu(&idev->rcu, in6_dev_finish_destroy_rcu);
 }
-
 EXPORT_SYMBOL(in6_dev_finish_destroy);
 
 static struct inet6_dev * ipv6_add_dev(struct net_device *dev)
@@ -552,7 +558,7 @@ void inet6_ifa_finish_destroy(struct inet6_ifaddr *ifp)
 		pr_warning("Freeing alive inet6 address %p\n", ifp);
 		return;
 	}
-	dst_release(&ifp->rt->dst);
+	ip6_rt_put(ifp->rt);
 
 	kfree_rcu(ifp, rcu);
 }
@@ -810,7 +816,7 @@ static void ipv6_del_addr(struct inet6_ifaddr *ifp)
 				rt6_set_expires(rt, expires);
 			}
 		}
-		dst_release(&rt->dst);
+		ip6_rt_put(rt);
 	}
 
 	/* clean up prefsrc entries */
@@ -1591,7 +1597,6 @@ static int ipv6_generate_eui64(u8 *eui, struct net_device *dev)
 	switch (dev->type) {
 	case ARPHRD_ETHER:
 	case ARPHRD_FDDI:
-	case ARPHRD_IEEE802_TR:
 		return addrconf_ifid_eui48(eui, dev);
 	case ARPHRD_ARCNET:
 		return addrconf_ifid_arcnet(eui, dev);
@@ -1924,8 +1929,7 @@ void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len, bool sllao)
 			addrconf_prefix_route(&pinfo->prefix, pinfo->prefix_len,
 					      dev, expires, flags);
 		}
-		if (rt)
-			dst_release(&rt->dst);
+		ip6_rt_put(rt);
 	}
 
 	/* Try to figure out our local address for this prefix */
@@ -2496,7 +2500,6 @@ static void addrconf_dev_config(struct net_device *dev)
 
 	if ((dev->type != ARPHRD_ETHER) &&
 	    (dev->type != ARPHRD_FDDI) &&
-	    (dev->type != ARPHRD_IEEE802_TR) &&
 	    (dev->type != ARPHRD_ARCNET) &&
 	    (dev->type != ARPHRD_INFINIBAND) &&
 	    (dev->type != ARPHRD_TUNNEL6)) {
@@ -3993,14 +3996,14 @@ static int inet6_fill_ifla6_attrs(struct sk_buff *skb, struct inet6_dev *idev)
 	struct nlattr *nla;
 	struct ifla_cacheinfo ci;
 
-	NLA_PUT_U32(skb, IFLA_INET6_FLAGS, idev->if_flags);
-
+	if (nla_put_u32(skb, IFLA_INET6_FLAGS, idev->if_flags))
+		goto nla_put_failure;
 	ci.max_reasm_len = IPV6_MAXPLEN;
 	ci.tstamp = cstamp_delta(idev->tstamp);
 	ci.reachable_time = jiffies_to_msecs(idev->nd_parms->reachable_time);
 	ci.retrans_time = jiffies_to_msecs(idev->nd_parms->retrans_time);
-	NLA_PUT(skb, IFLA_INET6_CACHEINFO, sizeof(ci), &ci);
-
+	if (nla_put(skb, IFLA_INET6_CACHEINFO, sizeof(ci), &ci))
+		goto nla_put_failure;
 	nla = nla_reserve(skb, IFLA_INET6_CONF, DEVCONF_MAX * sizeof(s32));
 	if (nla == NULL)
 		goto nla_put_failure;
@@ -4065,15 +4068,13 @@ static int inet6_fill_ifinfo(struct sk_buff *skb, struct inet6_dev *idev,
 	hdr->ifi_flags = dev_get_flags(dev);
 	hdr->ifi_change = 0;
 
-	NLA_PUT_STRING(skb, IFLA_IFNAME, dev->name);
-
-	if (dev->addr_len)
-		NLA_PUT(skb, IFLA_ADDRESS, dev->addr_len, dev->dev_addr);
-
-	NLA_PUT_U32(skb, IFLA_MTU, dev->mtu);
-	if (dev->ifindex != dev->iflink)
-		NLA_PUT_U32(skb, IFLA_LINK, dev->iflink);
-
+	if (nla_put_string(skb, IFLA_IFNAME, dev->name) ||
+	    (dev->addr_len &&
+	     nla_put(skb, IFLA_ADDRESS, dev->addr_len, dev->dev_addr)) ||
+	    nla_put_u32(skb, IFLA_MTU, dev->mtu) ||
+	    (dev->ifindex != dev->iflink &&
+	     nla_put_u32(skb, IFLA_LINK, dev->iflink)))
+		goto nla_put_failure;
 	protoinfo = nla_nest_start(skb, IFLA_PROTINFO);
 	if (protoinfo == NULL)
 		goto nla_put_failure;
@@ -4186,12 +4187,12 @@ static int inet6_fill_prefix(struct sk_buff *skb, struct inet6_dev *idev,
 	if (pinfo->autoconf)
 		pmsg->prefix_flags |= IF_PREFIX_AUTOCONF;
 
-	NLA_PUT(skb, PREFIX_ADDRESS, sizeof(pinfo->prefix), &pinfo->prefix);
-
+	if (nla_put(skb, PREFIX_ADDRESS, sizeof(pinfo->prefix), &pinfo->prefix))
+		goto nla_put_failure;
 	ci.preferred_time = ntohl(pinfo->prefered);
 	ci.valid_time = ntohl(pinfo->valid);
-	NLA_PUT(skb, PREFIX_CACHEINFO, sizeof(ci), &ci);
-
+	if (nla_put(skb, PREFIX_CACHEINFO, sizeof(ci), &ci))
+		goto nla_put_failure;
 	return nlmsg_end(skb, nlh);
 
 nla_put_failure:
@@ -4760,7 +4761,7 @@ int unregister_inet6addr_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(unregister_inet6addr_notifier);
 
-static struct rtnl_af_ops inet6_ops = {
+static struct rtnl_af_ops inet6_ops __read_mostly = {
 	.family		  = AF_INET6,
 	.fill_link_af	  = inet6_fill_link_af,
 	.get_link_af_size = inet6_get_link_af_size,

@@ -32,7 +32,7 @@ static const char *const br_port_state_names[] = {
 void br_log_state(const struct net_bridge_port *p)
 {
 	br_info(p->br, "port %u(%s) entered %s state\n",
-		(unsigned) p->port_no, p->dev->name,
+		(unsigned int) p->port_no, p->dev->name,
 		br_port_state_names[p->state]);
 }
 
@@ -205,7 +205,14 @@ static void br_record_config_timeout_values(struct net_bridge *br,
 /* called under bridge lock */
 void br_transmit_tcn(struct net_bridge *br)
 {
-	br_send_tcn_bpdu(br_get_port(br, br->root_port));
+	struct net_bridge_port *p;
+
+	p = br_get_port(br, br->root_port);
+	if (p)
+		br_send_tcn_bpdu(p);
+	else
+		br_notice(br, "root port %u not found for topology notice\n",
+			  br->root_port);
 }
 
 /* called under bridge lock */
@@ -385,7 +392,6 @@ static void br_make_forwarding(struct net_bridge_port *p)
 	else
 		p->state = BR_STATE_LEARNING;
 
-	br_multicast_enable_port(p);
 	br_log_state(p);
 	br_ifinfo_notify(RTM_NEWLINK, p);
 
@@ -419,6 +425,12 @@ void br_port_state_selection(struct net_bridge *br)
 			}
 		}
 
+		if (p->state != BR_STATE_BLOCKING)
+			br_multicast_enable_port(p);
+		/* Multicast is not disabled for the port when it goes in
+		 * blocking state because the timers will expire and stop by
+		 * themselves without sending more queries.
+		 */
 		if (p->state == BR_STATE_FORWARDING)
 			++liveports;
 	}
@@ -478,7 +490,7 @@ void br_received_tcn_bpdu(struct net_bridge_port *p)
 {
 	if (br_is_designated_port(p)) {
 		br_info(p->br, "port %u(%s) received tcn bpdu\n",
-			(unsigned) p->port_no, p->dev->name);
+			(unsigned int) p->port_no, p->dev->name);
 
 		br_topology_change_detection(p->br);
 		br_topology_change_acknowledge(p);

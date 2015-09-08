@@ -147,6 +147,16 @@ VOID APPeerProbeReqAction(
 			continue; /* check next BSS */
 
 
+#ifdef RT_CFG80211_SUPPORT
+		if (pAd->Cfg80211RegisterProbeReqFrame)
+		{
+			UINT32 freq;
+			MAP_CHANNEL_ID_TO_KHZ(Elem->Channel, freq);
+			freq /= 1000;
+			CFG80211OS_RxMgmt(pAd->ApCfg.MBSSID[apidx].MSSIDDev, freq, (PUCHAR)Elem->Msg, Elem->MsgLen);
+		}
+#endif /* RT_CFG80211_SUPPORT */
+
 #ifdef BAND_STEERING
 	BND_STRG_CHECK_CONNECTION_REQ(	pAd,
 										NULL, 
@@ -211,27 +221,6 @@ VOID APPeerProbeReqAction(
 							  END_OF_ARGS);
 			FrameLen += TmpLen;
 		}
-
-#ifdef A_BAND_SUPPORT
-		/* add Channel switch announcement IE */
-		if ((pAd->CommonCfg.Channel > 14)
-			&& (pAd->CommonCfg.bIEEE80211H == 1)
-			&& (pAd->Dot11_H.RDMode == RD_SWITCHING_MODE))
-		{
-			UCHAR CSAIe=IE_CHANNEL_SWITCH_ANNOUNCEMENT;
-			UCHAR CSALen=3;
-			UCHAR CSAMode=1;
-
-			MakeOutgoingFrame(pOutBuffer+FrameLen,      &TmpLen,
-							  1,                        &CSAIe,
-							  1,                        &CSALen,
-							  1,                        &CSAMode,
-							  1,                        &pAd->CommonCfg.Channel,
-							  1,                        &pAd->Dot11_H.CSCount,
-							  END_OF_ARGS);
-			FrameLen += TmpLen;
-		}
-#endif /* A_BAND_SUPPORT */
 
 #ifdef DOT11_N_SUPPORT
 		if (WMODE_CAP_N(PhyMode) &&
@@ -365,7 +354,7 @@ VOID APPeerProbeReqAction(
 		    /* add country IE, power constraint IE */
 			if (pAd->CommonCfg.bCountryFlag)
 			{
-				ULONG TmpLen, TmpLen2=0;
+				ULONG TmpLen2=0;
 				UCHAR *TmpFrame = NULL;
 
 				os_alloc_mem(NULL, (UCHAR **)&TmpFrame, 256);
@@ -378,6 +367,7 @@ VOID APPeerProbeReqAction(
 					BuildBeaconChList(pAd, TmpFrame, &TmpLen2);
 #else
 					{
+						ULONG TmpLen = 0;
 						UCHAR MaxTxPower = GetCuntryMaxTxPwr(pAd, pAd->CommonCfg.Channel);
 						MakeOutgoingFrame(TmpFrame+TmpLen2,     &TmpLen,
 											1,                 	&pAd->ChannelList[0].Channel,
@@ -527,9 +517,9 @@ VOID APPeerProbeReqAction(
 				MakeOutgoingFrame(pOutBuffer + FrameLen,             &TmpLen,
 								  sizeof(HT_EXT_CHANNEL_SWITCH_ANNOUNCEMENT_IE),	&HtExtChannelSwitchIe,
 								  END_OF_ARGS);
+				FrameLen += TmpLen;
 			}
 #endif /* DOT11_N_SUPPORT */
-			FrameLen += TmpLen;
 		}
 #endif /* A_BAND_SUPPORT */
 
@@ -553,6 +543,22 @@ VOID APPeerProbeReqAction(
 		                          3,                 	PowerConstraintIE,
 		                          END_OF_ARGS);
 		        FrameLen += TmpLen;
+#ifdef DOT11_VHT_AC
+				if (WMODE_CAP_AC(PhyMode)) {
+					ULONG TmpLen;
+					UINT8 vht_txpwr_env_ie = IE_VHT_TXPWR_ENV;
+					UINT8 ie_len;
+					VHT_TXPWR_ENV_IE txpwr_env;
+
+					ie_len = build_vht_txpwr_envelope(pAd, (UCHAR *)&txpwr_env);
+					MakeOutgoingFrame(pOutBuffer + FrameLen, &TmpLen,
+								1,							&vht_txpwr_env_ie,
+								1,							&ie_len,
+								ie_len,						&txpwr_env,
+								END_OF_ARGS);
+					FrameLen += TmpLen;
+				}
+#endif /* DOT11_VHT_AC */
 			}
 #endif /* A_BAND_SUPPORT */
 
@@ -670,7 +676,7 @@ VOID APPeerProbeReqAction(
 #ifdef DOT11_VHT_AC
 			if (WMODE_CAP_AC(PhyMode) &&
 				(pAd->CommonCfg.Channel > 14)) {
-				FrameLen += build_vht_ies(pAd, (UCHAR *)(pOutBuffer+FrameLen), SUBTYPE_PROBE_RSP);
+				FrameLen += build_vht_ies(pAd, (UCHAR *)(pOutBuffer+FrameLen), SUBTYPE_PROBE_RSP, pAd->CommonCfg.vht_max_mcs_cap);
 			}
 #endif /* DOT11_VHT_AC */
 
@@ -717,6 +723,16 @@ VOID APPeerProbeReqAction(
 
 
 
+
+#ifdef RT_CFG80211_SUPPORT
+		if (pAd->ApCfg.MBSSID[apidx].ProbRespExtraIeLen != 0)
+		{
+			MakeOutgoingFrame(pOutBuffer+FrameLen,	&TmpLen,
+					pAd->ApCfg.MBSSID[apidx].ProbRespExtraIeLen,	&pAd->ApCfg.MBSSID[apidx].ProbRespExtraIe[0],
+					END_OF_ARGS);
+			FrameLen += TmpLen;
+		}
+#endif /* RT_CFG80211_SUPPORT */
 
 		/* 802.11n 11.1.3.2.2 active scanning. sending probe response with MCS rate is */
 		MiniportMMRequest(pAd, 0, pOutBuffer, FrameLen);
@@ -818,13 +834,15 @@ VOID APPeerBeaconAction(
 		/* Conflict SSID detection */
 		RTMPConflictSsidDetection(pAd, (PUCHAR)ie_list->Ssid, ie_list->SsidLen, (CHAR)Elem->Rssi0, (CHAR)Elem->Rssi1, (CHAR)Elem->Rssi2);
 #endif /* IDS_SUPPORT */
-			
+
 #ifdef DOT11_N_SUPPORT
+#ifdef DOT11N_DRAFT3
 		/* 40Mhz BSS Width Trigger events Intolerant devices */
 		if ((RealRssi > OBSS_BEACON_RSSI_THRESHOLD) && (ie_list->HtCapability.HtCapInfo.Forty_Mhz_Intolerant)) /* || (HtCapabilityLen == 0))) */
 		{
 			Handle_BSS_Width_Trigger_Events(pAd);
 		}
+#endif /* DOT11N_DRAFT3 */
 #endif /* DOT11_N_SUPPORT */
 
 #ifdef DOT11_N_SUPPORT
@@ -882,6 +900,8 @@ VOID APPeerBeaconAction(
 #endif /* MAC_REPEATER_SUPPORT */
 
 #ifdef APCLI_SUPPORT
+		ApCliCheckPeerExistence(pAd, ie_list->Ssid, ie_list->SsidLen, ie_list->Channel);
+
 		if (Elem->Wcid < MaxWcidNum)
 		{
 			PMAC_TABLE_ENTRY pEntry = NULL;
@@ -893,6 +913,18 @@ VOID APPeerBeaconAction(
 				pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx].ApCliRcvBeaconTime = pAd->Mlme.Now32;
 			}
 		}
+
+			if ( (pAd->CommonCfg.bIEEE80211H == 1) &&
+				ie_list->NewChannel != 0 &&
+				pAd->CommonCfg.Channel != ie_list->NewChannel &&
+				pAd->Dot11_H.RDMode != RD_SWITCHING_MODE)
+			{
+				pAd->CommonCfg.Channel = ie_list->NewChannel;
+				pAd->Dot11_H.RDMode = RD_SWITCHING_MODE;
+				DBGPRINT(RT_DEBUG_TRACE,
+					("[APCLI]  Following root AP to switch channel to ch%u\n",
+					pAd->CommonCfg.Channel));
+			}
 
 #endif /* APCLI_SUPPORT */
 
@@ -975,42 +1007,7 @@ VOID APPeerBeaconAction(
 #endif /* DOT11N_DRAFT3 */
 #endif /* DOT11_N_SUPPORT */
 
-#ifdef ED_MONITOR
-		if (pAd->ed_chk) // only updat scan table when AP turn on edcca
-		{
-			ULONG Idx, ap_count;
-			CHAR    Rssi;
-			
-		       Idx = BssTableSearch(&pAd->ScanTab, ie_list->Bssid, ie_list->Channel);
 
-			if (Idx != BSS_NOT_FOUND)
-		            Rssi = pAd->ScanTab.BssEntry[Idx].Rssi;
-
-		        /* TODO: 2005-03-04 dirty patch. we should change all RSSI related variables to SIGNED SHORT for easy/efficient reading and calaulation */
-				RealRssi = RTMPMaxRssi(pAd, ConvertToRssi(pAd, Elem->Rssi0, RSSI_0), ConvertToRssi(pAd, Elem->Rssi1, RSSI_1), ConvertToRssi(pAd, Elem->Rssi2, RSSI_2));
-		        if ((RealRssi + pAd->BbpRssiToDbmDelta) > Rssi)
-		            Rssi = RealRssi + pAd->BbpRssiToDbmDelta;
-
-				Idx = BssTableSetEntry(pAd, &pAd->ScanTab, ie_list, Rssi, LenVIE, pVIE);
-
-				
-				if (Idx != BSS_NOT_FOUND)
-				{
-					NdisMoveMemory(pAd->ScanTab.BssEntry[Idx].PTSF, &Elem->Msg[24], 4);
-					NdisMoveMemory(&pAd->ScanTab.BssEntry[Idx].TTSF[0], &Elem->TimeStamp.u.LowPart, 4);
-					NdisMoveMemory(&pAd->ScanTab.BssEntry[Idx].TTSF[4], &Elem->TimeStamp.u.LowPart, 4);
-				}
-
-				if ((ap_count = BssChannelAPCount(&pAd->ScanTab, pAd->CommonCfg.Channel)) > pAd->ed_ap_threshold)
-				{
-					if (pAd->ed_chk)
-					{
-						DBGPRINT(RT_DEBUG_ERROR, ("@@@ %s : BssChannelAPCount=%u, ed_ap_threshold=%u,  go to ed_monitor_exit()!!\n", __FUNCTION__, ap_count, pAd->ed_ap_threshold));
-						ed_monitor_exit(pAd);
-					}
-				}
-		}
-#endif /* ED_MONITOR */
 	}
 	/* sanity check fail, ignore this frame */
 
@@ -1268,10 +1265,12 @@ VOID APPeerBeaconAtScanAction(
 		}
 
 #ifdef DOT11_N_SUPPORT
-   		if ((RealRssi > OBSS_BEACON_RSSI_THRESHOLD) && (ie_list->HtCapability.HtCapInfo.Forty_Mhz_Intolerant)) /* || (HtCapabilityLen == 0))) */
+#ifdef DOT11N_DRAFT3
+		if ((RealRssi > OBSS_BEACON_RSSI_THRESHOLD) && (ie_list->HtCapability.HtCapInfo.Forty_Mhz_Intolerant)) /* || (HtCapabilityLen == 0))) */
 		{
 			Handle_BSS_Width_Trigger_Events(pAd);
 		}
+#endif /* DOT11N_DRAFT3 */
 #endif /* DOT11_N_SUPPORT */
 
 #ifdef IDS_SUPPORT
@@ -1369,6 +1368,15 @@ VOID ApSiteSurvey(
 	IN	BOOLEAN				ChannelSel)
 {
     MLME_SCAN_REQ_STRUCT    ScanReq;
+
+	if (RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_BSS_SCAN_IN_PROGRESS))
+	{
+		/*	
+		* Still scanning, ignore this scan.
+		*/
+		DBGPRINT(RT_DEBUG_TRACE, ("ApSiteSurvey:: Scanning now\n"));
+		return;
+	}
 
     AsicDisableSync(pAd);
 

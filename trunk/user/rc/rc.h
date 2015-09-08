@@ -25,15 +25,19 @@
 
 #include <ralink_boards.h>
 
-#include <nvram/bcmnvram.h>
+#include <nvram_linux.h>
 
+#include <rtutils.h>
 #include <netutils.h>
 #include <shutils.h>
 #include <notify_rc.h>
 #include <bin_sem_asus.h>
 
 /* do not set current year, it used for ntp done check! */
-#define SYS_START_YEAR			2010
+#define SYS_START_YEAR			2014
+
+#define DNS_RESOLV_CONF			"/etc/resolv.conf"
+#define DNS_SERVERS_FILE		"/tmp/dnsmasq.servers"
 
 #define SCRIPT_UDHCPC_LAN		"/tmp/udhcpc_lan.script"
 #define SCRIPT_UDHCPC_WAN		"/tmp/udhcpc.script"
@@ -62,6 +66,7 @@
 #define IPT_CHAIN_NAME_VPN_LIST		"vpnlist"
 #define IPT_CHAIN_NAME_MAC_LIST		"maclist"
 #define IPT_CHAIN_NAME_URL_LIST		"urllist"
+#define IPT_CHAIN_NAME_LWF_LIST		"lwflist"
 #define IPT_CHAIN_NAME_BFP_LIMIT	"bfplimit"
 #define IPT_CHAIN_NAME_DOS_LIMIT	"doslimit"
 #define IPT_CHAIN_NAME_LOG_ACCEPT	"logaccept"
@@ -74,8 +79,6 @@
 #define QMI_CLIENT_ID			"/tmp/qmi-client-id"
 #define QMI_HANDLE_PDH			"/tmp/qmi-handle"
 
-#define FLAG_FILE_WWAN_GONE		"/tmp/.wwan_gone"
-
 #define DDNS_CONF_FILE			"/etc/inadyn.conf"
 #define DDNS_DONE_SCRIPT		"/sbin/ddns_updated"
 #define DDNS_CACHE_DIR			"/tmp/inadyn"
@@ -83,6 +86,8 @@
 #define NTPC_DONE_SCRIPT		"/sbin/ntpc_updated"
 
 #define SAMBA_CONF			"/etc/smb.conf"
+
+#define MP_MTD_RWFS			"/media/mtd_rwfs"
 
 #define SR_PREFIX_LAN			"LAN"
 #define SR_PREFIX_MAN			"MAN"
@@ -124,6 +129,7 @@ void shutdown_router(int use_reboot);
 void handle_notifications(void);
 void LED_CONTROL(int gpio_led, int flag);
 void storage_save_time(time_t delta);
+void write_storage_to_mtd(void);
 void erase_storage(void);
 void erase_nvram(void);
 
@@ -145,8 +151,8 @@ int rand_seed_by_time(void);
 void set_pagecache_reclaim(void);
 void restart_all_sysctl(void);
 void update_router_mode();
-char *mac_conv(char *mac_name, int idx, char *buf);
-char *mac_conv2(char *mac_name, int idx, char *buf);
+char *mac_conv(const char *mac_nvkey, int idx, char *buf);
+char *mac_conv2(const char *mac_nvkey, int idx, char *buf);
 void get_eeprom_params(void);
 void char_to_ascii(char *output, char *input);
 unsigned int get_param_int_hex(const char *param);
@@ -158,11 +164,15 @@ int module_smart_unload(char *module_name, int recurse_unload);
 int module_param_get(char *module_name, char *module_param, char *param_value, size_t param_value_size);
 int module_param_set_int(char *module_name, char *module_param, int param_value);
 void oom_score_adjust(pid_t pid, int oom_score_adj);
-void set_cpu_affinity(void);
+void set_cpu_affinity(int is_ap_mode);
+void set_vpn_balancing(const char *vpn_ifname);
+void mount_rwfs_partition(void);
+void umount_rwfs_partition(void);
+void start_rwfs_optware(void);
 void kill_services(char* svc_name[], int wtimeout, int forcekill);
 int kill_process_pidfile(char *pidfile, int wtimeout, int forcekill);
 int create_file(const char *fn);
-int mkdir_if_none(char *dir);
+int mkdir_if_none(const char *dirpath, const char *mode);
 int check_if_file_exist(const char *filepath);
 int check_if_dir_exist(const char *dirpath);
 int check_if_dev_exist(const char *devpath);
@@ -233,6 +243,7 @@ int  udhcpc_lan_main(int argc, char **argv);
 char* get_wan_unit_value(int unit, const char* param_name);
 int  get_wan_unit_value_int(int unit, const char* param_name);
 void set_wan_unit_value(int unit, const char* param_name, const char* value);
+void set_wan_unit_value_int(int unit, const char* param_name, int value);
 void set_wan_unit_param(int unit, const char* param_name);
 void reset_wan_temp(void);
 void reset_man_vars(void);
@@ -251,6 +262,7 @@ void auto_wan_reconnect(void);
 void auto_wan_reconnect_pause(void);
 void manual_wan_reconnect(void);
 void manual_wan_disconnect(void);
+void manual_wisp_reassoc(void);
 void deferred_wan_connect(void);
 void notify_on_wan_ether_link_restored(void);
 void notify_on_internet_state_changed(int has_internet, long elapsed);
@@ -261,7 +273,7 @@ int  del_static_wan_routes(char *wan_ifname);
 int  add_static_man_routes(char *man_ifname);
 int  del_static_man_routes(char *man_ifname);
 int  update_resolvconf(int is_first_run, int do_not_notify);
-int  update_hosts_router(void);
+int  update_hosts_router(const char *lan_ipaddr);
 int  get_wan_ether_link_direct(int is_ap_mode);
 int  get_wan_dns_static(void);
 int  get_wan_wisp_active(int *p_has_link);
@@ -358,7 +370,8 @@ void ip6t_filter_default(void);
 int start_vpn_server(void);
 void stop_vpn_server(void);
 void restart_vpn_server(void);
-void reload_vpn_server(void);
+void reapply_vpn_server(void);
+void get_vpns_pool(int i_vuse, unsigned int *ip_v, unsigned int *ip_m, unsigned int *vp_b, unsigned int *vp_e);
 void vpns_route_to_remote_lan(const char *cname, char *ifname, char *gw, int add);
 int ipup_vpns_main(int argc, char **argv);
 int ipdown_vpns_main(int argc, char **argv);
@@ -377,15 +390,13 @@ int start_openvpn_server(void);
 int start_openvpn_client(void);
 void stop_openvpn_server(void);
 void stop_openvpn_client(void);
+void restart_openvpn_server(void);
 int ovpn_server_script_main(int argc, char **argv);
 int ovpn_client_script_main(int argc, char **argv);
 int ovpn_server_expcli_main(int argc, char **argv);
 #endif
 
 /* net_wifi.c */
-void  nvram_wlan_set(const char* prefix, const char* param, char *value);
-char* nvram_wlan_get(const char* prefix, const char* param);
-int   nvram_wlan_get_int(const char* prefix, const char* param);
 void mlme_state_wl(int is_on);
 void mlme_state_rt(int is_on);
 void mlme_radio_wl(int is_on);
@@ -410,6 +421,7 @@ void start_wifi_wds_wl(int radio_on);
 void start_wifi_wds_rt(int radio_on);
 void start_wifi_apcli_wl(int radio_on);
 void start_wifi_apcli_rt(int radio_on);
+void reconnect_apcli(const char *ifname_apcli, int force);
 int  is_need_8021x(char *auth_mode);
 void start_8021x_wl(void);
 void start_8021x_rt(void);
@@ -437,7 +449,7 @@ int  manual_change_radio_rt(int radio_on);
 int  manual_change_radio_wl(int radio_on);
 int  manual_change_guest_rt(int radio_on);
 int  manual_change_guest_wl(int radio_on);
-int  timecheck_wifi(char *nv_date, char *nv_time1, char *nv_time2);
+int  timecheck_wifi(int is_aband, const char *nv_date, const char *nv_time1, const char *nv_time2);
 
 /* services.c */
 void stop_syslogd();
@@ -478,6 +490,7 @@ void stop_services_lan_wan(void);
 void stop_misc(void);
 
 /* services_ex.c */
+int fill_dnsmasq_servers(void);
 int is_dns_dhcpd_run(void);
 int is_dhcpd_enabled(int is_ap_mode);
 int start_dns_dhcpd(int is_ap_mode);
@@ -533,6 +546,7 @@ void restart_ftpd(void);
 void unload_nfsd(void);
 void stop_nfsd(void);
 void run_nfsd(void);
+void reload_nfsd(void);
 void restart_nfsd(void);
 #endif
 #if defined(APP_MINIDLNA)
@@ -584,6 +598,11 @@ void ip2class(const char *addr, const char *mask, char *out_buf, size_t out_len)
 void start_firewall_ex(void);
 
 /* ralink.c */
+int get_wired_mac_is_single(void);
+int get_wired_mac_e2p_offset(int is_wan);
+int get_wired_mac(int is_wan);
+int set_wired_mac(int is_wan, const char *mac);
+int get_wireless_mac_e2p_offset(int is_5ghz);
 int get_wireless_mac(int is_5ghz);
 int set_wireless_mac(int is_5ghz, const char *mac);
 int get_wireless_cc(void);
@@ -595,10 +614,15 @@ int setPIN(const char *pin);
 int getBootVer(void);
 int getCountryRegion(const char *str);
 int getCountryRegionABand(const char *str);
-int get_apcli_connected(char *ifname);
+int get_apcli_connected(const char *ifname);
 
 
 /* watchdog.c */
+#if defined (BOARD_GPIO_BTN_WPS) || defined (BOARD_GPIO_BTN_WLTOG)
+void ez_event_short(int btn_id);
+void ez_event_long(int btn_id);
+#endif
+int  is_ntpc_updated(void);
 int  ntpc_updated_main(int argc, char *argv[]);
 int  watchdog_main(int argc, char *argv[]);
 int  start_watchdog(void);

@@ -1,4 +1,4 @@
-VERSION       = 1.99.12
+VERSION       = 1.99.14
 NAME          = inadyn
 EXEC          = src/$(NAME)
 RM           ?= rm -f
@@ -9,10 +9,11 @@ PLUGIN_OBJS   = src/plugin.o		plugins/common.o	\
 		plugins/dyndns.o	plugins/changeip.o	\
 		plugins/dnsexit.o	plugins/easydns.o	\
 		plugins/freedns.o	plugins/generic.o	\
-		plugins/sitelutions.o	plugins/tunnelbroker.o	\
+		plugins/sitelutions.o				\
 		plugins/tzo.o		plugins/zoneedit.o	\
 		plugins/zerigo.o	plugins/dhis.o		\
-		plugins/netassist.o
+		plugins/dtdns.o		plugins/giradns.o	\
+		plugins/duiadns.o	plugins/netassist.o
 
 BASE_OBJS     = src/main.o	src/ddns.o	src/cache.o	\
 		src/cmd.o	src/os.o	src/error.o	\
@@ -27,7 +28,7 @@ DEPS          = $(SRCS:.c=.d)
 CFLAGS       += -W -Wall
 CFLAGS       += -D_BSD_SOURCE -D_GNU_SOURCE
 CFLAGS       += -Iinclude -DVERSION=\"$(VERSION)\"
-CFLAGS       += -Iinclude -I$(SHAREDIR)/include
+CFLAGS       += -Iinclude -I$(SHAREDIR)
 CFLAGS       += -ffunction-sections -fdata-sections
 
 LDFLAGS      += -L$(SHAREDIR) -lshared

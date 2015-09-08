@@ -60,20 +60,17 @@ static int br_fill_ifinfo(struct sk_buff *skb, const struct net_bridge_port *por
 	hdr->ifi_flags = dev_get_flags(dev);
 	hdr->ifi_change = 0;
 
-	NLA_PUT_STRING(skb, IFLA_IFNAME, dev->name);
-	NLA_PUT_U32(skb, IFLA_MASTER, br->dev->ifindex);
-	NLA_PUT_U32(skb, IFLA_MTU, dev->mtu);
-	NLA_PUT_U8(skb, IFLA_OPERSTATE, operstate);
-
-	if (dev->addr_len)
-		NLA_PUT(skb, IFLA_ADDRESS, dev->addr_len, dev->dev_addr);
-
-	if (dev->ifindex != dev->iflink)
-		NLA_PUT_U32(skb, IFLA_LINK, dev->iflink);
-
-	if (event == RTM_NEWLINK)
-		NLA_PUT_U8(skb, IFLA_PROTINFO, port->state);
-
+	if (nla_put_string(skb, IFLA_IFNAME, dev->name) ||
+	    nla_put_u32(skb, IFLA_MASTER, br->dev->ifindex) ||
+	    nla_put_u32(skb, IFLA_MTU, dev->mtu) ||
+	    nla_put_u8(skb, IFLA_OPERSTATE, operstate) ||
+	    (dev->addr_len &&
+	     nla_put(skb, IFLA_ADDRESS, dev->addr_len, dev->dev_addr)) ||
+	    (dev->ifindex != dev->iflink &&
+	     nla_put_u32(skb, IFLA_LINK, dev->iflink)) ||
+	    (event == RTM_NEWLINK &&
+	     nla_put_u8(skb, IFLA_PROTINFO, port->state)))
+		goto nla_put_failure;
 	return nlmsg_end(skb, nlh);
 
 nla_put_failure:
@@ -91,7 +88,7 @@ void br_ifinfo_notify(int event, struct net_bridge_port *port)
 	int err = -ENOBUFS;
 
 	br_debug(port->br, "port %u(%s) event %d\n",
-		 (unsigned)port->port_no, port->dev->name, event);
+		 (unsigned int)port->port_no, port->dev->name, event);
 
 	skb = nlmsg_new(br_nlmsg_size(), GFP_ATOMIC);
 	if (skb == NULL)
@@ -107,8 +104,7 @@ void br_ifinfo_notify(int event, struct net_bridge_port *port)
 	rtnl_notify(skb, net, 0, RTNLGRP_LINK, NULL, GFP_ATOMIC);
 	return;
 errout:
-	if (err < 0)
-		rtnl_set_sk_err(net, RTNLGRP_LINK, err);
+	rtnl_set_sk_err(net, RTNLGRP_LINK, err);
 }
 
 /*

@@ -34,6 +34,7 @@
 #include "br_private.h"
 
 static void br_multicast_start_querier(struct net_bridge *br);
+static void br_multicast_add_router(struct net_bridge *br, struct net_bridge_port *port);
 
 static inline int br_ip_equal(const struct br_ip *a, const struct br_ip *b)
 {
@@ -196,12 +197,12 @@ static int br_mdb_copy(struct net_bridge_mdb_htable *new,
 }
 
 #if defined(CONFIG_RTL8367_IGMP_SNOOPING)
-extern void rtl8367_mcast_group_event(const unsigned char *mac_src, const unsigned char *mac_dst,
+extern void rtl8367_mcast_group_event(const u8 *mac_src, const u8 *mac_dst,
 				      const char *dev_name, int is_leave);
 
-static void br_pg_notify_switch(struct net_bridge_port_group *p, int is_leave)
+static void br_pg_notify_switch(struct net_bridge_port_group *p, const u8 *src, int is_leave)
 {
-	unsigned char mac_dst[8];
+	u8 mac_dst[8];
 
 	if (p->port && p->port->dev) {
 #if IS_ENABLED(CONFIG_IPV6)
@@ -210,7 +211,9 @@ static void br_pg_notify_switch(struct net_bridge_port_group *p, int is_leave)
 		else
 #endif
 			ip_eth_mc_map(p->addr.u.ip4, mac_dst);
-		rtl8367_mcast_group_event(p->src_addr, mac_dst, p->port->dev->name, is_leave);
+		if (!src)
+			src = p->src_addr;
+		rtl8367_mcast_group_event(src, mac_dst, p->port->dev->name, is_leave);
 	}
 }
 #endif
@@ -221,7 +224,7 @@ static void br_multicast_free_pg(struct rcu_head *head)
 		container_of(head, struct net_bridge_port_group, rcu);
 
 #if defined(CONFIG_RTL8367_IGMP_SNOOPING)
-	br_pg_notify_switch(p, 1);
+	br_pg_notify_switch(p, NULL, 1);
 #endif
 
 	kfree(p);
@@ -528,8 +531,8 @@ static struct net_bridge_mdb_entry *br_multicast_get_group(
 	struct net_bridge_mdb_htable *mdb;
 	struct net_bridge_mdb_entry *mp;
 	struct hlist_node *p;
-	unsigned count = 0;
-	unsigned max;
+	unsigned int count = 0;
+	unsigned int max;
 	int elasticity;
 	int err;
 
@@ -721,7 +724,7 @@ found:
 	mod_timer(&p->timer, now + br->multicast_membership_interval);
 
 #if defined(CONFIG_RTL8367_IGMP_SNOOPING)
-	br_pg_notify_switch(p, 0);
+	br_pg_notify_switch(p, src, 0);
 #endif
 
 out:
@@ -904,6 +907,8 @@ void br_multicast_enable_port(struct net_bridge_port *port)
 		goto out;
 
 	__br_multicast_enable_port(port);
+	if (port->multicast_router == 2 && hlist_unhashed(&port->rlist))
+		br_multicast_add_router(br, port);
 
 out:
 	spin_unlock(&br->multicast_lock);
@@ -937,6 +942,9 @@ static void br_multicast_add_router(struct net_bridge *br,
 	struct net_bridge_port *p;
 	struct hlist_node *n, *slot = NULL;
 
+	if (!hlist_unhashed(&port->rlist))
+		return;
+
 	hlist_for_each_entry(p, n, &br->router_list, rlist) {
 		if ((unsigned long) port >= (unsigned long) p)
 			break;
@@ -964,12 +972,8 @@ static void br_multicast_mark_router(struct net_bridge *br,
 	if (port->multicast_router != 1)
 		return;
 
-	if (!hlist_unhashed(&port->rlist))
-		goto timer;
-
 	br_multicast_add_router(br, port);
 
-timer:
 	mod_timer(&port->multicast_router_timer,
 		  now + br->multicast_querier_interval);
 }
@@ -1181,18 +1185,6 @@ static void br_multicast_leave_group(struct net_bridge *br,
 	if (!mp)
 		goto out;
 
-	querier_exist = timer_pending(&br->multicast_querier_timer);
-
-	time = jiffies + br->multicast_last_member_count *
-			 br->multicast_last_member_interval;
-
-	if (br->multicast_querier && !querier_exist) {
-		__br_multicast_send_query(br, port, &mp->addr);
-
-		mod_timer(port ? &port->multicast_query_timer :
-				 &br->multicast_query_timer, time);
-	}
-
 	if (port && (port->flags & BR_MULTICAST_FAST_LEAVE)) {
 		struct net_bridge_port_group __rcu **pp;
 
@@ -1202,9 +1194,11 @@ static void br_multicast_leave_group(struct net_bridge *br,
 			if (!br_port_group_equal(p, port, src))
 				continue;
 
-			if (!p->m2u && querier_exist)
-				break;
-
+#if defined(CONFIG_RTL8367_IGMP_SNOOPING)
+			/* direct notify switch for this source MAC */
+			if (src && !ether_addr_equal(src, p->src_addr))
+				br_pg_notify_switch(p, src, 1);
+#endif
 			rcu_assign_pointer(*pp, p->next);
 			hlist_del_init(&p->mglist);
 			del_timer(&p->timer);
@@ -1217,8 +1211,24 @@ static void br_multicast_leave_group(struct net_bridge *br,
 		goto out;
 	}
 
+	querier_exist = timer_pending(&br->multicast_querier_timer);
+#if !defined(CONFIG_RTL8367_IGMP_SNOOPING)
+	if (querier_exist)
+		goto out;
+#endif
+
+	time = jiffies + br->multicast_last_member_count *
+			 br->multicast_last_member_interval;
+
+	if (!querier_exist && br->multicast_querier) {
+		__br_multicast_send_query(br, port, &mp->addr);
+
+		mod_timer(port ? &port->multicast_query_timer :
+				 &br->multicast_query_timer, time);
+	}
+
 	if (!port) {
-		if (mp->mglist &&
+		if (!querier_exist && mp->mglist &&
 		    (timer_pending(&mp->timer) ?
 		     time_after(mp->timer.expires, time) :
 		     try_to_del_timer_sync(&mp->timer) >= 0)) {
@@ -1234,9 +1244,13 @@ static void br_multicast_leave_group(struct net_bridge *br,
 		if (!br_port_group_equal(p, port, src))
 			continue;
 
-		if (!p->m2u && querier_exist)
+#if defined(CONFIG_RTL8367_IGMP_SNOOPING)
+		/* direct notify switch for this source MAC */
+		if (src && !ether_addr_equal(src, p->src_addr))
+			br_pg_notify_switch(p, src, 1);
+		if (querier_exist)
 			break;
-
+#endif
 		if (!hlist_unhashed(&p->mglist) &&
 		    (timer_pending(&p->timer) ?
 		     time_after(p->timer.expires, time) :
@@ -1396,7 +1410,7 @@ static int br_ip6_multicast_mld2_report(struct net_bridge *br,
 		case MLD2_ALLOW_NEW_SOURCES:
 		case MLD2_BLOCK_OLD_SOURCES:
 			err = br_ip6_multicast_add_group(br, port, skb, &grec->grec_mca);
-			if (!err)
+			if (err)
 				goto mld2_out;
 			break;
 
@@ -1418,8 +1432,8 @@ static int br_multicast_ipv4_rcv(struct net_bridge *br,
 	struct sk_buff *skb2 = skb;
 	const struct iphdr *iph;
 	struct igmphdr *ih;
-	unsigned len;
-	unsigned offset;
+	unsigned int len;
+	unsigned int offset;
 	int err;
 
 	/* We treat OOM as packet loss for now. */
@@ -1488,7 +1502,7 @@ static int br_multicast_ipv4_rcv(struct net_bridge *br,
 	case IGMP_HOST_MEMBERSHIP_REPORT:
 	case IGMPV2_HOST_MEMBERSHIP_REPORT:
 		BR_INPUT_SKB_CB(skb)->mrouters_only = 1;
-		err = br_ip4_multicast_add_group(br, port, skb2, ih->group);
+		err = br_ip4_multicast_add_group(br, port, skb, ih->group);
 		break;
 	case IGMPV3_HOST_MEMBERSHIP_REPORT:
 		err = br_ip4_multicast_igmp3_report(br, port, skb2);
@@ -1497,7 +1511,7 @@ static int br_multicast_ipv4_rcv(struct net_bridge *br,
 		err = br_ip4_multicast_query(br, port, skb2);
 		break;
 	case IGMP_HOST_LEAVE_MESSAGE:
-		br_ip4_multicast_leave_group(br, port, skb2, ih->group);
+		br_ip4_multicast_leave_group(br, port, skb, ih->group);
 		break;
 	}
 
@@ -1519,7 +1533,7 @@ static int br_multicast_ipv6_rcv(struct net_bridge *br,
 	u8 icmp6_type;
 	u8 nexthdr;
 	__be16 frag_off;
-	unsigned len;
+	unsigned int len;
 	int offset;
 	int err;
 
@@ -1623,7 +1637,7 @@ static int br_multicast_ipv6_rcv(struct net_bridge *br,
 		}
 		mld = (struct mld_msg *)skb_transport_header(skb2);
 		BR_INPUT_SKB_CB(skb)->mrouters_only = 1;
-		err = br_ip6_multicast_add_group(br, port, skb2, &mld->mld_mca);
+		err = br_ip6_multicast_add_group(br, port, skb, &mld->mld_mca);
 		break;
 	    }
 	case ICMPV6_MLD2_REPORT:
@@ -1640,7 +1654,7 @@ static int br_multicast_ipv6_rcv(struct net_bridge *br,
 			goto out;
 		}
 		mld = (struct mld_msg *)skb_transport_header(skb2);
-		br_ip6_multicast_leave_group(br, port, skb2, &mld->mld_mca);
+		br_ip6_multicast_leave_group(br, port, skb, &mld->mld_mca);
 	    }
 	}
 
@@ -1766,11 +1780,9 @@ out:
 
 int br_multicast_set_router(struct net_bridge *br, unsigned long val)
 {
-	int err = -ENOENT;
+	int err = -EINVAL;
 
 	spin_lock_bh(&br->multicast_lock);
-	if (!netif_running(br->dev))
-		goto unlock;
 
 	switch (val) {
 	case 0:
@@ -1781,13 +1793,8 @@ int br_multicast_set_router(struct net_bridge *br, unsigned long val)
 		br->multicast_router = val;
 		err = 0;
 		break;
-
-	default:
-		err = -EINVAL;
-		break;
 	}
 
-unlock:
 	spin_unlock_bh(&br->multicast_lock);
 
 	return err;
@@ -1796,11 +1803,9 @@ unlock:
 int br_multicast_set_port_router(struct net_bridge_port *p, unsigned long val)
 {
 	struct net_bridge *br = p->br;
-	int err = -ENOENT;
+	int err = -EINVAL;
 
 	spin_lock(&br->multicast_lock);
-	if (!netif_running(br->dev) || p->state == BR_STATE_DISABLED)
-		goto unlock;
 
 	switch (val) {
 	case 0:
@@ -1822,13 +1827,8 @@ int br_multicast_set_port_router(struct net_bridge_port *p, unsigned long val)
 
 		br_multicast_add_router(br, p);
 		break;
-
-	default:
-		err = -EINVAL;
-		break;
 	}
 
-unlock:
 	spin_unlock(&br->multicast_lock);
 
 	return err;
@@ -1908,15 +1908,11 @@ unlock:
 
 int br_multicast_set_hash_max(struct net_bridge *br, unsigned long val)
 {
-	int err = -ENOENT;
+	int err = -EINVAL;
 	u32 old;
 	struct net_bridge_mdb_htable *mdb;
 
 	spin_lock_bh(&br->multicast_lock);
-	if (!netif_running(br->dev))
-		goto unlock;
-
-	err = -EINVAL;
 	if (!is_power_of_2(val))
 		goto unlock;
 

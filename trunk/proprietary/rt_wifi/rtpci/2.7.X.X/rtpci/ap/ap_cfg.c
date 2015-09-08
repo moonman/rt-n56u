@@ -257,15 +257,15 @@ INT	Set_DtimPeriod_Proc(
 	IN	PRTMP_ADAPTER	pAdapter, 
 	IN	PSTRING			arg);
 
-INT Set_NoForwardingMBCast_Proc(
-	IN PRTMP_ADAPTER pAdapter,
- 	IN PSTRING arg);
-
 INT	Set_NoForwarding_Proc(
 	IN	PRTMP_ADAPTER	pAdapter, 
 	IN	PSTRING			arg);
 
 INT	Set_NoForwardingBTNSSID_Proc(
+	IN	PRTMP_ADAPTER	pAdapter, 
+	IN	PSTRING			arg);
+
+INT	Set_NoForwardingMBCast_Proc(
 	IN	PRTMP_ADAPTER	pAdapter, 
 	IN	PSTRING			arg);
 
@@ -434,7 +434,9 @@ INT Set_ApCli_Key3_Proc(IN PRTMP_ADAPTER pAd, IN PSTRING arg);
 INT Set_ApCli_Key4_Proc(IN PRTMP_ADAPTER pAd, IN PSTRING arg);
 INT Set_ApCli_TxMode_Proc(IN PRTMP_ADAPTER pAd, IN  PSTRING arg);
 INT Set_ApCli_TxMcs_Proc(IN PRTMP_ADAPTER pAd, IN  PSTRING arg);
-
+#ifdef APCLI_AUTO_CONNECT_SUPPORT
+INT Set_ApCli_AutoConnect_Proc(IN PRTMP_ADAPTER pAd,	IN PSTRING arg);
+#endif /* APCLI_AUTO_CONNECT_SUPPORT */
 
 #ifdef APCLI_WPA_SUPPLICANT_SUPPORT
 INT Set_ApCli_Wpa_Support(IN PRTMP_ADAPTER pAd, IN	PSTRING	arg);
@@ -936,6 +938,9 @@ static struct {
 	{"ApCliKey4",					Set_ApCli_Key4_Proc},
 	{"ApCliTxMode",					Set_ApCli_TxMode_Proc},
 	{"ApCliTxMcs",					Set_ApCli_TxMcs_Proc},	
+#ifdef APCLI_AUTO_CONNECT_SUPPORT	
+	{"ApCliAutoConnect", 			Set_ApCli_AutoConnect_Proc},
+#endif /* APCLI_AUTO_CONNECT_SUPPORT */
 #ifdef APCLI_WPA_SUPPLICANT_SUPPORT
 	{"ApCliWpaSupport",					Set_ApCli_Wpa_Support},	
 	{"ApCliIEEE1X",					Set_ApCli_IEEE8021X_Proc},	
@@ -1120,6 +1125,16 @@ static struct {
 	{"bufferLoadFromBin", 			Set_LoadEepromBufferFromBin_Proc},
 	{"bufferWriteBack", 			Set_EepromBufferWriteBack_Proc},
 
+#ifdef BAND_STEERING
+	{"BndStrgEnable", 		Set_BndStrg_Enable},
+	{"BndStrgRssiCheck", 	Set_BndStrg_RssiCheck},
+	{"BndStrgAge", 		Set_BndStrg_Age},
+	{"BndStrgHoldTime", 	Set_BndStrg_HoldTime},
+	{"BndStrgCheckTime", 	Set_BndStrg_CheckTime5G},
+#ifdef BND_STRG_DBG
+	{"BndStrgMntAddr", 	Set_BndStrg_MonitorAddr},
+#endif /* BND_STRG_DBG */
+#endif /* BAND_STEERING */
 	
 	{NULL,}
 };
@@ -1172,6 +1187,12 @@ static struct {
 #ifdef WSC_AP_SUPPORT
 	{"WscPeerList", 		WscApShowPeerList},
 #endif /* WSC_AP_SUPPORT */
+
+#ifdef BAND_STEERING
+	{"BndStrgList", 		Show_BndStrg_List},
+	{"BndStrgInfo", 		Show_BndStrg_Info},
+#endif /* BAND_STEERING */
+
 	{NULL,}
 };
 
@@ -3046,6 +3067,11 @@ INT RTMPAPSetInformation(
 			break;
 #endif /*HOSTAPD_SUPPORT*/
 
+#ifdef BAND_STEERING
+	case OID_BNDSTRG_MSG:
+		BndStrg_MsgHandle(pAd, wrq);
+		break;
+#endif /* BAND_STEERING */
 
    		default:
 			DBGPRINT(RT_DEBUG_TRACE, ("Set::unknown IOCTL's subcmd = 0x%08x\n", cmd));
@@ -4537,7 +4563,7 @@ INT	Set_NoForwarding_Proc(
 	ULONG NoForwarding;
 
 	POS_COOKIE	pObj = (POS_COOKIE) pAd->OS_Cookie;
-	
+
 	NoForwarding = simple_strtol(arg, 0, 10);
 
 	if (NoForwarding == 1)
@@ -4547,8 +4573,32 @@ INT	Set_NoForwarding_Proc(
 	else
 		return FALSE;  /*Invalid argument */
 	
-	DBGPRINT(RT_DEBUG_TRACE, ("IF(ra%d) Set_NoForwarding_Proc::(NoForwarding=%ld)\n", 
+	DBGPRINT(RT_DEBUG_TRACE, ("IF(ra%d) Set_NoForwarding_Proc::(NoForwarding=%d)\n", 
 		pObj->ioctl_if, pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaTraffic));
+
+	return TRUE;
+}
+
+
+INT	Set_NoForwardingMBCast_Proc(
+	IN	PRTMP_ADAPTER	pAd, 
+	IN	PSTRING			arg)
+{
+	ULONG NoForwardingMBCast;
+
+	POS_COOKIE	pObj = (POS_COOKIE) pAd->OS_Cookie;
+
+	NoForwardingMBCast = simple_strtol(arg, 0, 10);
+
+	if (NoForwardingMBCast == 1)
+		pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast = TRUE;
+	else if (NoForwardingMBCast == 0)
+		pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast = FALSE;
+	else
+		return FALSE;  //Invalid argument 
+	
+	DBGPRINT(RT_DEBUG_TRACE, ("IF(ra%d) Set_NoForwardingMBCast_Proc::(IsolateInterStaMBCast=%d)\n", 
+		pObj->ioctl_if, pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast));
 
 	return TRUE;
 }
@@ -4577,32 +4627,12 @@ INT	Set_NoForwardingBTNSSID_Proc(
 	else
 		return FALSE;  /*Invalid argument */
 
-	DBGPRINT(RT_DEBUG_TRACE, ("Set_NoForwardingBTNSSID_Proc::(NoForwarding=%ld)\n", pAd->ApCfg.IsolateInterStaTrafficBTNBSSID));
+	DBGPRINT(RT_DEBUG_TRACE, ("Set_NoForwardingBTNSSID_Proc::(NoForwarding=%d)\n", pAd->ApCfg.IsolateInterStaTrafficBTNBSSID));
 
 	return TRUE;
 }
 
-INT Set_NoForwardingMBCast_Proc(
-	IN PRTMP_ADAPTER pAd,
-	IN PSTRING arg)
-{
-	UCHAR NoForwardingMBCast;
 
-	POS_COOKIE pObj = (POS_COOKIE) pAd->OS_Cookie;
-
-	NoForwardingMBCast = simple_strtol(arg, 0, 10);
-	if (NoForwardingMBCast == 1)
-		pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast = TRUE;
-	else if (NoForwardingMBCast == 0)
-		pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast = FALSE;
-	else
-		return FALSE; //Invalid argument
-
-	DBGPRINT(RT_DEBUG_TRACE, ("IF(ra%d) Set_NoForwardingMBCast_Proc::(IsolateInterStaMBCast=%d)\n",
-	pObj->ioctl_if, pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast));
-
-	return TRUE;
-}
 /* 
     ==========================================================================
     Description:
@@ -8907,6 +8937,50 @@ INT	Set_ApCli_IEEE8021X_Proc(
 	return TRUE;
 }
 #endif /* APCLI_WPA_SUPPLICANT_SUPPORT */
+
+#ifdef APCLI_AUTO_CONNECT_SUPPORT
+/* 
+    ==========================================================================
+    Description:
+        Trigger Apcli Auto connect to find the missed AP.
+    Return:
+        TRUE if all parameters are OK, FALSE otherwise
+    ==========================================================================
+*/
+INT Set_ApCli_AutoConnect_Proc(
+	IN PRTMP_ADAPTER pAd,
+	IN PSTRING arg)
+{
+	POS_COOKIE  		pObj= (POS_COOKIE) pAd->OS_Cookie;
+	UCHAR				ifIndex;
+	PAP_ADMIN_CONFIG	pApCfg;
+
+	if (pObj->ioctl_if_type != INT_APCLI)
+		return FALSE;
+	pApCfg = &pAd->ApCfg;
+	ifIndex = pObj->ioctl_if;
+
+	if (pApCfg->ApCliAutoConnectRunning == FALSE)
+	{
+		Set_ApCli_Enable_Proc(pAd, "0");
+		pApCfg->ApCliAutoConnectRunning = TRUE;
+	}
+	else
+	{
+		DBGPRINT(RT_DEBUG_TRACE, ("Set_ApCli_AutoConnect_Proc() is still running\n"));
+		return TRUE;
+	}
+	DBGPRINT(RT_DEBUG_TRACE, ("I/F(apcli%d) Set_ApCli_AutoConnect_Proc::(Len=%d,Ssid=%s)\n",
+			ifIndex, pApCfg->ApCliTab[ifIndex].CfgSsidLen, pApCfg->ApCliTab[ifIndex].CfgSsid));
+
+	/*
+		use site survey function to trigger auto connecting (when pAd->ApCfg.ApAutoConnectRunning == TRUE)
+	*/
+	Set_SiteSurvey_Proc(pAd, "");//pApCfg->ApCliTab[ifIndex].CfgSsid);
+
+	return TRUE;
+}
+#endif  /* APCLI_AUTO_CONNECT_SUPPORT */
 
 
 #ifdef WSC_AP_SUPPORT

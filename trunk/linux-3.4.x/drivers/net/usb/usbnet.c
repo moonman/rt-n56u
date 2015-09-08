@@ -344,8 +344,10 @@ void usbnet_skb_return (struct usbnet *dev, struct sk_buff *skb)
 		  skb->len + sizeof (struct ethhdr), skb->protocol);
 	memset (skb->cb, 0, sizeof (struct skb_data));
 
+#ifdef CONFIG_NETWORK_PHY_TIMESTAMPING
 	if (skb_defer_rx_timestamp(skb))
 		return;
+#endif
 
 #if IS_ENABLED(CONFIG_RA_HW_NAT) && defined(CONFIG_RA_HW_NAT_PCI)
 	 /* ra_sw_nat_hook_rx return 1 --> continue
@@ -418,12 +420,12 @@ usbnet_get_stats64(struct net_device *net, struct rtnl_link_stats64 *stats64)
 		u64 tpackets, tbytes, rpackets, rbytes;
 
 		do {
-			start = u64_stats_fetch_begin(&stats->syncp);
+			start = u64_stats_fetch_begin_bh(&stats->syncp);
 			rpackets = stats->rx_packets;
 			tpackets = stats->tx_packets;
 			rbytes   = stats->rx_bytes;
 			tbytes   = stats->tx_bytes;
-		} while (u64_stats_fetch_retry(&stats->syncp, start));
+		} while (u64_stats_fetch_retry_bh(&stats->syncp, start));
 
 		stats64->rx_packets += rpackets;
 		stats64->tx_packets += tpackets;
@@ -1097,13 +1099,28 @@ static const struct ethtool_ops usbnet_ethtool_ops = {
 
 /*-------------------------------------------------------------------------*/
 
+static void usbnet_set_rx_mode(struct net_device *net)
+{
+	struct usbnet *dev = netdev_priv(net);
+
+	usbnet_defer_kevent(dev, EVENT_SET_RX_MODE);
+}
+
+static void __handle_set_rx_mode(struct usbnet *dev)
+{
+	if (dev->driver_info->set_rx_mode)
+		(dev->driver_info->set_rx_mode)(dev);
+
+	clear_bit(EVENT_SET_RX_MODE, &dev->flags);
+}
+
 /* work that cannot be done in interrupt context uses keventd.
  *
  * NOTE:  with 2.5 we could do more of this using completion callbacks,
  * especially now that control transfers can be queued.
  */
 static void
-kevent (struct work_struct *work)
+usbnet_deferred_kevent (struct work_struct *work)
 {
 	struct usbnet		*dev =
 		container_of(work, struct usbnet, kevent);
@@ -1196,6 +1213,9 @@ skip_reset:
 		}
 	}
 
+	if (test_bit (EVENT_SET_RX_MODE, &dev->flags))
+		__handle_set_rx_mode(dev);
+
 	if (dev->flags)
 		netdev_dbg(dev->net, "kevent done, flags = 0x%lx\n", dev->flags);
 }
@@ -1211,8 +1231,7 @@ static void tx_complete (struct urb *urb)
 	if (urb->status == 0) {
 		struct usbnet_stats64 *stats = this_cpu_ptr(dev->stats64);
 		u64_stats_update_begin(&stats->syncp);
-		if (!(dev->driver_info->flags & FLAG_MULTI_PACKET))
-			stats->tx_packets++;
+		stats->tx_packets += entry->packets;
 		stats->tx_bytes += entry->length;
 		u64_stats_update_end(&stats->syncp);
 	} else {
@@ -1272,7 +1291,7 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 				     struct net_device *net)
 {
 	struct usbnet		*dev = netdev_priv(net);
-	int			length;
+	unsigned int		length;
 	struct urb		*urb = NULL;
 	struct skb_data		*entry;
 	struct driver_info	*info = dev->driver_info;
@@ -1300,7 +1319,6 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 			goto drop;
 		}
 	}
-	length = skb->len;
 
 	if (!(urb = usb_alloc_urb (0, GFP_ATOMIC))) {
 		netif_dbg(dev, tx_err, dev->net, "no urb\n");
@@ -1310,10 +1328,11 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 	entry = (struct skb_data *) skb->cb;
 	entry->urb = urb;
 	entry->dev = dev;
-	entry->length = length;
 
 	usb_fill_bulk_urb (urb, dev->udev, dev->out,
 			skb->data, skb->len, tx_complete, skb);
+
+	length = urb->transfer_buffer_length;
 
 	/* don't assume the hardware handles USB_ZERO_PACKET
 	 * NOTE:  strictly conforming cdc-ether devices should expect
@@ -1333,6 +1352,18 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 			}
 		} else
 			urb->transfer_flags |= URB_ZERO_PACKET;
+	}
+
+	if (info->flags & FLAG_MULTI_PACKET) {
+		/* Driver has set number of packets and a length delta.
+		 * Calculate the complete length and ensure that it's
+		 * positive.
+		 */
+		entry->length += length;
+		if (WARN_ON_ONCE(entry->length <= 0))
+			entry->length = length;
+	} else {
+		usbnet_set_skb_tx_stats(skb, 1, length);
 	}
 
 	spin_lock_irqsave(&dev->txq.lock, flags);
@@ -1385,7 +1416,7 @@ not_drop:
 		usb_free_urb (urb);
 	} else
 		netif_dbg(dev, tx_queued, dev->net,
-			  "> tx, len %d, type 0x%x\n", length, skb->protocol);
+			  "> tx, len %u, type 0x%x\n", length, skb->protocol);
 #ifdef CONFIG_PM
 deferred:
 #endif
@@ -1532,6 +1563,7 @@ static const struct net_device_ops usbnet_netdev_ops = {
 	.ndo_start_xmit		= usbnet_start_xmit,
 	.ndo_tx_timeout		= usbnet_tx_timeout,
 	.ndo_get_stats64	= usbnet_get_stats64,
+	.ndo_set_rx_mode	= usbnet_set_rx_mode,
 	.ndo_change_mtu		= usbnet_change_mtu,
 	.ndo_set_mac_address	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
@@ -1603,7 +1635,7 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	skb_queue_head_init(&dev->rxq_pause);
 	dev->bh.func = usbnet_bh;
 	dev->bh.data = (unsigned long) dev;
-	INIT_WORK (&dev->kevent, kevent);
+	INIT_WORK (&dev->kevent, usbnet_deferred_kevent);
 	init_usb_anchor(&dev->deferred);
 	dev->delay.function = usbnet_bh;
 	dev->delay.data = (unsigned long) dev;

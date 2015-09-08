@@ -1,6 +1,6 @@
-# $Id: Makefile.linux,v 1.88 2014/10/21 14:04:15 nanard Exp $
+# $Id: Makefile.linux,v 1.90 2015/04/26 14:43:28 nanard Exp $
 # MiniUPnP project
-# (c) 2006-2014 Thomas Bernard
+# (c) 2006-2015 Thomas Bernard
 # http://miniupnp.free.fr/ or http://miniupnp.tuxfamily.org/
 # Author : Thomas Bernard
 # for use with GNU Make
@@ -43,7 +43,10 @@ LDFLAGS += -Wl,--gc-sections
 LDLIBS  = $(IPTABLESPATH)/libiptc/.libs/libip4tc.a
 ifeq ($(ENABLE_IPV6),1)
 LDLIBS += $(IPTABLESPATH)/libiptc/.libs/libip6tc.a
+ifndef DISABLE_NFNETLINK
+CFLAGS += -DUSE_LIBNFNETLINK
 LDLIBS += $(STAGEDIR)/lib/libnfnetlink.a
+endif
 endif
 #LDLIBS += lssl
 CFLAGS += -DIPTABLES_143 -I$(IPTABLESPATH)/include
@@ -83,6 +86,7 @@ clean:
 	$(RM) testupnpdescgen.o testgetifstats.o
 	$(RM) testupnppermissions.o testgetifaddr.o
 	$(RM) testgetroute.o testasyncsendto.o
+	$(RM) testportinuse.o
 	$(RM) miniupnpdctl.o
 
 install:	miniupnpd miniupnpd.8 miniupnpd.conf genuuid \

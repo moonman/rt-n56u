@@ -1234,6 +1234,20 @@ VOID APQuickResponeForRateUpExecAdapt(/* actually for both up and down */
 		MlmeRALog(pAd, pEntry, RAL_QUICK_DRS, TxErrorRatio, TxTotalCnt);
 #endif /* DBG_CTRL_SUPPORT */
 
+	if (TxTotalCnt <= 30)
+	{
+		pEntry->ContinuelowTrafficCnt++;
+		if (pEntry->ContinuelowTrafficCnt >= pAd->CommonCfg.lowTrafficThrd)
+		{
+			pEntry->ContinuelowTrafficCnt = 0;
+			pEntry->ContinuelowTraffic = TRUE;
+		}
+	}
+	else
+	{
+		pEntry->ContinuelowTraffic = FALSE;
+	}
+
 	/*  Handle the low traffic case */
 	if (TxCnt <= 15)
 	{
@@ -1266,7 +1280,7 @@ VOID APQuickResponeForRateUpExecAdapt(/* actually for both up and down */
 	if (pAd->MacTab.Size == 1)
 		OneSecTxNoRetryOKRationCount = (TxSuccess * ratio);
 	else
-		OneSecTxNoRetryOKRationCount = pEntry->OneSecTxNoRetryOkCount * ratio + (pEntry->OneSecTxNoRetryOkCount >> 1);
+		OneSecTxNoRetryOKRationCount = (TxSuccess * ratio) + (TxSuccess >> 1);
 
 	/* Downgrade TX quality if PER >= Rate-Down threshold */
 	/* the only situation when pEntry->TxQuality[CurrRateIdx] = DRS_TX_QUALITY_WORST_BOUND but no rate change */
@@ -1339,8 +1353,15 @@ VOID APQuickResponeForRateUpExecAdapt(/* actually for both up and down */
 		}
 		else if ((pEntry->LastTxOkCount + 2) >= OneSecTxNoRetryOKRationCount)
 		{
-			MlmeRestoreLastRate(pEntry);
-			DBGPRINT(RT_DEBUG_INFO | DBG_FUNC_RA,("   QuickDRS: (Down) bad tx ok count (L:%ld, C:%ld)\n", pEntry->LastTxOkCount, OneSecTxNoRetryOKRationCount));
+			if(TxErrorRatio >= TrainUp)
+			{
+				MlmeRestoreLastRate(pEntry);
+				DBGPRINT(RT_DEBUG_INFO | DBG_FUNC_RA,("   QuickDRS: (Down) bad tx ok count (L:%ld, C:%ld)\n", pEntry->LastTxOkCount, OneSecTxNoRetryOKRationCount));
+			}
+			else
+			{
+				DBGPRINT(RT_DEBUG_INFO | DBG_FUNC_RA,("   QuickDRS: (Down) direct train down (TxErrorRatio < TrainUp)\n"));
+			}
 		}
 		else
 		{
@@ -1580,6 +1601,14 @@ VOID APMlmeDynamicTxRateSwitchingAdapt(RTMP_ADAPTER *pAd, ULONG i)
 				RssiOffset = 5;
 			}
 
+#ifdef NOISE_TEST_ADJUST
+			if (pAd->MacTab.Size > 5) {
+				if (Rssi > -73)
+					Rssi = -73;
+				else
+					RssiOffset += 3;
+			}
+#endif /* NOISE_TEST_ADJUST */
 			/* Select the Tx rate based on the RSSI */
 			TxRateIdx = MlmeSelectTxRateAdapt(pAd, pEntry, mcs, Rssi, RssiOffset);
 				pEntry->lastRateIdx = pEntry->CurrTxRateIndex;

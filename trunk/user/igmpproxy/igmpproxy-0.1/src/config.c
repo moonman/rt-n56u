@@ -39,7 +39,7 @@
                                       
 // Structure to keep configuration for VIFs...    
 struct vifconfig {
-    char*               name;
+    char                name[IF_NAMESIZE];
     short               state;
     int                 ratelimit;
     int                 threshold;
@@ -55,20 +55,20 @@ struct vifconfig {
 };
                  
 // Structure to keep vif configuration
-struct vifconfig*   vifconf;
+static struct vifconfig*   vifconf;
 
 // Keeps common settings...
 static struct Config commonConfig;
 
 // Prototypes...
-struct vifconfig *parsePhyintToken();
-struct SubnetList *parseSubnetAddress(char *addrstr);
+static struct vifconfig *parsePhyintToken();
+static struct SubnetList *parseSubnetAddress(char *addrstr);
 
 
 /**
 *   Initializes common config..
 */
-void initCommonConfig() {
+static void initCommonConfig() {
     commonConfig.robustnessValue = DEFAULT_ROBUSTNESS;
     commonConfig.queryInterval = INTERVAL_QUERY;
     commonConfig.queryResponseInterval = INTERVAL_QUERY_RESPONSE;
@@ -218,7 +218,7 @@ void configureVifs() {
 /**
 *   Internal function to parse phyint config
 */
-struct vifconfig *parsePhyintToken() {
+static struct vifconfig *parsePhyintToken() {
     struct vifconfig  *tmpPtr;
     struct SubnetList **anetPtr, **agrpPtr;
     char *token;
@@ -246,11 +246,7 @@ struct vifconfig *parsePhyintToken() {
     tmpPtr->allowednets = NULL;
     tmpPtr->allowedgroups = NULL;
 
-    // Make a copy of the token to store the IF name
-    tmpPtr->name = strdup( token );
-    if(tmpPtr->name == NULL) {
-        my_log(LOG_ERR, 0, "Out of memory.");
-    }
+    strncpy(tmpPtr->name, token, sizeof(tmpPtr->name));
 
     // Set the altnet pointer to the allowednets pointer.
     anetPtr = &tmpPtr->allowednets;
@@ -333,7 +329,6 @@ struct vifconfig *parsePhyintToken() {
 
     // Clean up after a parseerror...
     if(parseError) {
-        free(tmpPtr->name);
         free(tmpPtr);
         tmpPtr = NULL;
     }
@@ -345,7 +340,7 @@ struct vifconfig *parsePhyintToken() {
 *   Parses a subnet address string on the format
 *   a.b.c.d/n into a SubnetList entry.
 */
-struct SubnetList *parseSubnetAddress(char *addrstr) {
+static struct SubnetList *parseSubnetAddress(char *addrstr) {
     struct SubnetList *tmpSubnet;
     char        *tmpStr;
     uint32_t      addr = 0x00000000;

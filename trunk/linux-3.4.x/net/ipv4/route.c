@@ -297,7 +297,7 @@ static inline void rt_hash_lock_init(void)
 #endif
 
 static struct rt_hash_bucket 	*rt_hash_table __read_mostly;
-static unsigned			rt_hash_mask __read_mostly;
+static unsigned int		rt_hash_mask __read_mostly;
 static unsigned int		rt_hash_log  __read_mostly;
 
 static DEFINE_PER_CPU(struct rt_cache_stat, rt_cache_stat);
@@ -1142,7 +1142,7 @@ static int rt_bind_neighbour(struct rtable *rt)
 	return 0;
 }
 
-static struct rtable *rt_intern_hash(unsigned hash, struct rtable *rt,
+static struct rtable *rt_intern_hash(unsigned int hash, struct rtable *rt,
 				     struct sk_buff *skb, int ifindex)
 {
 	struct rtable	*rth, *cand;
@@ -1339,12 +1339,9 @@ void rt_bind_peer(struct rtable *rt, __be32 daddr, int create)
 }
 
 #define IP_IDENTS_SZ 2048u
-struct ip_ident_bucket {
-	atomic_t	id;
-	u32		stamp32;
-};
 
-static struct ip_ident_bucket *ip_idents __read_mostly;
+static atomic_t *ip_idents __read_mostly;
+static u32 *ip_tstamps __read_mostly;
 
 /* In order to protect privacy, we add a perturbation to identifiers
  * if one generator is seldom used. This makes hard for an attacker
@@ -1352,19 +1349,20 @@ static struct ip_ident_bucket *ip_idents __read_mostly;
  */
 u32 ip_idents_reserve(u32 hash, int segs)
 {
-	struct ip_ident_bucket *bucket = ip_idents + hash % IP_IDENTS_SZ;
-	u32 old = ACCESS_ONCE(bucket->stamp32);
+	u32 *p_tstamp = ip_tstamps + hash % IP_IDENTS_SZ;
+	atomic_t *p_id = ip_idents + hash % IP_IDENTS_SZ;
+	u32 old = ACCESS_ONCE(*p_tstamp);
 	u32 now = (u32)jiffies;
 	u32 delta = 0;
 
-	if (old != now && cmpxchg(&bucket->stamp32, old, now) == old) {
+	if (old != now && cmpxchg(p_tstamp, old, now) == old) {
 		u64 x = random32();
 
 		x *= (now - old);
 		delta = (u32)(x >> 32);
 	}
 
-	return atomic_add_return(segs + delta, &bucket->id) - segs;
+	return atomic_add_return(segs + delta, p_id) - segs;
 }
 EXPORT_SYMBOL(ip_idents_reserve);
 
@@ -1388,7 +1386,7 @@ void __ip_select_ident(struct iphdr *iph, int segs)
 }
 EXPORT_SYMBOL(__ip_select_ident);
 
-static void rt_del(unsigned hash, struct rtable *rt)
+static void rt_del(unsigned int hash, struct rtable *rt)
 {
 	struct rtable __rcu **rthp;
 	struct rtable *aux;
@@ -1542,7 +1540,7 @@ static struct dst_entry *ipv4_negative_advice(struct dst_entry *dst)
 			ip_rt_put(rt);
 			ret = NULL;
 		} else if (rt->rt_flags & RTCF_REDIRECTED) {
-			unsigned hash = rt_hash(rt->rt_key_dst, rt->rt_key_src,
+			unsigned int hash = rt_hash(rt->rt_key_dst, rt->rt_key_src,
 						rt->rt_oif,
 						rt_genid(dev_net(dst->dev)));
 			rt_del(hash, rt);
@@ -1637,6 +1635,10 @@ static int ip_error(struct sk_buff *skb)
 	struct net *net;
 	bool send;
 	int code;
+
+	/* IP on this device is disabled. */
+	if (!in_dev)
+		goto out;
 
 	net = dev_net(rt->dst.dev);
 	if (!IN_DEV_FORWARD(in_dev)) {
@@ -2231,7 +2233,7 @@ static int ip_mkroute_input(struct sk_buff *skb,
 {
 	struct rtable* rth = NULL;
 	int err;
-	unsigned hash;
+	unsigned int hash;
 
 #ifdef CONFIG_IP_ROUTE_MULTIPATH
 	if (res->fi && res->fi->fib_nhs > 1)
@@ -2269,10 +2271,10 @@ static int ip_route_input_slow(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 	struct fib_result res;
 	struct in_device *in_dev = __in_dev_get_rcu(dev);
 	struct flowi4	fl4;
-	unsigned	flags = 0;
+	unsigned int	flags = 0;
 	u32		itag = 0;
-	struct rtable * rth;
-	unsigned	hash;
+	struct rtable	*rth;
+	unsigned int	hash;
 	__be32		spec_dst;
 	int		err = -EINVAL;
 	struct net    * net = dev_net(dev);
@@ -2445,8 +2447,8 @@ martian_source_keep_err:
 int ip_route_input_common(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 			   u8 tos, struct net_device *dev, bool noref)
 {
-	struct rtable * rth;
-	unsigned	hash;
+	struct rtable	*rth;
+	unsigned int	hash;
 	int iif = dev->ifindex;
 	struct net *net;
 	int res;
@@ -2984,7 +2986,8 @@ static int rt_fill_info(struct net *net,
 	r->rtm_src_len	= 0;
 	r->rtm_tos	= rt->rt_key_tos;
 	r->rtm_table	= RT_TABLE_MAIN;
-	NLA_PUT_U32(skb, RTA_TABLE, RT_TABLE_MAIN);
+	if (nla_put_u32(skb, RTA_TABLE, RT_TABLE_MAIN))
+		goto nla_put_failure;
 	r->rtm_type	= rt->rt_type;
 	r->rtm_scope	= RT_SCOPE_UNIVERSE;
 	r->rtm_protocol = RTPROT_UNSPEC;
@@ -2992,31 +2995,38 @@ static int rt_fill_info(struct net *net,
 	if (rt->rt_flags & RTCF_NOTIFY)
 		r->rtm_flags |= RTM_F_NOTIFY;
 
-	NLA_PUT_BE32(skb, RTA_DST, rt->rt_dst);
-
+	if (nla_put_be32(skb, RTA_DST, rt->rt_dst))
+		goto nla_put_failure;
 	if (rt->rt_key_src) {
 		r->rtm_src_len = 32;
-		NLA_PUT_BE32(skb, RTA_SRC, rt->rt_key_src);
+		if (nla_put_be32(skb, RTA_SRC, rt->rt_key_src))
+			goto nla_put_failure;
 	}
-	if (rt->dst.dev)
-		NLA_PUT_U32(skb, RTA_OIF, rt->dst.dev->ifindex);
+	if (rt->dst.dev &&
+	    nla_put_u32(skb, RTA_OIF, rt->dst.dev->ifindex))
+		goto nla_put_failure;
 #ifdef CONFIG_IP_ROUTE_CLASSID
-	if (rt->dst.tclassid)
-		NLA_PUT_U32(skb, RTA_FLOW, rt->dst.tclassid);
+	if (rt->dst.tclassid &&
+	    nla_put_u32(skb, RTA_FLOW, rt->dst.tclassid))
+		goto nla_put_failure;
 #endif
-	if (rt_is_input_route(rt))
-		NLA_PUT_BE32(skb, RTA_PREFSRC, rt->rt_spec_dst);
-	else if (rt->rt_src != rt->rt_key_src)
-		NLA_PUT_BE32(skb, RTA_PREFSRC, rt->rt_src);
-
-	if (rt->rt_dst != rt->rt_gateway)
-		NLA_PUT_BE32(skb, RTA_GATEWAY, rt->rt_gateway);
+	if (rt_is_input_route(rt)) {
+		if (nla_put_be32(skb, RTA_PREFSRC, rt->rt_spec_dst))
+			goto nla_put_failure;
+	} else if (rt->rt_src != rt->rt_key_src) {
+		if (nla_put_be32(skb, RTA_PREFSRC, rt->rt_src))
+			goto nla_put_failure;
+	}
+	if (rt->rt_dst != rt->rt_gateway &&
+	    nla_put_be32(skb, RTA_GATEWAY, rt->rt_gateway))
+		goto nla_put_failure;
 
 	if (rtnetlink_put_metrics(skb, dst_metrics_ptr(&rt->dst)) < 0)
 		goto nla_put_failure;
 
-	if (rt->rt_mark)
-		NLA_PUT_BE32(skb, RTA_MARK, rt->rt_mark);
+	if (rt->rt_mark &&
+	    nla_put_be32(skb, RTA_MARK, rt->rt_mark))
+		goto nla_put_failure;
 
 	error = rt->dst.error;
 	if (peer) {
@@ -3058,7 +3068,8 @@ static int rt_fill_info(struct net *net,
 			}
 		} else
 #endif
-			NLA_PUT_U32(skb, RTA_IIF, rt->rt_iif);
+			if (nla_put_u32(skb, RTA_IIF, rt->rt_iif))
+				goto nla_put_failure;
 	}
 
 	if (rtnl_put_cacheinfo(skb, &rt->dst, id, ts, tsage,
@@ -3459,6 +3470,10 @@ int __init ip_rt_init(void)
 		panic("IP: failed to allocate ip_idents\n");
 
 	get_random_bytes(ip_idents, IP_IDENTS_SZ * sizeof(*ip_idents));
+
+	ip_tstamps = kcalloc(IP_IDENTS_SZ, sizeof(*ip_tstamps), GFP_KERNEL);
+	if (!ip_tstamps)
+		panic("IP: failed to allocate ip_tstamps\n");
 
 #ifdef CONFIG_IP_ROUTE_CLASSID
 	ip_rt_acct = __alloc_percpu(256 * sizeof(struct ip_rt_acct), __alignof__(struct ip_rt_acct));

@@ -222,6 +222,9 @@ VOID APMlmePeriodicExec(
 		ApCliIfMonitor(pAd);
 
 	if (pAd->Mlme.OneSecPeriodicRound % 2 == 1)
+#ifdef APCLI_AUTO_CONNECT_SUPPORT
+		if (pAd->ApCfg.ApCliAutoConnectChannelSwitching == FALSE)
+#endif /* APCLI_AUTO_CONNECT_SUPPORT */
 		ApCliIfUp(pAd);
 
 	{
@@ -582,14 +585,13 @@ VOID APAsicRxAntEvalTimeout(
 		rssi2 = pAd->ApCfg.RssiSample.AvgRssi2;
 	}
 
+#ifdef DOT11N_SS3_SUPPORT
 	if(pAd->Antenna.field.RxPath == 3)
 	{
 		larger = max(rssi0, rssi1);
-#ifdef DOT11N_SS3_SUPPORT
 		if (pAd->CommonCfg.RxStream >= 3)
 			pAd->Mlme.RealRxPath = 3;
 		else
-#endif /* DOT11N_SS3_SUPPORT */
 		{
 		if (larger > (rssi2 + 20))
 			pAd->Mlme.RealRxPath = 2;
@@ -597,6 +599,7 @@ VOID APAsicRxAntEvalTimeout(
 			pAd->Mlme.RealRxPath = 3;
 		}
 	}
+#endif /* DOT11N_SS3_SUPPORT */
 	/* Disable the below to fix 1T/2R issue. It's suggested by Rory at 2007/7/11. */
 
 #ifdef DOT11_N_SUPPORT

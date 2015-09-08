@@ -133,6 +133,13 @@ function blanktest(obj, flag){
 	return true;
 }
 
+function openLink(s) {
+	var link_params = "toolbar=yes,location=yes,directories=no,status=yes,menubar=yes,scrollbars=yes,resizable=yes,copyhistory=no,width=640,height=480";
+	var tourl = "http://support.ntp.org/bin/view/Servers/WebHome";
+	link = window.open(tourl, "NTPLink", link_params);
+	if (!link.opener) link.opener = self;
+}
+
 </script>
 <style>
     .table th, .table td{vertical-align: middle;}
@@ -209,19 +216,19 @@ function blanktest(obj, flag){
                                         <tr id="row_user" style="display:none">
                                             <th><#Adm_System_admin#></th>
                                             <td>
-                                                <input type="text" name="http_username" class="input" autocomplete="off" maxlength="32" size="25" value="<% nvram_get_x("","http_username"); %>" onKeyPress="return is_string(this)"/>
+                                                <input type="text" name="http_username" class="input" autocomplete="off" maxlength="32" size="25" value="<% nvram_get_x("","http_username"); %>" onKeyPress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr id="row_pass1" style="display:none">
-                                            <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this,11,4)"><#PASS_new#></th>
+                                            <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this,11,4)"><#PASS_new#></a></th>
                                             <td>
-                                                <input type="password" name="http_passwd2" class="input" autocomplete="off" maxlength="32" size="25" onKeyPress="return is_string(this);"/>
+                                                <input type="password" name="http_passwd2" class="input" autocomplete="off" maxlength="32" size="25" onKeyPress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_pass2" style="display:none">
-                                            <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this,11,4)"><#PASS_retype#></th>
+                                            <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this,11,4)"><#PASS_retype#></a></th>
                                             <td>
-                                                <input type="password" name="v_password2" class="input" autocomplete="off" maxlength="32" size="25" onKeyPress="return is_string(this);"/><br/><span id="alert_msg"></span>
+                                                <input type="password" name="v_password2" class="input" autocomplete="off" maxlength="32" size="25" onKeyPress="return is_string(this,event);"/><br/><span id="alert_msg"></span>
                                             </td>
                                         </tr>
                                     </table>
@@ -274,7 +281,7 @@ function blanktest(obj, flag){
                                                     <option value="EET-2EETDST_2" <% nvram_match_x("","time_zone", "EET-2EETDST_2","selected"); %>	>(GMT+02:00) <#TZ38#></option>
                                                     <option value="EST-2EDT" <% nvram_match_x("","time_zone", "EST-2EDT","selected"); %>		>(GMT+02:00) <#TZ39#></option>
                                                     <option value="EET-2EETDST_1" <% nvram_match_x("","time_zone", "EET-2EETDST_1","selected"); %>	>(GMT+02:00) <#TZ40#></option>
-                                                    <option value="UCT-2_2" <% nvram_match_x("","time_zone", "UCT-2_2","selected"); %>			>(GMT+02:00) <#TZ41#></option>
+                                                    <option value="EET-2EETDST_3" <% nvram_match_x("","time_zone", "EET-2EETDST_3","selected"); %>	>(GMT+02:00) <#TZ41#></option>
                                                     <option value="IST-2IDT" <% nvram_match_x("","time_zone", "IST-2IDT","selected"); %>		>(GMT+02:00) <#TZ42#></option>
                                                     <option value="SAST-2" <% nvram_match_x("","time_zone", "SAST-2","selected"); %>			>(GMT+02:00) <#TZ43#></option>
                                                     <option value="EET-2EETDST" <% nvram_match_x("","time_zone", "EET-2EETDST","selected"); %>		>(GMT+02:00) <#TZ43_2#></option>
@@ -346,14 +353,14 @@ function blanktest(obj, flag){
                                         <tr>
                                             <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this,11,3)"><#LANHostConfig_x_NTPServer1_itemname#> 1:</a></th>
                                             <td>
-                                                <input type="text" maxlength="128" class="input" size="32" name="ntp_server0" value="<% nvram_get_x("","ntp_server0"); %>" onKeyPress="return is_string(this);"/>
+                                                <input type="text" maxlength="128" class="input" size="32" name="ntp_server0" value="<% nvram_get_x("","ntp_server0"); %>" onKeyPress="return is_string(this,event);"/>
                                                 <a href="javascript:openLink('x_NTPServer1')" class="label label-info" name="x_NTPServer1_link"><#LANHostConfig_x_NTPServer1_linkname#></a>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this,11,3)"><#LANHostConfig_x_NTPServer1_itemname#> 2:</a></th>
                                             <td>
-                                                <input type="text" maxlength="128" class="input" size="32" name="ntp_server1" value="<% nvram_get_x("","ntp_server1"); %>" onKeyPress="return is_string(this);"/>
+                                                <input type="text" maxlength="128" class="input" size="32" name="ntp_server1" value="<% nvram_get_x("","ntp_server1"); %>" onKeyPress="return is_string(this,event);"/>
                                             </td>
                                         </tr>
 
@@ -366,8 +373,8 @@ function blanktest(obj, flag){
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,11,1)"><#LANHostConfig_x_ServerLogEnable_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="log_ipaddr" style="width: 145px" value="<% nvram_get_x("", "log_ipaddr"); %>" onKeyPress="return is_ipaddr(this)" onKeyUp="change_ipaddr(this)"/>&nbsp;:
-                                                <input type="text" maxlength="5" class="input" size="10" name="log_port" style="width: 44px;"  value="<% nvram_get_x("","log_port"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="15" class="input" size="15" name="log_ipaddr" style="width: 145px" value="<% nvram_get_x("", "log_ipaddr"); %>" onKeyPress="return is_ipaddr(this,event);" />&nbsp;:
+                                                <input type="text" maxlength="5" class="input" size="10" name="log_port" style="width: 44px;"  value="<% nvram_get_x("","log_port"); %>" onkeypress="return is_number(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr>

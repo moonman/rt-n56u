@@ -58,9 +58,11 @@ int f_exists(const char *path)	// note: anything but a directory
 
 static int _f_wait_exists(const char *name, int max, int invert)
 {
+	max *= 40;
 	while (max-- > 0) {
-		if (f_exists(name) ^ invert) return 1;
-		sleep(1);
+		if (f_exists(name) ^ invert)
+			return 1;
+		usleep(25000);
 	}
 	return 0;
 }
@@ -132,16 +134,23 @@ void char_to_ascii(char *output, char *input)
 	*ptr = '\0';
 }
 
-void do_f(char *path, webs_t wp)
+int do_f(const char *path, webs_t wp)
 {
 	FILE *fp;
 	char buf[1024];
 	int ret = 0;
 
-	if ((fp = fopen(path, "r")) != NULL) {
-		while (fgets(buf, sizeof(buf), fp) > 0)
-			ret += websWrite(wp, buf);
+	fp = fopen(path, "r");
+	if (fp) {
+		while (fgets(buf, sizeof(buf), fp))
+			ret += fputs(buf, wp);
 		fclose(fp);
+	} else {
+		ret += fputs("", wp);
 	}
+
+	fflush(wp);
+
+	return ret;
 }
 

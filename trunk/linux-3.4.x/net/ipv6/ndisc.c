@@ -325,9 +325,6 @@ int ndisc_mc_map(const struct in6_addr *addr, char *buf, struct net_device *dev,
 	case ARPHRD_FDDI:
 		ipv6_eth_mc_map(addr, buf);
 		return 0;
-	case ARPHRD_IEEE802_TR:
-		ipv6_tr_mc_map(addr,buf);
-		return 0;
 	case ARPHRD_ARCNET:
 		ipv6_arcnet_mc_map(addr, buf);
 		return 0;
@@ -791,20 +788,6 @@ static void ndisc_recv_ns(struct sk_buff *skb)
 
 		if (ifp->flags & (IFA_F_TENTATIVE|IFA_F_OPTIMISTIC)) {
 			if (dad) {
-				if (dev->type == ARPHRD_IEEE802_TR) {
-					const unsigned char *sadr;
-					sadr = skb_mac_header(skb);
-					if (((sadr[8] ^ dev->dev_addr[0]) & 0x7f) == 0 &&
-					    sadr[9] == dev->dev_addr[1] &&
-					    sadr[10] == dev->dev_addr[2] &&
-					    sadr[11] == dev->dev_addr[3] &&
-					    sadr[12] == dev->dev_addr[4] &&
-					    sadr[13] == dev->dev_addr[5]) {
-						/* looped-back to us */
-						goto out;
-					}
-				}
-
 				/*
 				 * We are colliding with another node
 				 * who is doing DAD
@@ -1097,8 +1080,9 @@ static void ndisc_ra_useropt(struct sk_buff *ra, struct nd_opt_hdr *opt)
 
 	memcpy(ndmsg + 1, opt, opt->nd_opt_len << 3);
 
-	NLA_PUT(skb, NDUSEROPT_SRCADDR, sizeof(struct in6_addr),
-		&ipv6_hdr(ra)->saddr);
+	if (nla_put(skb, NDUSEROPT_SRCADDR, sizeof(struct in6_addr),
+		    &ipv6_hdr(ra)->saddr))
+		goto nla_put_failure;
 	nlmsg_end(skb, nlh);
 
 	rtnl_notify(skb, net, 0, RTNLGRP_ND_USEROPT, NULL, GFP_ATOMIC);
@@ -1215,7 +1199,7 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 			ND_PRINTK0(KERN_ERR
 				   "ICMPv6 RA: %s() got default router without neighbour.\n",
 				   __func__);
-			dst_release(&rt->dst);
+			ip6_rt_put(rt);
 			return;
 		}
 	}
@@ -1241,7 +1225,7 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 			ND_PRINTK0(KERN_ERR
 				   "ICMPv6 RA: %s() got default router without neighbour.\n",
 				   __func__);
-			dst_release(&rt->dst);
+			ip6_rt_put(rt);
 			return;
 		}
 		neigh->flags |= NTF_ROUTER;
@@ -1252,7 +1236,15 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 	if (rt)
 		rt6_set_expires(rt, jiffies + (HZ * lifetime));
 	if (ra_msg->icmph.icmp6_hop_limit) {
-		in6_dev->cnf.hop_limit = ra_msg->icmph.icmp6_hop_limit;
+		/* Only set hop_limit on the interface if it is higher than
+		 * the current hop_limit.
+		 */
+		if (in6_dev->cnf.hop_limit < ra_msg->icmph.icmp6_hop_limit) {
+			in6_dev->cnf.hop_limit = ra_msg->icmph.icmp6_hop_limit;
+		} else {
+			ND_PRINTK2(KERN_WARNING
+				   "RA: Got route advertisement with lower hop_limit than current\n");
+		}
 		if (rt)
 			dst_metric_set(&rt->dst, RTAX_HOPLIMIT,
 				       ra_msg->icmph.icmp6_hop_limit);
@@ -1400,8 +1392,7 @@ skip_routeinfo:
 			   "ICMPv6 RA: invalid RA options");
 	}
 out:
-	if (rt)
-		dst_release(&rt->dst);
+	ip6_rt_put(rt);
 	if (neigh)
 		neigh_release(neigh);
 }

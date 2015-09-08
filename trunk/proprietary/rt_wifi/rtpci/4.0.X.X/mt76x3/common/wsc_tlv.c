@@ -200,7 +200,7 @@ static VOID	WscParseEncrSettings(
 {
 	USHORT	WscType, WscLen, HmacLen;
 	PUCHAR	pData;
-	UCHAR	Hmac[8], Temp[32];
+	UCHAR	Hmac[8]={0}, Temp[32];
     PWSC_REG_DATA		pReg = (PWSC_REG_DATA) &pWscControl->RegData;
 
 	HmacLen = (USHORT)(PlainLength - 12);
@@ -437,7 +437,7 @@ int WscDeriveKey (
     unsigned char *key, unsigned int keyBits )
 {
     unsigned int i = 0, iterations = 0;
-    unsigned char input[64], output[128];
+    unsigned char input[64], output[128]={0};
     unsigned char hmac[32];
     unsigned int temp;
 
@@ -630,6 +630,18 @@ int BuildMessageM1(
 #endif /* CONFIG_AP_SUPPORT */
 
     
+	// Enrollee 16 byte E-S1 generation
+    for (idx = 0; idx < 16; idx++)
+    {
+        pReg->Es1[idx] = RandomByte(pAdapter);
+    }
+
+    // Enrollee 16 byte E-S2 generation
+    for (idx = 0; idx < 16; idx++)
+    {
+        pReg->Es2[idx] = RandomByte(pAdapter);
+    }
+		
 	/* 1. Version */
 	templen = AppendWSCTLV(WSC_ID_VERSION, pData, &pReg->SelfInfo.Version, 0);
 	pData += templen;
@@ -694,11 +706,20 @@ int BuildMessageM1(
 		/*
 			AP MUST NOT support using PBC to add an external Registrar 
 		*/
-		if (CurOpMode == AP_MODE)
+		/*if (CurOpMode == AP_MODE)
 		{
 			ConfigMethods = (pWscControl->WscConfigMethods & 0x210F);
-		}
+		}*/
 
+
+		if ((CurOpMode == AP_MODE) && ((pWscControl->WscConfMode & WSC_ENROLLEE) != 0)
+		     && (pWscControl->WscMode == WSC_PBC_MODE))
+		{
+		        ConfigMethods |= WSC_CONFMET_PBC;
+		        DBGPRINT(RT_DEBUG_TRACE, ("[NOTICE] BuildMessageM1 - Add PBC in ConfigMethods for AP_MODE & WSC_ENROLLEE & PBC\n"));
+		}else if( CurOpMode == AP_MODE ){
+			ConfigMethods = (pWscControl->WscConfigMethods & 0x210F);
+		}
 		}
 		else
 #endif /* WSC_V2_SUPPORT */
@@ -885,6 +906,18 @@ int BuildMessageM2(
 
 	pReg = (PWSC_REG_DATA) &pWscControl->RegData;
 
+	// Enrollee 16 byte E-S1 generation
+    for (idx = 0; idx < 16; idx++)
+    {
+        pReg->Es1[idx] = RandomByte(pAdapter);
+    }
+
+    // Enrollee 16 byte E-S2 generation
+    for (idx = 0; idx < 16; idx++)
+    {
+        pReg->Es2[idx] = RandomByte(pAdapter);
+    }
+	
    	DH_Len = sizeof(pReg->SecretKey);
 	RT_DH_SecretKey_Generate (
 	    pReg->Pke, sizeof(pReg->Pke),
@@ -1378,6 +1411,9 @@ int BuildMessageM3(
 	/* Copy first 16 bytes to PSK1 */
 	NdisMoveMemory(pReg->Psk1, TB, 16);
 
+	hex_dump("Es1", pReg->Es1, 16);
+	hex_dump("Es2", pReg->Es2, 16);
+
 	/* Create input for E-Hash1 */
 	NdisMoveMemory(pHash, pReg->Es1, 16);
 	NdisMoveMemory(pHash + 16, pReg->Psk1, 16);
@@ -1541,6 +1577,8 @@ int BuildMessageM4(
 	/* Copy first 16 bytes to PSK1 */
 	NdisMoveMemory(pReg->Psk1, TB, 16);
 
+	hex_dump("Es1", pReg->Es1, 16);
+	hex_dump("Es2", pReg->Es2, 16);
 	/* Create input for R-Hash1 */
 	NdisMoveMemory(pHash, pReg->Es1, 16);
 	NdisMoveMemory(pHash + 16, pReg->Psk1, 16);
@@ -2518,11 +2556,11 @@ int ProcessMessageM1(
 	int					ret = WSC_ERROR_NO_ERROR, DH_Len = 0, idx;
 	PUCHAR				pData = NULL;
 	USHORT				WscType, WscLen, FieldCheck[7]={0,0,0,0,0,0,0};
-	UCHAR				CurOpMode = 0xFF;
+
 
 #ifdef CONFIG_AP_SUPPORT
     IF_DEV_CONFIG_OPMODE_ON_AP(pAdapter)
-		CurOpMode = AP_MODE;
+		//CurOpMode = AP_MODE;
 #endif /* CONFIG_AP_SUPPORT */
 
 
@@ -2813,8 +2851,8 @@ int ProcessMessageM2(
 	INT					DH_Len;
 	PUCHAR				pData = NULL;
 	USHORT				WscType, WscLen, FieldCheck[7]={0,0,0,0,0,0,0};
-	MAC_TABLE_ENTRY		*pEntry = NULL;
-	UCHAR				CurOpMode = 0xFF;
+	//MAC_TABLE_ENTRY		*pEntry = NULL;
+	//UCHAR				CurOpMode = 0xFF;
 #ifdef WSC_NFC_SUPPORT	
 	INT					EncrLen;
 	UCHAR				*IV_DecrData=NULL;//IV len 16 ,DecrData len 
@@ -2825,7 +2863,7 @@ int ProcessMessageM2(
 
 #ifdef CONFIG_AP_SUPPORT
     IF_DEV_CONFIG_OPMODE_ON_AP(pAdapter)
-		CurOpMode = AP_MODE;
+		//CurOpMode = AP_MODE;
 #endif /* CONFIG_AP_SUPPORT */
 
 	
@@ -2860,7 +2898,7 @@ int ProcessMessageM2(
 	NdisMoveMemory(pReg->LastRx.Data, precv, Length);
 	pData = pReg->LastRx.Data;
 	
-		pEntry = MacTableLookup(pAdapter, pReg->PeerInfo.MacAddr);
+		/*pEntry =*/ MacTableLookup(pAdapter, pReg->PeerInfo.MacAddr);
 
 	NdisZeroMemory(&pWscControl->WscPeerInfo, sizeof(WSC_PEER_DEV_INFO));
 

@@ -151,8 +151,6 @@ static inline bool dev_xmit_complete(int rc)
 # else
 #  define LL_MAX_HEADER 96
 # endif
-#elif IS_ENABLED(CONFIG_TR)
-# define LL_MAX_HEADER 48
 #else
 # define LL_MAX_HEADER 32
 #endif
@@ -288,7 +286,7 @@ struct hh_cache {
 struct header_ops {
 	int	(*create) (struct sk_buff *skb, struct net_device *dev,
 			   unsigned short type, const void *daddr,
-			   const void *saddr, unsigned len);
+			   const void *saddr, unsigned int len);
 	int	(*parse)(const struct sk_buff *skb, unsigned char *haddr);
 	int	(*rebuild)(struct sk_buff *skb);
 	int	(*cache)(const struct neighbour *neigh, struct hh_cache *hh, __be16 type);
@@ -1049,6 +1047,7 @@ struct net_device {
 	struct list_head	dev_list;
 	struct list_head	napi_list;
 	struct list_head	unreg_list;
+	struct list_head	close_list;
 
 	/* currently active device features */
 	netdev_features_t	features;
@@ -1607,6 +1606,7 @@ extern struct net_device	*__dev_get_by_name(struct net *net, const char *name);
 extern int		dev_alloc_name(struct net_device *dev, const char *name);
 extern int		dev_open(struct net_device *dev);
 extern int		dev_close(struct net_device *dev);
+extern int		dev_close_many(struct list_head *head, bool unlink);
 extern void		dev_disable_lro(struct net_device *dev);
 extern int		dev_queue_xmit(struct sk_buff *skb);
 extern int		register_netdevice(struct net_device *dev);
@@ -1685,7 +1685,7 @@ static inline void *skb_gro_network_header(struct sk_buff *skb)
 static inline int dev_hard_header(struct sk_buff *skb, struct net_device *dev,
 				  unsigned short type,
 				  const void *daddr, const void *saddr,
-				  unsigned len)
+				  unsigned int len)
 {
 	if (!dev->header_ops || !dev->header_ops->create)
 		return 0;
@@ -1745,7 +1745,7 @@ struct softnet_data {
 	unsigned int		input_queue_head;
 	unsigned int		input_queue_tail;
 #endif
-	unsigned		dropped;
+	unsigned int		dropped;
 	struct sk_buff_head	input_pkt_queue;
 	struct napi_struct	backlog;
 };
@@ -1930,7 +1930,7 @@ static inline void netdev_sent_queue(struct net_device *dev, unsigned int bytes)
 }
 
 static inline void netdev_tx_completed_queue(struct netdev_queue *dev_queue,
-					     unsigned pkts, unsigned bytes)
+					     unsigned int pkts, unsigned int bytes)
 {
 #ifdef CONFIG_BQL
 	if (unlikely(!bytes))
@@ -1954,7 +1954,7 @@ static inline void netdev_tx_completed_queue(struct netdev_queue *dev_queue,
 }
 
 static inline void netdev_completed_queue(struct net_device *dev,
-					  unsigned pkts, unsigned bytes)
+					  unsigned int pkts, unsigned int bytes)
 {
 	netdev_tx_completed_queue(netdev_get_tx_queue(dev, 0), pkts, bytes);
 }
@@ -2130,9 +2130,9 @@ extern void netdev_rx_handler_unregister(struct net_device *dev);
 extern bool		dev_valid_name(const char *name);
 extern int		dev_ioctl(struct net *net, unsigned int cmd, void __user *);
 extern int		dev_ethtool(struct net *net, struct ifreq *);
-extern unsigned		dev_get_flags(const struct net_device *);
+extern unsigned int	dev_get_flags(const struct net_device *);
 extern int		__dev_change_flags(struct net_device *, unsigned int flags);
-extern int		dev_change_flags(struct net_device *, unsigned);
+extern int		dev_change_flags(struct net_device *, unsigned int);
 extern void		__dev_notify_flags(struct net_device *, unsigned int old_flags);
 extern int		dev_change_name(struct net_device *, const char *);
 extern int		dev_set_alias(struct net_device *, const char *, size_t);

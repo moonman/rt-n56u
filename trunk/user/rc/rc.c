@@ -34,6 +34,8 @@
 #include <sys/wait.h>
 #include <dirent.h>
 
+#include <rstats.h>
+
 #include "rc.h"
 #include "gpio_pins.h"
 #include "switch.h"
@@ -125,7 +127,7 @@ load_usb_modules(void)
 		reload_modem_modules(nvram_get_int("modem_type"), 0);
 
 	/* start usb host */
-#if defined (USE_USB3)
+#if defined (USE_USB_XHCI)
 	doSystem("modprobe %s %s=%d", "xhci-hcd", "usb3_disable", nvram_get_int("usb3_disable"));
 #else
 	doSystem("modprobe %s", "ehci-hcd");
@@ -148,27 +150,35 @@ init_gpio_leds_buttons(void)
 	/* hide WiFi 2G soft-led  */
 #if defined (BOARD_GPIO_LED_SW2G)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_SW2G, 1);
-	LED_CONTROL(BOARD_GPIO_LED_SW2G, LED_OFF);
+	cpu_gpio_set_pin(BOARD_GPIO_LED_SW2G, LED_OFF);
+	cpu_gpio_led_set(BOARD_GPIO_LED_SW2G, 1);
 #endif
 	/* hide WiFi 5G soft-led  */
-#if defined (BOARD_GPIO_LED_SW5G)
+#if defined (BOARD_GPIO_LED_SW5G) && (!defined (BOARD_GPIO_LED_SW2G) || (BOARD_GPIO_LED_SW5G != BOARD_GPIO_LED_SW2G))
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_SW5G, 1);
-	LED_CONTROL(BOARD_GPIO_LED_SW5G, LED_OFF);
+	cpu_gpio_set_pin(BOARD_GPIO_LED_SW5G, LED_OFF);
+	cpu_gpio_led_set(BOARD_GPIO_LED_SW5G, 1);
 #endif
 	/* hide WAN soft-led  */
 #if defined (BOARD_GPIO_LED_WAN)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_WAN, 1);
-	LED_CONTROL(BOARD_GPIO_LED_WAN, LED_OFF);
+	cpu_gpio_set_pin(BOARD_GPIO_LED_WAN, LED_OFF);
 #endif
 	/* hide LAN soft-led  */
 #if defined (BOARD_GPIO_LED_LAN)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_LAN, 1);
-	LED_CONTROL(BOARD_GPIO_LED_LAN, LED_OFF);
+	cpu_gpio_set_pin(BOARD_GPIO_LED_LAN, LED_OFF);
 #endif
 	/* hide USB soft-led  */
 #if defined (BOARD_GPIO_LED_USB)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_USB, 1);
-	LED_CONTROL(BOARD_GPIO_LED_USB, LED_OFF);
+	cpu_gpio_set_pin(BOARD_GPIO_LED_USB, LED_OFF);
+	cpu_gpio_led_set(BOARD_GPIO_LED_USB, 0);
+#endif
+	/* hide ROUTER soft-led  */
+#if defined (BOARD_GPIO_LED_ROUTER)
+	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_ROUTER, 1);
+	cpu_gpio_set_pin(BOARD_GPIO_LED_ROUTER, LED_OFF);
 #endif
 	/* enable common led trigger */
 #if defined (BOARD_GPIO_LED_ALL)
@@ -203,6 +213,10 @@ init_gpio_leds_buttons(void)
 #if defined (BOARD_GPIO_BTN_WLTOG)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_WLTOG, 0);
 #endif
+	/* init BTN ROUTER  */
+#if defined (BOARD_GPIO_BTN_ROUTER)
+	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_ROUTER, 0);
+#endif
 }
 
 static void
@@ -224,8 +238,8 @@ set_wan0_vars(void)
 		}
 	}
 
-	set_wan_unit_value(0, "unit", "0");
-	set_wan_unit_value(0, "primary", "1");
+	set_wan_unit_value_int(0, "unit", 0);
+	set_wan_unit_value_int(0, "primary", 1);
 	set_wan_unit_value(0, "ifname", IFNAME_WAN);
 }
 
@@ -250,6 +264,13 @@ nvram_convert_old_params(void)
 		if (strlen(test_value) > 0 && strlen(nvram_safe_get("wan_pppoe_man")) == 0)
 			nvram_set("wan_pppoe_man", test_value);
 		nvram_unset("pppoe_dhcp_route");
+	}
+
+	test_value = nvram_get("mr_ttl_fix");
+	if (test_value) {
+		if (atoi(test_value) > 0 && strlen(nvram_safe_get("wan_ttl_fix")) == 0)
+			nvram_set_int("wan_ttl_fix", 2);
+		nvram_unset("mr_ttl_fix");
 	}
 
 	test_value = nvram_get("wan_heartbeat_x");
@@ -291,6 +312,14 @@ nvram_convert_misc_values(void)
 {
 	char buff[64];
 	int sw_mode;
+#if defined (BOARD_GPIO_BTN_ROUTER)
+	int i_router_switch = BTN_PRESSED;
+
+	if (cpu_gpio_get_pin(BOARD_GPIO_BTN_ROUTER, &i_router_switch) >= 0) {
+		if (i_router_switch != BTN_PRESSED)
+			nvram_set_int("sw_mode", 3);
+	}
+#endif
 
 	/* check router mode */
 	sw_mode = nvram_get_int("sw_mode");
@@ -307,59 +336,67 @@ nvram_convert_misc_values(void)
 		nvram_set_int("wan_nat_x", 0);
 		nvram_set("wan_route_x", "IP_Bridged");
 	} else {
+		sw_mode = 1;
 		nvram_set_int("sw_mode", 1);
 		nvram_set_int("wan_nat_x", 1);
 		nvram_set("wan_route_x", "IP_Routed");
 	}
 
-	if (strlen(nvram_wlan_get("wl", "ssid")) < 1)
-		nvram_wlan_set("wl", "ssid", DEF_WLAN_5G_SSID);
-
-	if (strlen(nvram_wlan_get("rt", "ssid")) < 1)
-		nvram_wlan_set("rt", "ssid", DEF_WLAN_5G_SSID);
-
-	memset(buff, 0, sizeof(buff));
-	char_to_ascii(buff, nvram_wlan_get("wl", "ssid"));
-	nvram_wlan_set("wl", "ssid2", buff);
-
-	memset(buff, 0, sizeof(buff));
-	char_to_ascii(buff, nvram_wlan_get("rt", "ssid"));
-	nvram_wlan_set("rt", "ssid2", buff);
-
-	if (strlen(nvram_safe_get("wl_wpa_mode")) < 1)
-		nvram_set_int("wl_wpa_mode", 0);
-
-#if BOARD_HAS_5G_11AC
-	if (strlen(nvram_safe_get("wl_gmode")) < 1)
-		nvram_set_int("wl_gmode", 4); // a/n/ac Mixed
-
-	if (nvram_get_int("wl_HT_BW") > 2)
-		nvram_set_int("wl_HT_BW", 2);
-#else
-	if (strlen(nvram_safe_get("wl_gmode")) < 1)
-		nvram_set_int("wl_gmode", 2); // a/n Mixed
-
-	if (nvram_get_int("wl_HT_BW") > 1)
-		nvram_set_int("wl_HT_BW", 1);
+#if defined (BOARD_GPIO_LED_ROUTER)
+	if (sw_mode != 3)
+		LED_CONTROL(BOARD_GPIO_LED_ROUTER, LED_ON);
 #endif
 
-	if (strlen(nvram_safe_get("rt_gmode")) < 1)
-		nvram_set_int("rt_gmode", 2); // b/g/n Mixed
+#if BOARD_HAS_5G_RADIO
+	if (strlen(nvram_wlan_get(1, "ssid")) < 1)
+		nvram_wlan_set(1, "ssid", DEF_WLAN_5G_SSID);
 
-	if (nvram_get_int("rt_HT_BW") > 1)
-		nvram_set_int("rt_HT_BW", 1);
+	memset(buff, 0, sizeof(buff));
+	char_to_ascii(buff, nvram_wlan_get(1, "ssid"));
+	nvram_wlan_set(1, "ssid2", buff);
 
-	if (nvram_get_int("wl_stream_tx") > BOARD_NUM_ANT_5G_TX)
-		nvram_set_int("wl_stream_tx", BOARD_NUM_ANT_5G_TX);
+	if (strlen(nvram_wlan_get(1, "wpa_mode")) < 1)
+		nvram_wlan_set_int(1, "wpa_mode", 0);
 
-	if (nvram_get_int("wl_stream_rx") > BOARD_NUM_ANT_5G_RX)
-		nvram_set_int("wl_stream_rx", BOARD_NUM_ANT_5G_RX);
+#if BOARD_HAS_5G_11AC
+	if (strlen(nvram_wlan_get(1, "gmode")) < 1)
+		nvram_wlan_set_int(1, "gmode", 4); // a/n/ac Mixed
 
-	if (nvram_get_int("rt_stream_tx") > BOARD_NUM_ANT_2G_TX)
-		nvram_set_int("rt_stream_tx", BOARD_NUM_ANT_2G_TX);
+	if (nvram_wlan_get_int(1, "HT_BW") > 2)
+		nvram_wlan_set_int(1, "HT_BW", 2);
+#else
+	if (strlen(nvram_wlan_get(1, "gmode")) < 1)
+		nvram_wlan_set_int(1, "gmode", 2); // a/n Mixed
 
-	if (nvram_get_int("rt_stream_rx") > BOARD_NUM_ANT_2G_RX)
-		nvram_set_int("rt_stream_rx", BOARD_NUM_ANT_2G_RX);
+	if (nvram_wlan_get_int(1, "HT_BW") > 1)
+		nvram_wlan_set_int(1, "HT_BW", 1);
+#endif
+
+	if (nvram_wlan_get_int(1, "stream_tx") > BOARD_NUM_ANT_5G_TX)
+		nvram_wlan_set_int(1, "stream_tx", BOARD_NUM_ANT_5G_TX);
+
+	if (nvram_wlan_get_int(1, "stream_rx") > BOARD_NUM_ANT_5G_RX)
+		nvram_wlan_set_int(1, "stream_rx", BOARD_NUM_ANT_5G_RX);
+#endif
+
+	if (strlen(nvram_wlan_get(0, "ssid")) < 1)
+		nvram_wlan_set(0, "ssid", DEF_WLAN_2G_SSID);
+
+	memset(buff, 0, sizeof(buff));
+	char_to_ascii(buff, nvram_wlan_get(0, "ssid"));
+	nvram_wlan_set(0, "ssid2", buff);
+
+	if (strlen(nvram_wlan_get(0, "gmode")) < 1)
+		nvram_wlan_set_int(0, "gmode", 2); // b/g/n Mixed
+
+	if (nvram_wlan_get_int(0, "HT_BW") > 1)
+		nvram_wlan_set_int(0, "HT_BW", 1);
+
+	if (nvram_wlan_get_int(0, "stream_tx") > BOARD_NUM_ANT_2G_TX)
+		nvram_wlan_set_int(0, "stream_tx", BOARD_NUM_ANT_2G_TX);
+
+	if (nvram_wlan_get_int(0, "stream_rx") > BOARD_NUM_ANT_2G_RX)
+		nvram_wlan_set_int(0, "stream_rx", BOARD_NUM_ANT_2G_RX);
 
 	nvram_set_temp("ntpc_counter", "0000000000");
 	nvram_set_temp("login_timestamp", "0000000000");
@@ -384,7 +421,11 @@ nvram_convert_misc_values(void)
 	nvram_set_int_temp("vpnc_state_t", 0);
 	nvram_set_temp("deferred_wanup_t", "0000000000");
 	nvram_set_temp("vpnc_dns_t", "");
+	nvram_set_temp("vpnc_dom_t", "");
 	nvram_set_temp("viptv_ifname", "");
+
+	nvram_set_temp(RSTATS_NVKEY_24, (sw_mode != 3) ? IFDESC_WAN : IFDESC_LAN);
+	nvram_set_temp(RSTATS_NVKEY_DM, IFDESC_WAN);
 
 	/* setup wan0 variables */
 	set_wan0_vars();
@@ -403,7 +444,7 @@ nvram_convert_misc_values(void)
 	time_zone_x_mapping();
 }
 
-static void
+void
 write_storage_to_mtd(void)
 {
 	doSystem("/sbin/mtd_storage.sh %s", "save");
@@ -462,9 +503,6 @@ storage_load_time(void)
 	struct tm storage_tm;
 	time_t storage_time = 0;
 
-	if (nvram_match("stime_stored", "0"))
-		return;
-
 	fp = fopen("/etc/storage/system_time", "r");
 	if (fp) {
 		if (fgets(buf, sizeof(buf), fp))
@@ -474,7 +512,7 @@ storage_load_time(void)
 
 	if (storage_time > 0) {
 		localtime_r(&storage_time, &storage_tm);
-		if (storage_tm.tm_year > (SYS_START_YEAR - 1900)) {
+		if (storage_tm.tm_year >= (SYS_START_YEAR - 1900)) {
 			storage_time = mktime(&storage_tm);
 			storage_time += 5; // add delta 5 sec (~boot time)
 			stime(&storage_time);
@@ -542,9 +580,14 @@ void
 LED_CONTROL(int gpio_led, int flag)
 {
 	int front_led_x = 1;
+	int is_soft_blink = 0;
 
 	switch (gpio_led)
 	{
+#if defined (BOARD_GPIO_LED_ROUTER)
+	case BOARD_GPIO_LED_ROUTER:
+		break;
+#endif
 #if defined (BOARD_GPIO_LED_WAN)
 	case BOARD_GPIO_LED_WAN:
 		front_led_x = nvram_get_int("front_led_wan");
@@ -558,6 +601,28 @@ LED_CONTROL(int gpio_led, int flag)
 #if defined (BOARD_GPIO_LED_WIFI)
 	case BOARD_GPIO_LED_WIFI:
 		front_led_x = nvram_get_int("front_led_wif");
+		break;
+#endif
+#if defined (BOARD_GPIO_LED_SW2G)
+	case BOARD_GPIO_LED_SW2G:
+		is_soft_blink = 1;
+		front_led_x = nvram_get_int("front_led_wif");
+		if (front_led_x) {
+#if defined (BOARD_GPIO_LED_SW5G) && (BOARD_GPIO_LED_SW5G == BOARD_GPIO_LED_SW2G)
+			flag = (is_radio_on_rt() || is_radio_on_wl()) ? LED_ON : LED_OFF;
+#else
+			flag = (is_radio_on_rt()) ? LED_ON : LED_OFF;
+#endif
+		}
+		break;
+#endif
+#if defined (BOARD_GPIO_LED_SW5G) && (!defined (BOARD_GPIO_LED_SW2G) || (BOARD_GPIO_LED_SW5G != BOARD_GPIO_LED_SW2G))
+	case BOARD_GPIO_LED_SW5G:
+		is_soft_blink = 1;
+		front_led_x = nvram_get_int("front_led_wif");
+		if (front_led_x) {
+			flag = (is_radio_on_wl()) ? LED_ON : LED_OFF;
+		}
 		break;
 #endif
 #if defined (BOARD_GPIO_LED_USB)
@@ -599,10 +664,14 @@ LED_CONTROL(int gpio_led, int flag)
 	if (gpio_led == BOARD_GPIO_LED_WIFI) {
 		cpu_gpio_mode_set_bit(13, (flag == LED_OFF) ? 1 : 0); // change GPIO Mode for WLED
 		cpu_gpio_set_pin(gpio_led, LED_OFF); // always set GPIO to high
-	}
-	else
+	} else
 #endif
+	{
+		if (is_soft_blink)
+			cpu_gpio_led_enabled(gpio_led, (flag == LED_OFF) ? 0 : 1);
+		
 		cpu_gpio_set_pin(gpio_led, flag);
+	}
 }
 
 void 
@@ -623,12 +692,14 @@ init_router(void)
 
 	get_eeprom_params();
 
+	init_gpio_leds_buttons();
+
 	nvram_convert_misc_values();
 
 	if (nvram_need_commit)
 		nvram_commit();
 
-	init_gpio_leds_buttons();
+	mount_rwfs_partition();
 
 	gen_ralink_config_2g(0);
 	gen_ralink_config_5g(0);
@@ -639,22 +710,23 @@ init_router(void)
 	recreate_passwd_unix(1);
 
 	set_timezone();
-	set_cpu_affinity();
 	set_pagecache_reclaim();
 
 	storage_load_time();
 
-	is_ap_mode = get_ap_mode();
-
 	log_remote = nvram_invmatch("log_ipaddr", "");
 	if (!log_remote)
 		start_logger(1);
+
+	is_ap_mode = get_ap_mode();
 
 	init_loopback();
 	init_bridge(is_ap_mode);
 #if defined (USE_IPV6)
 	init_ipv6();
 #endif
+	set_cpu_affinity(is_ap_mode);
+
 	start_detect_link();
 	start_detect_internet(0);
 	start_lan(is_ap_mode, 0);
@@ -682,6 +754,7 @@ init_router(void)
 
 	// system ready
 	system("/etc/storage/started_script.sh &");
+	start_rwfs_optware();
 }
 
 void
@@ -715,6 +788,8 @@ shutdown_router(int use_reboot)
 	stop_wifi_all_rt();
 	stop_logger();
 	stop_lan(is_ap_mode);
+
+	umount_rwfs_partition();
 
 #if defined (BOARD_GPIO_LED_LAN)
 	LED_CONTROL(BOARD_GPIO_LED_LAN, LED_OFF);
@@ -820,6 +895,10 @@ handle_notifications(void)
 		else if(!strcmp(entry->d_name, "manual_wan_disconnect"))
 		{
 			manual_wan_disconnect();
+		}
+		else if(!strcmp(entry->d_name, "manual_wisp_reassoc"))
+		{
+			manual_wisp_reassoc();
 		}
 		else if(!strcmp(entry->d_name, "manual_ddns_hostname_check"))
 		{
@@ -975,7 +1054,7 @@ handle_notifications(void)
 		{
 			restart_nmbd();
 			restart_dhcpd();
-			reload_vpn_server();
+			reapply_vpn_server();
 		}
 #endif
 		else if (strcmp(entry->d_name, RCN_RESTART_LLTD) == 0)
@@ -985,6 +1064,10 @@ handle_notifications(void)
 		else if (strcmp(entry->d_name, RCN_RESTART_ADSC) == 0)
 		{
 			restart_infosvr();
+		}
+		else if (strcmp(entry->d_name, RCN_REAPPLY_VPNSVR) == 0)
+		{
+			reapply_vpn_server();
 		}
 		else if (strcmp(entry->d_name, RCN_RESTART_VPNSVR) == 0)
 		{
@@ -1031,8 +1114,11 @@ handle_notifications(void)
 		}
 		else if (strcmp(entry->d_name, RCN_RESTART_SWITCH_VLAN) == 0)
 		{
+			int pvid = phy_vlan_pvid_wan_get();
 			notify_reset_detect_link();
 			switch_config_vlan(0);
+			if (phy_vlan_pvid_wan_get() != pvid)
+				full_restart_wan();
 		}
 		else if (strcmp(entry->d_name, RCN_RESTART_SYSLOG) == 0)
 		{
@@ -1047,13 +1133,20 @@ handle_notifications(void)
 		{
 			notify_leds_detect_link();
 		}
-		else if (strcmp(entry->d_name, "restart_firewall_wan") == 0)
+		else if (strcmp(entry->d_name, RCN_RESTART_NETFILTER) == 0)
 		{
+			update_router_mode();
+			reload_nat_modules();
 			restart_firewall();
+			flush_conntrack_table(NULL);
 		}
 		else if (strcmp(entry->d_name, RCN_RESTART_FIREWALL) == 0)
 		{
 			reload_nat_modules();
+			restart_firewall();
+		}
+		else if (strcmp(entry->d_name, "restart_firewall_wan") == 0)
+		{
 			restart_firewall();
 		}
 		else if (strcmp(entry->d_name, RCN_RESTART_NTPC) == 0)
@@ -1075,8 +1168,7 @@ handle_notifications(void)
 			restart_all_sysctl();
 			
 			/* flush conntrack after NAT model changing */
-			if (nvram_nf_nat_type != nf_nat_type)
-			{
+			if (nvram_nf_nat_type != nf_nat_type) {
 				nvram_nf_nat_type = nf_nat_type;
 				flush_conntrack_table(NULL);
 			}
@@ -1191,12 +1283,10 @@ handle_notifications(void)
 	closedir(directory);
 }
 
-
 typedef struct {
 	const char *name;
 	int (*main)(int argc, char *argv[]);
 } applet_rc_t;
-
 
 static const applet_rc_t applets_rc[] = {
 	{ "udhcpc.script",	udhcpc_main		},
@@ -1304,6 +1394,9 @@ main(int argc, char **argv)
 		erase_nvram();
 		sys_exit();
 	}
+	else if (!strcmp(base, "run_telnetd")) {
+		run_telnetd();
+	}
 	else if (!strcmp(base, "run_ftpsamba")) {
 #if defined(APP_SMBD)
 		restart_smbd();
@@ -1409,11 +1502,14 @@ main(int argc, char **argv)
 	else if (!strcmp(base, "restart_dhcpd")) {
 		restart_dhcpd();
 	}
+	else if (!strcmp(base, "restart_vpn_server")) {
+		restart_vpn_server();
+	}
+	else if (!strcmp(base, "restart_vpn_client")) {
+		restart_vpn_client();
+	}
 	else if (!strcmp(base, "restart_networkmap")) {
 		restart_networkmap();
-	}
-	else if (!strcmp(base, "run_telnetd")) {
-		run_telnetd();
 	}
 	else if (!strcmp(base, "restart_firewall")) {
 		restart_firewall();
@@ -1490,6 +1586,22 @@ main(int argc, char **argv)
 		restart_wifi_wl(radio_on, 1);
 	}
 #endif
+	else if (!strcmp(base, "lan_eeprom_mac")) {
+		if (argc > 1 && strlen(argv[1]) == 17)
+			ret = set_wired_mac(0, argv[1]);
+		else {
+			printf("Usage: %s XX:XX:XX:XX:XX:XX\n\n", base);
+			ret = get_wired_mac(0);
+		}
+	}
+	else if (!strcmp(base, "wan_eeprom_mac")) {
+		if (argc > 1 && strlen(argv[1]) == 17)
+			ret = set_wired_mac(1, argv[1]);
+		else {
+			printf("Usage: %s XX:XX:XX:XX:XX:XX\n\n", base);
+			ret = get_wired_mac(1);
+		}
+	}
 #if (BOARD_NUM_USB_PORTS > 0)
 	else if (!strcmp(base, "ejusb")) {
 		int port = 0;

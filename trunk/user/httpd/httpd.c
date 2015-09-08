@@ -40,9 +40,10 @@
 #include <net/if.h>
 #include <ifaddrs.h>
 
+#include <bsd_queue.h>
+
 #include "httpd.h"
 #include "common.h"
-#include "queue.h"
 
 #define LOGIN_TIMEOUT		60
 #define SERVER_NAME		"httpd"
@@ -277,7 +278,7 @@ find_mac_from_ip(const uaddr *ip, unsigned char *p_out_mac, int *p_out_lan)
 		
 		while (fgets(buffer, sizeof(buffer), fp)) {
 			arp_flags = 0;
-			if (sscanf(buffer, "%s %*s 0x%x %s %*s %s", s_addr2, &arp_flags, arp_mac, arp_if) == 4) {
+			if (sscanf(buffer, "%s %*s 0x%x %31s %*s %31s", s_addr2, &arp_flags, arp_mac, arp_if) == 4) {
 				if ((arp_flags & 0x02) && !strcmp(s_addr1, s_addr2) && strcmp(arp_mac, "00:00:00:00:00:00")) {
 					if (ether_atoe(arp_mac, p_out_mac)) {
 						if (p_out_lan)
@@ -726,6 +727,8 @@ eat_post_data(FILE *conn_fp, int clen)
 {
 	char fake_buf[128];
 
+	do_cgi_clear();
+
 	if (!fgets(fake_buf, MIN(clen+1, sizeof(fake_buf)), conn_fp))
 		return;
 
@@ -845,10 +848,12 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 
 	method = path = line;
 	strsep(&path, " ");
-	while (*path == ' ') path++;
+	while (path && *path == ' ') path++;
+
 	protocol = path;
 	strsep(&protocol, " ");
-	while (*protocol == ' ') protocol++;
+	while (protocol && *protocol == ' ') protocol++;
+
 	cp = protocol;
 	strsep(&cp, " ");
 
@@ -987,6 +992,8 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 	} else {
 		if (query)
 			do_uncgi_query(query);
+		else if (handler->output == do_ej)
+			do_cgi_clear();
 	}
 
 	if (handler->output == do_file) {
@@ -1309,7 +1316,7 @@ main(int argc, char **argv)
 	}
 
 	/* free all pending requests */
-	TAILQ_FOREACH(item, &pool.head, entry) {
+	TAILQ_FOREACH_SAFE(item, &pool.head, entry, next) {
 		if (item->fd >= 0) {
 			shutdown(item->fd, SHUT_RDWR);
 			close(item->fd);

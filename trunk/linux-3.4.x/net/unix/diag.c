@@ -8,40 +8,31 @@
 #include <net/af_unix.h>
 #include <net/tcp_states.h>
 
-#define UNIX_DIAG_PUT(skb, attrtype, attrlen) \
-	RTA_DATA(__RTA_PUT(skb, attrtype, attrlen))
-
 static int sk_diag_dump_name(struct sock *sk, struct sk_buff *nlskb)
 {
 	struct unix_address *addr = unix_sk(sk)->addr;
-	char *s;
 
-	if (addr) {
-		s = UNIX_DIAG_PUT(nlskb, UNIX_DIAG_NAME, addr->len - sizeof(short));
-		memcpy(s, addr->name->sun_path, addr->len - sizeof(short));
-	}
+	if (!addr)
+		return 0;
 
-	return 0;
-
-rtattr_failure:
-	return -EMSGSIZE;
+	return nla_put(nlskb, UNIX_DIAG_NAME, addr->len - sizeof(short),
+		       addr->name->sun_path);
 }
 
 static int sk_diag_dump_vfs(struct sock *sk, struct sk_buff *nlskb)
 {
 	struct dentry *dentry = unix_sk(sk)->path.dentry;
-	struct unix_diag_vfs *uv;
 
 	if (dentry) {
-		uv = UNIX_DIAG_PUT(nlskb, UNIX_DIAG_VFS, sizeof(*uv));
-		uv->udiag_vfs_ino = dentry->d_inode->i_ino;
-		uv->udiag_vfs_dev = dentry->d_sb->s_dev;
+		struct unix_diag_vfs uv = {
+			.udiag_vfs_ino = dentry->d_inode->i_ino,
+			.udiag_vfs_dev = dentry->d_sb->s_dev,
+		};
+
+		return nla_put(nlskb, UNIX_DIAG_VFS, sizeof(uv), &uv);
 	}
 
 	return 0;
-
-rtattr_failure:
-	return -EMSGSIZE;
 }
 
 static int sk_diag_dump_peer(struct sock *sk, struct sk_buff *nlskb)
@@ -56,24 +47,28 @@ static int sk_diag_dump_peer(struct sock *sk, struct sk_buff *nlskb)
 		unix_state_unlock(peer);
 		sock_put(peer);
 
-		RTA_PUT_U32(nlskb, UNIX_DIAG_PEER, ino);
+		return nla_put_u32(nlskb, UNIX_DIAG_PEER, ino);
 	}
 
 	return 0;
-rtattr_failure:
-	return -EMSGSIZE;
 }
 
 static int sk_diag_dump_icons(struct sock *sk, struct sk_buff *nlskb)
 {
 	struct sk_buff *skb;
+	struct nlattr *attr;
 	u32 *buf;
 	int i;
 
 	if (sk->sk_state == TCP_LISTEN) {
 		spin_lock(&sk->sk_receive_queue.lock);
-		buf = UNIX_DIAG_PUT(nlskb, UNIX_DIAG_ICONS,
-				sk->sk_receive_queue.qlen * sizeof(u32));
+
+		attr = nla_reserve(nlskb, UNIX_DIAG_ICONS,
+				   sk->sk_receive_queue.qlen * sizeof(u32));
+		if (!attr)
+			goto errout;
+
+		buf = nla_data(attr);
 		i = 0;
 		skb_queue_walk(&sk->sk_receive_queue, skb) {
 			struct sock *req, *peer;
@@ -94,43 +89,38 @@ static int sk_diag_dump_icons(struct sock *sk, struct sk_buff *nlskb)
 
 	return 0;
 
-rtattr_failure:
+errout:
 	spin_unlock(&sk->sk_receive_queue.lock);
 	return -EMSGSIZE;
 }
 
 static int sk_diag_show_rqlen(struct sock *sk, struct sk_buff *nlskb)
 {
-	struct unix_diag_rqlen *rql;
-
-	rql = UNIX_DIAG_PUT(nlskb, UNIX_DIAG_RQLEN, sizeof(*rql));
+	struct unix_diag_rqlen rql;
 
 	if (sk->sk_state == TCP_LISTEN) {
-		rql->udiag_rqueue = sk->sk_receive_queue.qlen;
-		rql->udiag_wqueue = sk->sk_max_ack_backlog;
+		rql.udiag_rqueue = sk->sk_receive_queue.qlen;
+		rql.udiag_wqueue = sk->sk_max_ack_backlog;
 	} else {
-		rql->udiag_rqueue = (__u32)unix_inq_len(sk);
-		rql->udiag_wqueue = (__u32)unix_outq_len(sk);
+		rql.udiag_rqueue = (u32) unix_inq_len(sk);
+		rql.udiag_wqueue = (u32) unix_outq_len(sk);
 	}
 
-	return 0;
-
-rtattr_failure:
-	return -EMSGSIZE;
+	return nla_put(nlskb, UNIX_DIAG_RQLEN, sizeof(rql), &rql);
 }
 
 static int sk_diag_fill(struct sock *sk, struct sk_buff *skb, struct unix_diag_req *req,
 		u32 pid, u32 seq, u32 flags, int sk_ino)
 {
-	unsigned char *b = skb_tail_pointer(skb);
 	struct nlmsghdr *nlh;
 	struct unix_diag_msg *rep;
 
-	nlh = NLMSG_PUT(skb, pid, seq, SOCK_DIAG_BY_FAMILY, sizeof(*rep));
-	nlh->nlmsg_flags = flags;
+	nlh = nlmsg_put(skb, pid, seq, SOCK_DIAG_BY_FAMILY, sizeof(*rep),
+			flags);
+	if (!nlh)
+		return -EMSGSIZE;
 
-	rep = NLMSG_DATA(nlh);
-
+	rep = nlmsg_data(nlh);
 	rep->udiag_family = AF_UNIX;
 	rep->udiag_type = sk->sk_type;
 	rep->udiag_state = sk->sk_state;
@@ -140,33 +130,32 @@ static int sk_diag_fill(struct sock *sk, struct sk_buff *skb, struct unix_diag_r
 
 	if ((req->udiag_show & UDIAG_SHOW_NAME) &&
 	    sk_diag_dump_name(sk, skb))
-		goto nlmsg_failure;
+		goto out_nlmsg_trim;
 
 	if ((req->udiag_show & UDIAG_SHOW_VFS) &&
 	    sk_diag_dump_vfs(sk, skb))
-		goto nlmsg_failure;
+		goto out_nlmsg_trim;
 
 	if ((req->udiag_show & UDIAG_SHOW_PEER) &&
 	    sk_diag_dump_peer(sk, skb))
-		goto nlmsg_failure;
+		goto out_nlmsg_trim;
 
 	if ((req->udiag_show & UDIAG_SHOW_ICONS) &&
 	    sk_diag_dump_icons(sk, skb))
-		goto nlmsg_failure;
+		goto out_nlmsg_trim;
 
 	if ((req->udiag_show & UDIAG_SHOW_RQLEN) &&
 	    sk_diag_show_rqlen(sk, skb))
-		goto nlmsg_failure;
+		goto out_nlmsg_trim;
 
 	if ((req->udiag_show & UDIAG_SHOW_MEMINFO) &&
 	    sock_diag_put_meminfo(sk, skb, UNIX_DIAG_MEMINFO))
-		goto nlmsg_failure;
+		goto out_nlmsg_trim;
 
-	nlh->nlmsg_len = skb_tail_pointer(skb) - b;
-	return skb->len;
+	return nlmsg_end(skb, nlh);
 
-nlmsg_failure:
-	nlmsg_trim(skb, b);
+out_nlmsg_trim:
+	nlmsg_cancel(skb, nlh);
 	return -EMSGSIZE;
 }
 
@@ -190,7 +179,7 @@ static int unix_diag_dump(struct sk_buff *skb, struct netlink_callback *cb)
 	struct unix_diag_req *req;
 	int num, s_num, slot, s_slot;
 
-	req = NLMSG_DATA(cb->nlh);
+	req = nlmsg_data(cb->nlh);
 
 	s_slot = cb->args[0];
 	num = s_num = cb->args[1];
@@ -269,15 +258,14 @@ static int unix_diag_get_exact(struct sk_buff *in_skb,
 	extra_len = 256;
 again:
 	err = -ENOMEM;
-	rep = alloc_skb(NLMSG_SPACE((sizeof(struct unix_diag_msg) + extra_len)),
-			GFP_KERNEL);
+	rep = nlmsg_new(sizeof(struct unix_diag_msg) + extra_len, GFP_KERNEL);
 	if (!rep)
 		goto out;
 
 	err = sk_diag_fill(sk, rep, req, NETLINK_CB(in_skb).pid,
 			   nlh->nlmsg_seq, 0, req->udiag_ino);
 	if (err < 0) {
-		kfree_skb(rep);
+		nlmsg_free(rep);
 		extra_len += 256;
 		if (extra_len >= PAGE_SIZE)
 			goto out;
@@ -308,7 +296,7 @@ static int unix_diag_handler_dump(struct sk_buff *skb, struct nlmsghdr *h)
 		};
 		return netlink_dump_start(sock_diag_nlsk, skb, h, &c);
 	} else
-		return unix_diag_get_exact(skb, h, (struct unix_diag_req *)NLMSG_DATA(h));
+		return unix_diag_get_exact(skb, h, nlmsg_data(h));
 }
 
 static struct sock_diag_handler unix_diag_handler = {

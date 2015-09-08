@@ -28,6 +28,11 @@
 #define MAX_NUMBER_OF_MAC	32
 #endif
 
+#define FIXED_TXMODE_HT		0
+#define FIXED_TXMODE_CCK	1
+#define FIXED_TXMODE_OFDM 	2
+#define FIXED_TXMODE_VHT	3
+
 #define MODE_CCK		0
 #define MODE_OFDM		1
 #define MODE_HTMIX		2
@@ -39,6 +44,12 @@
 #define BW_80			2
 #define BW_BOTH			3
 #define BW_10			4 // not used
+
+#define WDS_DISABLE_MODE	0
+#define WDS_RESTRICT_MODE	1
+#define WDS_BRIDGE_MODE		2
+#define WDS_REPEATER_MODE	3
+#define WDS_LAZY_MODE		4
 
 typedef enum _RT_802_11_PHY_MODE {
 	PHY_11BG_MIXED = 0,
@@ -59,9 +70,19 @@ typedef enum _RT_802_11_PHY_MODE {
 	PHY_11VHT_N_MIXED = 15, /* 15 -> AC/AN mixed in 5G band */
 } RT_802_11_PHY_MODE;
 
+enum WIFI_MODE {
+	WMODE_INVALID = 0,
+	WMODE_A = 1 << 0,
+	WMODE_B = 1 << 1,
+	WMODE_G = 1 << 2,
+	WMODE_GN = 1 << 3,
+	WMODE_AN = 1 << 4,
+	WMODE_AC = 1 << 5,
+	WMODE_COMP = 6,	/* total types of supported wireless mode, add this value once yow add new type */
+};
+
 typedef union _MACHTTRANSMIT_SETTING {
 	struct {
-#if defined (USE_MT7610_AP) || defined (USE_MT76X2_AP) || defined (USE_MT76X3_AP)
 		unsigned short MCS:6;
 		unsigned short ldpc:1;
 		unsigned short BW:2;
@@ -70,16 +91,6 @@ typedef union _MACHTTRANSMIT_SETTING {
 		unsigned short eTxBF:1;
 		unsigned short iTxBF:1;
 		unsigned short MODE:3;
-#else
-		unsigned short MCS:7;
-		unsigned short BW:1;
-		unsigned short ShortGI:1;
-		unsigned short STBC:2;
-		unsigned short eTxBF:1;
-		unsigned short rsv:1;
-		unsigned short iTxBF:1;
-		unsigned short MODE:2;
-#endif
 	} field;
 	unsigned short word;
 } MACHTTRANSMIT_SETTING, *PMACHTTRANSMIT_SETTING;
@@ -95,15 +106,46 @@ typedef struct _RT_802_11_MAC_ENTRY {
 	char		AvgRssi2;
 	unsigned int	ConnectedTime;
 	MACHTTRANSMIT_SETTING	TxRate;
-#if defined (USE_MT7610_AP) || defined (USE_MT76X2_AP) || defined (USE_MT76X3_AP)
 	unsigned int	LastRxRate;
-#endif
 } RT_802_11_MAC_ENTRY, *PRT_802_11_MAC_ENTRY;
 
 typedef struct _RT_802_11_MAC_TABLE {
-    unsigned long	Num;
-    RT_802_11_MAC_ENTRY Entry[MAX_NUMBER_OF_MAC];
+	unsigned long Num;
+	RT_802_11_MAC_ENTRY Entry[MAX_NUMBER_OF_MAC];
 } RT_802_11_MAC_TABLE, *PRT_802_11_MAC_TABLE;
+
+/* RT3352 iNIC_mii MAC_TABLE */
+typedef union _MACHTTRANSMIT_SETTING_INIC {
+	struct {
+		unsigned short MCS:7;
+		unsigned short BW:1;
+		unsigned short ShortGI:1;
+		unsigned short STBC:2;
+		unsigned short eTxBF:1;
+		unsigned short rsv:1;
+		unsigned short iTxBF:1;
+		unsigned short MODE:2;
+	} field;
+	unsigned short word;
+} MACHTTRANSMIT_SETTING_INIC, *PMACHTTRANSMIT_SETTING_INIC;
+
+typedef struct _RT_802_11_MAC_ENTRY_INIC {
+	unsigned char	ApIdx;
+	unsigned char	Addr[ETHER_ADDR_LEN];
+	unsigned char	Aid;
+	unsigned char	Psm;     // 0:PWR_ACTIVE, 1:PWR_SAVE
+	unsigned char	MimoPs;  // 0:MMPS_STATIC, 1:MMPS_DYNAMIC, 3:MMPS_Enabled
+	char		AvgRssi0;
+	char		AvgRssi1;
+	char		AvgRssi2;
+	unsigned int	ConnectedTime;
+	MACHTTRANSMIT_SETTING_INIC	TxRate;
+} RT_802_11_MAC_ENTRY_INIC, *PRT_802_11_MAC_ENTRY_INIC;
+
+typedef struct _RT_802_11_MAC_TABLE_INIC {
+	unsigned long Num;
+	RT_802_11_MAC_ENTRY_INIC Entry[MAX_NUMBER_OF_MAC];
+} RT_802_11_MAC_TABLE_INIC, *PRT_802_11_MAC_TABLE_INIC;
 
 typedef struct _SITE_SURVEY 
 {
@@ -159,6 +201,7 @@ typedef struct _PAIR_CHANNEL_FREQ_ENTRY
 #define OID_802_11_SSID			0x0509
 #define OID_802_11_BSSID		0x050A
 #define RT_OID_802_11_RADIO		0x050B
+#define RT_OID_802_11_PHY_MODE		0x050C
 #define OID_802_11_BSSID_LIST		0x0609
 #define OID_802_3_CURRENT_ADDRESS	0x060A
 #define OID_GEN_MEDIA_CONNECT_STATUS	0x060B
@@ -170,6 +213,7 @@ typedef struct _PAIR_CHANNEL_FREQ_ENTRY
 
 #define MTD_PART_NAME_FACTORY	"Factory"
 #define MTD_PART_NAME_KERNEL	"Kernel"
+#define MTD_PART_NAME_RWFS	"RWFS"
 
 #if defined (CONFIG_RALINK_MT7621)
 #define OFFSET_MAC_GMAC0	0xE000

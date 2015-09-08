@@ -1025,7 +1025,9 @@ NDIS_STATUS IgmpPktClone(
 	SST	Sst = SST_ASSOC;
 	UCHAR PsMode = PWR_ACTIVE;
 	UCHAR Rate;
+#ifndef MT_MAC
 	unsigned long IrqFlags;
+#endif
 	INT MacEntryIdx;
 	BOOLEAN bContinue;
 	PUCHAR pMemberAddr = NULL;
@@ -1076,6 +1078,9 @@ NDIS_STATUS IgmpPktClone(
 		{
 			OS_PKT_CLONE(pAd, pPacket, pSkbClone, MEM_ALLOC_FLAG);
 			if ((pSkbClone)
+#ifdef DOT11V_WNM_SUPPORT
+				&& (pMacEntry->Beclone == FALSE)
+#endif /* DOT11V_WNM_SUPPORT */
 			)
 			{
 				RTMP_SET_PACKET_WCID(pSkbClone, (UCHAR)pMacEntry->Aid);
@@ -1092,6 +1097,8 @@ NDIS_STATUS IgmpPktClone(
 							{
 								DBGPRINT(RT_DEBUG_TRACE, ("%s(%d): (wcid=%u)STA tx_queue full\n", __FUNCTION__, __LINE__,pMacEntry->wcid));
 								RELEASE_NDIS_PACKET(pAd, pSkbClone, NDIS_STATUS_FAILURE);
+								return NDIS_STATUS_FAILURE;
+								
 							}
 						}
 
@@ -1110,6 +1117,7 @@ NDIS_STATUS IgmpPktClone(
 						{
 							DBGPRINT(RT_DEBUG_TRACE, ("%s(%d): (wcid=%u)STA rtmp_enq_req() fail!\n", __FUNCTION__, __LINE__,pMacEntry->wcid));
 							RELEASE_NDIS_PACKET(pAd, pSkbClone, NDIS_STATUS_FAILURE);
+							return NDIS_STATUS_FAILURE;
 						}
 
 
@@ -1184,6 +1192,9 @@ NDIS_STATUS IgmpPktClone(
 				else
 					bContinue = FALSE;	
 
+#ifdef DOT11V_WNM_SUPPORT
+				pMacEntry->Beclone = FALSE;
+#endif /* DOT11V_WNM_SUPPORT */
 				continue;
 			}
 
@@ -1213,7 +1224,7 @@ NDIS_STATUS IgmpPktClone(
 #endif /* !MT_MAC */
 		
 #ifdef DOT11_N_SUPPORT
-			RTMP_BASetup(pAd, pMacEntry, UserPriority);
+			RTMP_BASetup(pAd, tr_entry, UserPriority);
 #endif /* DOT11_N_SUPPORT */
 		}
 

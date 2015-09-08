@@ -71,8 +71,7 @@ static inline u16 llc_ui_next_link_no(int sap)
  */
 static inline __be16 llc_proto_type(u16 arphrd)
 {
-	return arphrd == ARPHRD_IEEE802_TR ?
-			 htons(ETH_P_TR_802_2) : htons(ETH_P_802_2);
+	return htons(ETH_P_802_2);
 }
 
 /**
@@ -518,7 +517,7 @@ static int llc_ui_listen(struct socket *sock, int backlog)
 	if (sock_flag(sk, SOCK_ZAPPED))
 		goto out;
 	rc = 0;
-	if (!(unsigned)backlog)	/* BSDism */
+	if (!(unsigned int)backlog)	/* BSDism */
 		backlog = 1;
 	sk->sk_max_ack_backlog = backlog;
 	if (sk->sk_state != TCP_LISTEN) {
@@ -614,7 +613,7 @@ static int llc_wait_data(struct sock *sk, long timeo)
 		if (signal_pending(current))
 			break;
 		rc = 0;
-		if (sk_wait_data(sk, &timeo))
+		if (sk_wait_data(sk, &timeo, NULL))
 			break;
 	}
 	return rc;
@@ -803,7 +802,7 @@ static int llc_ui_recvmsg(struct kiocb *iocb, struct socket *sock,
 			release_sock(sk);
 			lock_sock(sk);
 		} else
-			sk_wait_data(sk, &timeo);
+			sk_wait_data(sk, &timeo, NULL);
 
 		if ((flags & MSG_PEEK) && peek_seq != llc->copied_seq) {
 			net_dbg_ratelimited("LLC(%s:%d): Application bug, race in MSG_PEEK\n",

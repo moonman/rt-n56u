@@ -22,9 +22,11 @@
 /* Bridge group multicast address 802.1d (pg 51). */
 const u8 br_group_address[ETH_ALEN] = { 0x01, 0x80, 0xc2, 0x00, 0x00, 0x00 };
 
+#if IS_ENABLED(CONFIG_BRIDGE_EBT_BROUTE)
 /* Hook for brouter */
 br_should_route_hook_t __rcu *br_should_route_hook __read_mostly;
 EXPORT_SYMBOL(br_should_route_hook);
+#endif
 
 static inline int br_pass_frame_up(struct sk_buff *skb)
 {
@@ -61,12 +63,12 @@ int br_handle_frame_finish(struct sk_buff *skb)
 	br = p->br;
 	br_fdb_update(br, p, eth_hdr(skb)->h_source);
 
-	if (!is_broadcast_ether_addr(dest) && is_multicast_ether_addr(dest) &&
+	if (is_multicast_ether_addr(dest) && !is_broadcast_ether_addr(dest) &&
 	    br_multicast_rcv(br, p, skb))
 		goto drop;
 
 #ifdef CONFIG_BRIDGE_EAP
-	if ((p->state == BR_STATE_LEARNING) && skb->protocol != htons(ETH_P_PAE))
+	if ((p->state == BR_STATE_LEARNING) && skb->protocol != __constant_htons(ETH_P_PAE))
 #else
 	if (p->state == BR_STATE_LEARNING)
 #endif
@@ -82,14 +84,16 @@ int br_handle_frame_finish(struct sk_buff *skb)
 
 	dst = NULL;
 
+	if ((p->flags & BR_ISOLATE_MODE)
 #ifdef CONFIG_BRIDGE_EAP
-	if (skb->protocol == htons(ETH_P_PAE)) {
-		skb2 = skb;
-		/* Do not forward 802.1x/EAP frames */
-		skb = NULL;
-	} else
+	    || skb->protocol == __constant_htons(ETH_P_PAE)
 #endif
-	if (is_broadcast_ether_addr(dest))
+	    ) {
+		skb2 = skb;
+		/* Do not forward from isolated port (or all 802.1x/EAP frames) */
+		skb = NULL;
+	}
+	else if (is_broadcast_ether_addr(dest))
 		skb2 = skb;
 	else if (is_multicast_ether_addr(dest)) {
 		mdst = br_mdb_get(br, skb);
@@ -159,7 +163,9 @@ rx_handler_result_t br_handle_frame(struct sk_buff **pskb)
 	struct net_bridge_port *p;
 	struct sk_buff *skb = *pskb;
 	const unsigned char *dest = eth_hdr(skb)->h_dest;
+#if IS_ENABLED(CONFIG_BRIDGE_EBT_BROUTE)
 	br_should_route_hook_t *rhook;
+#endif
 
 	if (unlikely(skb->pkt_type == PACKET_LOOPBACK))
 		return RX_HANDLER_PASS;
@@ -217,6 +223,7 @@ rx_handler_result_t br_handle_frame(struct sk_buff **pskb)
 forward:
 	switch (p->state) {
 	case BR_STATE_FORWARDING:
+#if IS_ENABLED(CONFIG_BRIDGE_EBT_BROUTE)
 		rhook = rcu_dereference(br_should_route_hook);
 		if (rhook) {
 			if ((*rhook)(skb)) {
@@ -225,6 +232,7 @@ forward:
 			}
 			dest = eth_hdr(skb)->h_dest;
 		}
+#endif
 		/* fall through */
 	case BR_STATE_LEARNING:
 		if (!compare_ether_addr(p->br->dev->dev_addr, dest))

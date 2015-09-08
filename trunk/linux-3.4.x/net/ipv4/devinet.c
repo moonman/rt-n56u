@@ -830,9 +830,9 @@ int devinet_ioctl(struct net *net, unsigned int cmd, void __user *arg)
 		if (!ifa) {
 			ret = -ENOBUFS;
 			ifa = inet_alloc_ifa();
-			INIT_HLIST_NODE(&ifa->hash);
 			if (!ifa)
 				break;
+			INIT_HLIST_NODE(&ifa->hash);
 			if (colon)
 				memcpy(ifa->ifa_label, ifr.ifr_name, IFNAMSIZ);
 			else
@@ -944,10 +944,7 @@ static int inet_gifconf(struct net_device *dev, char __user *buf, int len)
 		if (len < (int) sizeof(ifr))
 			break;
 		memset(&ifr, 0, sizeof(struct ifreq));
-		if (ifa->ifa_label)
-			strcpy(ifr.ifr_name, ifa->ifa_label);
-		else
-			strcpy(ifr.ifr_name, dev->name);
+		strcpy(ifr.ifr_name, ifa->ifa_label);
 
 		(*(struct sockaddr_in *)&ifr.ifr_addr).sin_family = AF_INET;
 		(*(struct sockaddr_in *)&ifr.ifr_addr).sin_addr.s_addr =
@@ -1129,7 +1126,7 @@ skip:
 	}
 }
 
-static inline bool inetdev_valid_mtu(unsigned mtu)
+static inline bool inetdev_valid_mtu(unsigned int mtu)
 {
 	return mtu >= 68;
 }
@@ -1270,17 +1267,15 @@ static int inet_fill_ifaddr(struct sk_buff *skb, struct in_ifaddr *ifa,
 	ifm->ifa_scope = ifa->ifa_scope;
 	ifm->ifa_index = ifa->ifa_dev->dev->ifindex;
 
-	if (ifa->ifa_address)
-		NLA_PUT_BE32(skb, IFA_ADDRESS, ifa->ifa_address);
-
-	if (ifa->ifa_local)
-		NLA_PUT_BE32(skb, IFA_LOCAL, ifa->ifa_local);
-
-	if (ifa->ifa_broadcast)
-		NLA_PUT_BE32(skb, IFA_BROADCAST, ifa->ifa_broadcast);
-
-	if (ifa->ifa_label[0])
-		NLA_PUT_STRING(skb, IFA_LABEL, ifa->ifa_label);
+	if ((ifa->ifa_address &&
+	     nla_put_be32(skb, IFA_ADDRESS, ifa->ifa_address)) ||
+	    (ifa->ifa_local &&
+	     nla_put_be32(skb, IFA_LOCAL, ifa->ifa_local)) ||
+	    (ifa->ifa_broadcast &&
+	     nla_put_be32(skb, IFA_BROADCAST, ifa->ifa_broadcast)) ||
+	    (ifa->ifa_label[0] &&
+	     nla_put_string(skb, IFA_LABEL, ifa->ifa_label)))
+		goto nla_put_failure;
 
 	return nlmsg_end(skb, nlh);
 
@@ -1824,7 +1819,7 @@ static __net_initdata struct pernet_operations devinet_ops = {
 	.exit = devinet_exit_net,
 };
 
-static struct rtnl_af_ops inet_af_ops = {
+static struct rtnl_af_ops inet_af_ops __read_mostly = {
 	.family		  = AF_INET,
 	.fill_link_af	  = inet_fill_link_af,
 	.get_link_af_size = inet_get_link_af_size,

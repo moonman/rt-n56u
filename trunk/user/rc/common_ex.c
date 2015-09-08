@@ -62,64 +62,60 @@ rand_seed_by_time(void)
 
 /* convert mac address format from XXXXXXXXXXXX to XX:XX:XX:XX:XX:XX */
 char *
-mac_conv(char *mac_name, int idx, char *buf)
+mac_conv(const char *mac_nvkey, int idx, char *buf)
 {
 	char *mac, name[32];
 	int i, j;
 
-	if (idx!=-1)
-		sprintf(name, "%s%d", mac_name, idx);
+	if (idx < 0)
+		snprintf(name, sizeof(name), "%s", mac_nvkey);
 	else
-		sprintf(name, "%s", mac_name);
+		snprintf(name, sizeof(name), "%s%d", mac_nvkey, idx);
 
 	mac = nvram_safe_get(name);
 
-	if (strlen(mac)==0)
-	{
-		buf[0] = 0;
-	}
-	else
-	{
-		j=0;
-		for (i=0; i<12; i++)
-		{
-			if (i!=0&&i%2==0) buf[j++] = ':';
+	buf[0] = 0;
+	if (strlen(mac) == 12) {
+		for (i = 0, j = 0; i < 12; i++) {
+			if (i != 0 && (i%2) == 0)
+				buf[j++] = ':';
 			buf[j++] = mac[i];
 		}
 		buf[j] = 0;	// oleg patch
 	}
+
+	if (strcasecmp(buf, "FF:FF:FF:FF:FF:FF") == 0 || strcmp(buf, "00:00:00:00:00:00") == 0)
+		buf[0] = 0;
 
 	return (buf);
 }
 
 /* convert mac address format from XX:XX:XX:XX:XX:XX to XXXXXXXXXXXX */
 char *
-mac_conv2(char *mac_name, int idx, char *buf)
+mac_conv2(const char *mac_nvkey, int idx, char *buf)
 {
 	char *mac, name[32];
 	int i, j;
 
-	if(idx != -1)
-		sprintf(name, "%s%d", mac_name, idx);
+	if (idx < 0)
+		snprintf(name, sizeof(name), "%s", mac_nvkey);
 	else
-		sprintf(name, "%s", mac_name);
+		snprintf(name, sizeof(name), "%s%d", mac_nvkey, idx);
 
 	mac = nvram_safe_get(name);
 
-	if(strlen(mac) == 0 || strlen(mac) != 17)
-		buf[0] = 0;
-	else{
-		for(i = 0, j = 0; i < 17; ++i){
-			if(i%3 != 2){
+	buf[0] = 0;
+	if (strlen(mac) == 17 && strcasecmp(buf, "FF:FF:FF:FF:FF:FF") && strcmp(buf, "00:00:00:00:00:00")) {
+		for(i = 0, j = 0; i < 17; ++i) {
+			if (i%3 != 2){
 				buf[j] = mac[i];
 				++j;
 			}
-
 			buf[j] = 0;
 		}
 	}
 
-	return(buf);
+	return (buf);
 }
 
 int
@@ -168,11 +164,7 @@ get_eeprom_params(void)
 	if (i_ret >= 0 && buffer[0] != 0xff)
 		ether_etoa(buffer, macaddr_rt);
 
-#if defined (BOARD_N14U) || defined (BOARD_N11P)
-	i_offset = 0x018E; // wdf?
-#else
-	i_offset = OFFSET_MAC_GMAC0;
-#endif
+	i_offset = get_wired_mac_e2p_offset(0);
 	memset(buffer, 0xff, ETHER_ADDR_LEN);
 	i_ret = flash_mtd_read(MTD_PART_NAME_FACTORY, i_offset, buffer, ETHER_ADDR_LEN);
 	if (buffer[0] == 0xff) {
@@ -186,26 +178,26 @@ get_eeprom_params(void)
 		ether_etoa(buffer, macaddr_lan);
 	}
 
-#if defined (BOARD_N14U) || defined (BOARD_N11P)
-	buffer[5] |= 0x03; // last 2 bits reserved by ASUS for MBSSID, use 0x03 for WAN (ra1: 0x01, apcli0: 0x02)
-	ether_etoa(buffer, macaddr_wan);
-#else
-	i_offset = OFFSET_MAC_GMAC2;
-	memset(buffer, 0xff, ETHER_ADDR_LEN);
-	i_ret = flash_mtd_read(MTD_PART_NAME_FACTORY, i_offset, buffer, ETHER_ADDR_LEN);
-	if (buffer[0] == 0xff) {
-		if (ether_atoe(macaddr_rt, ea)) {
-			memcpy(buffer, ea, ETHER_ADDR_LEN);
-			strcpy(macaddr_wan, macaddr_rt);
-#if !defined (USE_SINGLE_MAC)
-			if (i_ret >= 0)
-				flash_mtd_write(MTD_PART_NAME_FACTORY, i_offset, ea, ETHER_ADDR_LEN);
-#endif
-		}
-	} else {
+	if (get_wired_mac_is_single()) {
+		buffer[5] |= 0x03;	// last 2 bits reserved for MBSSID, use 0x03 for WAN (ra1: 0x01, apcli0: 0x02)
 		ether_etoa(buffer, macaddr_wan);
-	}
+	} else {
+		i_offset = get_wired_mac_e2p_offset(1);
+		memset(buffer, 0xff, ETHER_ADDR_LEN);
+		i_ret = flash_mtd_read(MTD_PART_NAME_FACTORY, i_offset, buffer, ETHER_ADDR_LEN);
+		if (buffer[0] == 0xff) {
+			if (ether_atoe(macaddr_rt, ea)) {
+				memcpy(buffer, ea, ETHER_ADDR_LEN);
+				strcpy(macaddr_wan, macaddr_rt);
+#if !defined (USE_SINGLE_MAC)
+				if (i_ret >= 0)
+					flash_mtd_write(MTD_PART_NAME_FACTORY, i_offset, ea, ETHER_ADDR_LEN);
 #endif
+			}
+		} else {
+			ether_etoa(buffer, macaddr_wan);
+		}
+	}
 
 	nvram_set_temp("il0macaddr", macaddr_lan); // LAN
 	nvram_set_temp("il1macaddr", macaddr_wan); // WAN
@@ -231,11 +223,11 @@ get_eeprom_params(void)
 	strcpy(country_code, "GB");
 #endif
 
-	if (strlen(nvram_safe_get("rt_country_code")) == 0)
-		nvram_set("rt_country_code", country_code);
+	if (strlen(nvram_wlan_get(0, "country_code")) == 0)
+		nvram_wlan_set(0, "country_code", country_code);
 
-	if (strlen(nvram_safe_get("wl_country_code")) == 0)
-		nvram_set("wl_country_code", country_code);
+	if (strlen(nvram_wlan_get(1, "country_code")) == 0)
+		nvram_wlan_set(1, "country_code", country_code);
 
 #if defined (VENDOR_ASUS)
 	/* reserved for Ralink. used as ASUS RegSpec code. */
@@ -354,10 +346,7 @@ get_eeprom_params(void)
 			}
 		}
 		
-		if (count_0xff == 33)
-			nvram_set_int("wl_txbf_en", 0);
-		else
-			nvram_set_int("wl_txbf_en", 1);
+		nvram_wlan_set_int(1, "txbf_en", (count_0xff == 33) ? 0 : 1);
 	}
 #endif
 }
@@ -640,67 +629,179 @@ irq_affinity_set(int irq_num, int cpu)
 static void
 rps_queue_set(const char *ifname, int cpu_mask)
 {
-	char proc_path[64];
+	char proc_path[64], cmx[4];
 
 	snprintf(proc_path, sizeof(proc_path), "/sys/class/net/%s/queues/rx-%d/rps_cpus", ifname, 0);
-	fput_int(proc_path, cpu_mask);
+	snprintf(cmx, sizeof(cmx), "%x", cpu_mask);
+	fput_string(proc_path, cmx);
 }
 
 static void
 xps_queue_set(const char *ifname, int cpu_mask)
 {
-	char proc_path[64];
+	char proc_path[64], cmx[4];
 
 	snprintf(proc_path, sizeof(proc_path), "/sys/class/net/%s/queues/tx-%d/xps_cpus", ifname, 0);
-	fput_int(proc_path, cpu_mask);
+	snprintf(cmx, sizeof(cmx), "%x", cpu_mask);
+	fput_string(proc_path, cmx);
 }
 
 void
-set_cpu_affinity(void)
+set_cpu_affinity(int is_ap_mode)
 {
 	/* set initial IRQ affinity and RPS/XPS balancing */
 	int ncpu = sysconf(_SC_NPROCESSORS_ONLN);
 
+#define GIC_OFFSET	0
+#define GIC_IRQ_FE	(GIC_OFFSET+3)
+#define GIC_IRQ_PCIE0	(GIC_OFFSET+4)
+#define GIC_IRQ_PCIE1	(GIC_OFFSET+24)
+#define GIC_IRQ_PCIE2	(GIC_OFFSET+25)
+#define GIC_IRQ_SDXC	(GIC_OFFSET+20)
+#define GIC_IRQ_XHCI	(GIC_OFFSET+22)
+
 	if (ncpu == 4) {
-		irq_affinity_set( 3, 2);	/* GMAC  -> CPU:0, VPE:1 */
-		irq_affinity_set( 4, 4);	/* PCIe0 -> CPU:1, VPE:0 */
-		irq_affinity_set(24, 8);	/* PCIe1 -> CPU:1, VPE:1 */
-		irq_affinity_set(25, 1);	/* PCIe2 -> CPU:0, VPE:0 */
-		irq_affinity_set(20, 4);	/* SDXC  -> CPU:1, VPE:0 */
-		irq_affinity_set(22, 8);	/* xHCI  -> CPU:1, VPE:1 */
+		irq_affinity_set(GIC_IRQ_FE,    2);	/* GMAC  -> CPU:0, VPE:1 */
+		irq_affinity_set(GIC_IRQ_PCIE0, 4);	/* PCIe0 -> CPU:1, VPE:0 (usually rai0) */
+		irq_affinity_set(GIC_IRQ_PCIE1, 8);	/* PCIe1 -> CPU:1, VPE:1 (usually ra0) */
+		irq_affinity_set(GIC_IRQ_PCIE2, 1);	/* PCIe2 -> CPU:0, VPE:0 */
+		irq_affinity_set(GIC_IRQ_SDXC,  4);	/* SDXC  -> CPU:1, VPE:0 */
+		irq_affinity_set(GIC_IRQ_XHCI,  8);	/* xHCI  -> CPU:1, VPE:1 */
 		
-		rps_queue_set("ra0", 0x2);
-		xps_queue_set("ra0", 0x2);
-		
-		rps_queue_set("rai0", 0x8);
-		xps_queue_set("rai0", 0x8);
-		
-		rps_queue_set("eth2", 0x1);
-		xps_queue_set("eth2", 0x1);
-		
-		rps_queue_set("eth3", 0x4);
-		xps_queue_set("eth3", 0x4);
+		rps_queue_set(IFNAME_2G_MAIN, 0x8);	/* CPU:1, VPE:1 */
+		xps_queue_set(IFNAME_2G_MAIN, 0x8);	/* CPU:1, VPE:1 */
+#if BOARD_HAS_5G_RADIO
+		rps_queue_set(IFNAME_5G_MAIN, 0x4);	/* CPU:1, VPE:0 */
+		xps_queue_set(IFNAME_5G_MAIN, 0x4);	/* CPU:1, VPE:0 */
+#endif
+		if (is_ap_mode) {
+			rps_queue_set(IFNAME_MAC, 0x3);	/* CPU:0, VPE:0+1 */
+			xps_queue_set(IFNAME_MAC, 0x3);	/* CPU:0, VPE:0+1 */
+		} else {
+			rps_queue_set(IFNAME_LAN, 0x1);	/* CPU:0, VPE:0 */
+			xps_queue_set(IFNAME_LAN, 0x1);	/* CPU:0, VPE:0 */
+			rps_queue_set(IFNAME_WAN, 0x4);	/* CPU:1, VPE:0 */
+			xps_queue_set(IFNAME_WAN, 0x4);	/* CPU:1, VPE:0 */
+#if defined (USE_SINGLE_MAC)
+			rps_queue_set(IFNAME_MAC, 0x5);	/* CPU:0, VPE:0 + CPU:1, VPE:0 */
+			xps_queue_set(IFNAME_MAC, 0x5);	/* CPU:0, VPE:0 + CPU:1, VPE:0 */
+#endif
+		}
 		
 	} else if (ncpu == 2) {
-		irq_affinity_set( 3, 1);	/* GMAC  -> CPU:0, VPE:0 */
-		irq_affinity_set( 4, 2);	/* PCIe0 -> CPU:0, VPE:1 */
-		irq_affinity_set(24, 2);	/* PCIe1 -> CPU:0, VPE:1 */
-		irq_affinity_set(25, 1);	/* PCIe2 -> CPU:0, VPE:0 */
-		irq_affinity_set(20, 2);	/* SDXC  -> CPU:0, VPE:1 */
-		irq_affinity_set(22, 2);	/* xHCI  -> CPU:0, VPE:1 */
+		irq_affinity_set(GIC_IRQ_FE,    1);	/* GMAC  -> CPU:0, VPE:0 */
+		irq_affinity_set(GIC_IRQ_PCIE0, 2);	/* PCIe0 -> CPU:0, VPE:1 (usually rai0) */
+		irq_affinity_set(GIC_IRQ_PCIE1, 2);	/* PCIe1 -> CPU:0, VPE:1 (usually ra0) */
+		irq_affinity_set(GIC_IRQ_PCIE2, 1);	/* PCIe2 -> CPU:0, VPE:0 */
+		irq_affinity_set(GIC_IRQ_SDXC,  2);	/* SDXC  -> CPU:0, VPE:1 */
+		irq_affinity_set(GIC_IRQ_XHCI,  2);	/* xHCI  -> CPU:0, VPE:1 */
 		
-		rps_queue_set("rai0", 0x1);
-		xps_queue_set("rai0", 0x1);
-		
-		rps_queue_set("eth2", 0x1);
-		xps_queue_set("eth2", 0x1);
-		
-		rps_queue_set("eth3", 0x2);
-		xps_queue_set("eth3", 0x2);
+		rps_queue_set(IFNAME_2G_MAIN, 0x2);	/* CPU:0, VPE:1 */
+		xps_queue_set(IFNAME_2G_MAIN, 0x2);	/* CPU:0, VPE:1 */
+#if BOARD_HAS_5G_RADIO
+		rps_queue_set(IFNAME_5G_MAIN, 0x2);	/* CPU:0, VPE:1 */
+		xps_queue_set(IFNAME_5G_MAIN, 0x2);	/* CPU:0, VPE:1 */
+#endif
+		if (is_ap_mode) {
+			rps_queue_set(IFNAME_MAC, 0x3);	/* CPU:0, VPE:0+1 */
+			xps_queue_set(IFNAME_MAC, 0x3);	/* CPU:0, VPE:0+1 */
+		} else {
+			rps_queue_set(IFNAME_LAN, 0x1);	/* CPU:0, VPE:0 */
+			xps_queue_set(IFNAME_LAN, 0x1);	/* CPU:0, VPE:0 */
+			rps_queue_set(IFNAME_WAN, 0x2);	/* CPU:0, VPE:1 */
+			xps_queue_set(IFNAME_WAN, 0x2);	/* CPU:0, VPE:1 */
+#if defined (USE_SINGLE_MAC)
+			rps_queue_set(IFNAME_MAC, 0x3);	/* CPU:0, VPE:0+1 */
+			xps_queue_set(IFNAME_MAC, 0x3);	/* CPU:0, VPE:0+1 */
+#endif
+		}
+	}
+}
+
+void
+set_vpn_balancing(const char *vpn_ifname)
+{
+	/* set RPS/XPS balancing for PPP/SIT/TUN/TAP interfaces */
+	int ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+
+	if (ncpu == 4) {
+		rps_queue_set(vpn_ifname, 0x8);	/* CPU:1, VPE:1 */
+		xps_queue_set(vpn_ifname, 0x8);	/* CPU:1, VPE:1 */
 	}
 }
 #else
-void set_cpu_affinity(void) {}
+inline void set_cpu_affinity(int is_ap_mode) {}
+inline void set_vpn_balancing(const char *vpn_ifname) {}
+#endif
+
+#if defined (USE_NAND_FLASH)
+void mount_rwfs_partition(void)
+{
+	int mtd_rwfs;
+	char dev_ubi[16];
+	const char *mp_rwfs = MP_MTD_RWFS;
+
+	if (nvram_get_int("mtd_rwfs_mount") == 0)
+		return;
+
+	mtd_rwfs = mtd_dev_idx(MTD_PART_NAME_RWFS);
+	if (mtd_rwfs < 3)
+		return;
+
+	module_smart_load("ubi", NULL);
+
+	if (!is_module_loaded("ubi"))
+		return;
+
+	if (doSystem("ubiattach -p /dev/mtd%d -d %d", mtd_rwfs, mtd_rwfs) == 0) {
+		mkdir(mp_rwfs, 0755);
+		snprintf(dev_ubi, sizeof(dev_ubi), "/dev/ubi%d_0", mtd_rwfs);
+		mount(dev_ubi, mp_rwfs, "ubifs", 0, NULL);
+	}
+}
+
+void umount_rwfs_partition(void)
+{
+	int mtd_rwfs;
+	const char *mp_rwfs = MP_MTD_RWFS;
+
+	if (check_if_dir_exist(mp_rwfs)) {
+		doSystem("/usr/bin/opt-umount.sh %s %s", "/dev/ubi", mp_rwfs);
+		
+		if (umount(mp_rwfs) == 0)
+			rmdir(mp_rwfs);
+	}
+
+	mtd_rwfs = mtd_dev_idx(MTD_PART_NAME_RWFS);
+	if (mtd_rwfs < 3)
+		return;
+
+	if (!is_module_loaded("ubi"))
+		return;
+
+	doSystem("ubidetach -p /dev/mtd%d 2>/dev/null", mtd_rwfs);
+}
+
+void start_rwfs_optware(void)
+{
+	int mtd_rwfs;
+	char dev_ubi[16];
+	const char *mp_rwfs = MP_MTD_RWFS;
+
+	if (!check_if_dir_exist(mp_rwfs))
+		return;
+
+	mtd_rwfs = mtd_dev_idx(MTD_PART_NAME_RWFS);
+	if (mtd_rwfs < 3)
+		return;
+
+	snprintf(dev_ubi, sizeof(dev_ubi), "/dev/ubi%d_0", mtd_rwfs);
+	doSystem("/usr/bin/opt-mount.sh %s %s &", dev_ubi, mp_rwfs);
+}
+#else
+inline void mount_rwfs_partition(void) {}
+inline void umount_rwfs_partition(void) {}
+inline void start_rwfs_optware(void) {}
 #endif
 
 void
@@ -811,14 +912,14 @@ check_if_dev_exist(const char *devpath)
 }
 
 int
-mkdir_if_none(char *dir)
+mkdir_if_none(const char *dirpath, const char *mode)
 {
 	DIR *dp;
-	if (!(dp=opendir(dir)))
-	{
-		umask(0000);
-		return !mkdir(dir, 0777);
-	}
+
+	dp = opendir(dirpath);
+	if (!dp)
+		return !doSystem("mkdir -p -m %s %s", mode, dirpath);
+
 	closedir(dp);
 	return 0;
 }

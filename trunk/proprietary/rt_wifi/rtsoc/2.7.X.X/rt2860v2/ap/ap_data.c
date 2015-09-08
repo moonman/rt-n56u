@@ -3293,6 +3293,9 @@ VOID detect_wmm_traffic(
 	IN	UCHAR			UserPriority,
 	IN	UCHAR			FlgIsOutput)
 {
+	if (pAd == NULL)
+		return;
+
 	/* For BE & BK case and TxBurst function is disabled */
 	if ((pAd->CommonCfg.bEnableTxBurst == FALSE) 
 #ifdef DOT11_N_SUPPORT
@@ -3538,19 +3541,21 @@ VOID APRxDErrorHandle(
 	{		
 		if (pRxWI->WirelessCliID < MaxWcidNum)
 		{
+			MAC_TABLE_ENTRY	*pEntry = NULL;
+			PHEADER_802_11	pHeader = pRxBlk->pHeader;
 #ifdef APCLI_SUPPORT
 			PCIPHER_KEY pWpaKey;
-			MAC_TABLE_ENTRY *pEntry = NULL;
 			UCHAR FromWhichBSSID = BSS0;
 			UCHAR Wcid;
-			PHEADER_802_11 pHeader = pRxBlk->pHeader;
 
 			Wcid = pRxWI->WirelessCliID;
 			if (VALID_WCID(Wcid))
 					pEntry = ApCliTableLookUpByWcid(pAd, Wcid, pHeader->Addr2);
 			else
+#endif
 					pEntry = MacTableLookup(pAd, pHeader->Addr2);
 
+#ifdef APCLI_SUPPORT
 			if (pEntry && IS_ENTRY_APCLI(pEntry))
 			{			
 				FromWhichBSSID = pEntry->MatchAPCLITabIdx + MIN_NET_DEVICE_FOR_APCLI;
@@ -4368,14 +4373,21 @@ VOID APHandleRxDataFrame(
 
 		if (pEntry && IS_ENTRY_APCLI(pEntry))
 		{
-			if (!(pEntry && APCLI_IF_UP_CHECK(pAd, pEntry->MatchAPCLITabIdx)))
+			PAPCLI_STRUCT pApCliEntry;
+
+			if (!(APCLI_IF_UP_CHECK(pAd, pEntry->MatchAPCLITabIdx)))
 			{
 				goto err;
 			}
 
+			pApCliEntry = &pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx];
+
+			/* APCli reconnect workaround - update ApCliRcvBeaconTime on RX activity too */
+			pApCliEntry->ApCliRcvBeaconTime = pAd->Mlme.Now32;
+
 #ifdef STATS_COUNT_SUPPORT
-			pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx].ApCliCounter.ReceivedByteCount.QuadPart += pRxWI->MPDUtotalByteCount;
-			pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx].ApCliCounter.ReceivedFragmentCount++;
+			pApCliEntry->ApCliCounter.ReceivedByteCount.QuadPart += pRxWI->MPDUtotalByteCount;
+			pApCliEntry->ApCliCounter.ReceivedFragmentCount++;
 #endif /* STATS_COUNT_SUPPORT */
 
 			FromWhichBSSID = pEntry->MatchAPCLITabIdx + MIN_NET_DEVICE_FOR_APCLI;
@@ -4385,7 +4397,7 @@ VOID APHandleRxDataFrame(
 			if (pRxD->Mcast || pRxD->Bcast)
 			{
 #ifdef STATS_COUNT_SUPPORT
-				pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx].ApCliCounter.MulticastReceivedFrameCount++;
+				pApCliEntry->ApCliCounter.MulticastReceivedFrameCount++;
 #endif /* STATS_COUNT_SUPPORT */
 
 				/* Process the received broadcast frame for AP-Client. */
@@ -5287,11 +5299,16 @@ BOOLEAN APFowardWirelessStaToWirelessSta(
 			((FromWhichBSSID < MAX_MBSSID_NUM(pAd)) &&
 			(FromWhichBSSID < HW_BEACON_MAX_NUM) &&
 			(pAd->ApCfg.MBSSID[FromWhichBSSID].StaCount > 1)))
-			bDirectForward  = TRUE;
+		{
+			if (pAd->ApCfg.MBSSID[FromWhichBSSID].IsolateInterStaMBCast == FALSE)
+			{
+				bDirectForward  = TRUE;
+			}
+		}
 
 		/* tell caller to deliver the packet to upper layer */
 		bAnnounce = TRUE;
-	}		
+	}
 	else
 	{
 		/* if destinated STA is a associated wireless STA */
@@ -5304,7 +5321,7 @@ BOOLEAN APFowardWirelessStaToWirelessSta(
 
 			if (FromWhichBSSID == pEntry->apidx)
 			{/* STAs in same SSID */
-				if ((pAd->ApCfg.MBSSID[pEntry->apidx].IsolateInterStaTraffic == 1))
+				if ((pAd->ApCfg.MBSSID[pEntry->apidx].IsolateInterStaTraffic == TRUE))
 				{
 					/* release the packet */
 					bDirectForward = FALSE;
@@ -5313,7 +5330,7 @@ BOOLEAN APFowardWirelessStaToWirelessSta(
 			}
 			else
 			{/* STAs in different SSID */
-				if (pAd->ApCfg.IsolateInterStaTrafficBTNBSSID == 1 ||
+				if (pAd->ApCfg.IsolateInterStaTrafficBTNBSSID == TRUE ||
 					((FromWhichBSSID < MAX_MBSSID_NUM(pAd)) &&
 					(FromWhichBSSID < HW_BEACON_MAX_NUM) &&
 					(pAd->ApCfg.MBSSID[pEntry->apidx].VLAN_VID != pAd->ApCfg.MBSSID[FromWhichBSSID].VLAN_VID)))

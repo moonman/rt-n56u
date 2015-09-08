@@ -246,11 +246,10 @@ static USHORT update_associated_mac_entry(
 			pEntry->BSS2040CoexistenceMgmtSupport = 1;
 #endif /* DOT11N_DRAFT3 */
 
-
+#ifdef DOT11N_DRAFT3
 		/* 40Mhz BSS Width Trigger events */
 		if (ie_list->HTCapability.HtCapInfo.Forty_Mhz_Intolerant)
 		{
-#ifdef DOT11N_DRAFT3
 			pEntry->bForty_Mhz_Intolerant = TRUE;
 			pAd->MacTab.fAnyStaFortyIntolerant = TRUE;
 			if(((pAd->CommonCfg.HtCapability.HtCapInfo.ChannelWidth == BW_40) && 
@@ -266,10 +265,10 @@ static USHORT update_associated_mac_entry(
 				pAd->CommonCfg.Bss2040CoexistFlag |= BSS_2040_COEXIST_INFO_SYNC;
 			}
 			DBGPRINT(RT_DEBUG_TRACE, ("pEntry set 40MHz Intolerant as 1\n"));
-#endif /* DOT11N_DRAFT3 */
 			Handle_BSS_Width_Trigger_Events(pAd);
 		}
-		
+#endif /* DOT11N_DRAFT3 */
+
 #ifdef TXBF_SUPPORT
 #ifdef VHT_TXBF_SUPPORT
 		if (WMODE_CAP_AC(pAd->CommonCfg.PhyMode) &&
@@ -341,6 +340,11 @@ static USHORT update_associated_mac_entry(
 			if ((pEntry->MaxHTPhyMode.field.BW== BW_40) && (wdev->DesiredHtPhyInfo.vht_bw == VHT_BW_80))
 				pEntry->MaxHTPhyMode.field.BW = BW_80;
 
+			pEntry->VhtMaxRAmpduFactor = ie_list->vht_cap.vht_cap.max_ampdu_exp;
+
+			DBGPRINT(RT_DEBUG_TRACE, ("Orig HT MaxRAmpduFactor %d , VHT MaxRAmpduFactor %d \n"
+			,ie_list->HTCapability.HtCapParm.MaxRAmpduFactor,ie_list->vht_cap.vht_cap.max_ampdu_exp));
+			
 			/* TODO: implement get_vht_max_mcs to get peer max MCS */
 			if (ie_list->vht_cap.mcs_set.rx_mcs_map.mcs_ss1 == VHT_MCS_CAP_9) {
 				if ((pEntry->MaxHTPhyMode.field.BW == BW_20))
@@ -471,11 +475,11 @@ static USHORT update_associated_mac_entry(
 	if (wdev->bAutoTxRateSwitch == TRUE)
 	{
 		UCHAR TableSize = 0;
+
+		pEntry->bAutoTxRateSwitch = TRUE;
 		
 		MlmeSelectTxRateTable(pAd, pEntry, &pEntry->pTable, &TableSize, &pEntry->CurrTxRateIndex);
 		MlmeNewTxRate(pAd, pEntry);
-
-		pEntry->bAutoTxRateSwitch = TRUE;
 
 #ifdef NEW_RATE_ADAPT_SUPPORT
 		if (! ADAPT_RATE_TABLE(pEntry->pTable))
@@ -943,6 +947,7 @@ VOID ap_cmm_peer_assoc_req_action(
 	*/
 	pEntry->RateLen = ie_list->SupportedRatesLen;
 
+#ifdef DOT11_VHT_AC
 #ifdef RT_BIG_ENDIAN
 	NdisCopyMemory(&tmp_1,&ie_list->vht_cap.vht_cap, 4);
 	tmp_1=SWAP32(tmp_1);
@@ -954,6 +959,7 @@ VOID ap_cmm_peer_assoc_req_action(
 	//SWAP32((UINT32)vht_cap_ie.vht_cap);
 	//SWAP32((UINT32)vht_cap_ie.mcs_set);
 #endif /* RT_BIG_ENDIAN */
+#endif /* DOT11_VHT_AC */
 
 	RTMPSetSupportMCS(pAd,
 					OPMODE_AP,
@@ -1758,9 +1764,11 @@ VOID APPeerDisassocReqAction(RTMP_ADAPTER *pAd, MLME_QUEUE_ELEM *Elem)
 			{
 				apCliIdx = pReptEntry->MatchApCliIdx;
 				CliIdx = pReptEntry->MatchLinkIdx;
-				MlmeEnqueue(pAd, APCLI_CTRL_STATE_MACHINE, APCLI_CTRL_DISCONNECT_REQ, 0, NULL,
-								(64 + MAX_EXT_MAC_ADDR_SIZE*apCliIdx + CliIdx));
-						RTMP_MLME_HANDLER(pAd);
+#ifdef DOT11_N_SUPPORT
+				/* free resources of BA*/
+				BASessionTearDownALL(pAd, pReptEntry->MacTabWCID);
+#endif /* DOT11_N_SUPPORT */
+				RTMPRemoveRepeaterDisconnectEntry(pAd, apCliIdx, CliIdx);
 						RTMPRemoveRepeaterEntry(pAd, apCliIdx, CliIdx);
 			}
 		}

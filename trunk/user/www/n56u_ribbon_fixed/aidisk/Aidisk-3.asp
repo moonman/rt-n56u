@@ -17,7 +17,6 @@
 var ddns_server_x = '<% nvram_get_x("", "ddns_server_x"); %>';
 var ddns_hostname_x = '<% nvram_get_x("", "ddns_hostname_x"); %>';
 var ddns_return_code = '<% nvram_get_ddns("", "ddns_return_code"); %>';
-var wan_ipaddr_t='<% nvram_get_x("", "wan_ipaddr_t"); %>';
 
 var ddns_hostname_title;
 var $j = jQuery.noConflict();
@@ -151,7 +150,7 @@ function check_return_code(){
 	else if(this.ddns_return_code == 'time-out' || this.ddns_return_code == 'connect_fail')
 		show_alert_block("<#LANHostConfig_x_DDNS_alarm_12#>");
 	else if(this.ddns_return_code == 'unknown_error')
-		show_alert_block("<#LANHostConfig_x_DDNS_alarm_2#>");	
+		show_alert_block("<#LANHostConfig_x_DDNS_alarm_2#>");
 
 	this.ddns_return_code = "";
 }

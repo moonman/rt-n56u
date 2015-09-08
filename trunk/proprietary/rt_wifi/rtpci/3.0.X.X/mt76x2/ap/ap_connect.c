@@ -108,12 +108,8 @@ VOID APMakeBssBeacon(RTMP_ADAPTER *pAd, INT apidx)
 	LARGE_INTEGER FakeTimestamp;
 	ULONG FrameLen = 0;
 	PUCHAR pBeaconFrame = (PUCHAR)pAd->ApCfg.MBSSID[apidx].BeaconBuf;
-	UCHAR *ptr;
-	UINT i;
-	UINT32 longValue, reg_base;
 	HTTRANSMIT_SETTING BeaconTransmit = {.word = 0};   /* MGMT frame PHY rate setting when operatin at Ht rate. */
 	UCHAR PhyMode, SupRateLen;
-	UINT8 TXWISize = pAd->chipCap.TXWISize;
 	MULTISSID_STRUCT *pMbss = &pAd->ApCfg.MBSSID[apidx];
 #ifdef SPECIFIC_TX_POWER_SUPPORT
 	UCHAR TxPwrAdj = 0;
@@ -283,6 +279,20 @@ VOID APMakeBssBeacon(RTMP_ADAPTER *pAd, INT apidx)
 	/*
 		step 6. move BEACON TXD and frame content to on-chip memory
 	*/
+	 updateAllBeacon(pAd,  apidx, FrameLen);
+
+	pMbss->TimIELocationInBeacon = (UCHAR)FrameLen; 
+	pMbss->CapabilityInfoLocationInBeacon = sizeof(HEADER_802_11) + TIMESTAMP_LEN + 2;
+}
+
+void updateAllBeacon(RTMP_ADAPTER *pAd, INT apidx, ULONG FrameLen)
+{
+		UCHAR *ptr = NULL;
+		MULTISSID_STRUCT *pMbss = &pAd->ApCfg.MBSSID[apidx];
+		UINT32 longValue, reg_base;
+		UINT i = 0;
+		UINT8 TXWISize = pAd->chipCap.TXWISize;
+		
 	ptr = (PUCHAR)&pAd->BeaconTxWI;
 #ifdef RT_BIG_ENDIAN
     RTMPWIEndianChange(pAd, ptr, TYPE_TXWI);
@@ -311,11 +321,7 @@ VOID APMakeBssBeacon(RTMP_ADAPTER *pAd, INT apidx)
 		ptr += 4;
 	}
 
-	pMbss->TimIELocationInBeacon = (UCHAR)FrameLen; 
-	pMbss->CapabilityInfoLocationInBeacon = sizeof(HEADER_802_11) + TIMESTAMP_LEN + 2;
 }
-
-
 /*
 	==========================================================================
 	Description:
@@ -548,7 +554,7 @@ VOID APUpdateBeaconFrame(RTMP_ADAPTER *pAd, INT apidx)
 			*ptr = IE_CH_SWITCH_WRAPPER;
 			ch_sw_wrapper = (UCHAR *)(ptr + 1); // reserve for length
 			ptr += 2; // skip len
-			
+
 			if (pComCfg->RegTransmitSetting.field.BW == BW_40) {
 				WIDE_BW_CH_SWITCH_ELEMENT wb_info;
 
@@ -584,7 +590,6 @@ VOID APUpdateBeaconFrame(RTMP_ADAPTER *pAd, INT apidx)
 			FrameLen += (2 + wb_len + tp_len);
 		}
 #endif /* DOT11_VHT_AC */
-
 #endif /* DOT11_N_SUPPORT */
 	}
 #endif /* A_BAND_SUPPORT */
@@ -1115,26 +1120,29 @@ VOID APMakeAllBssBeacon(RTMP_ADAPTER *pAd)
 	}	
 	else if (NumOfMacs <= 2)
 	{
+#ifndef NEW_MBSSID_MODE
 		if ((pAd->CurrentAddress[5] % 2 != 0)
 		)
 			DBGPRINT(RT_DEBUG_ERROR, ("The 2-BSSID mode is enabled, the BSSID byte5 MUST be the multiple of 2\n"));
-		
+#endif
 		regValue |= (1<<16);
 		pAd->ApCfg.MacMask = ~(2-1);
 	}
 	else if (NumOfMacs <= 4)
 	{
+#ifndef NEW_MBSSID_MODE
 		if (pAd->CurrentAddress[5] % 4 != 0)
 			DBGPRINT(RT_DEBUG_ERROR, ("The 4-BSSID mode is enabled, the BSSID byte5 MUST be the multiple of 4\n"));
-
+#endif
 		regValue |= (2<<16);
 		pAd->ApCfg.MacMask = ~(4-1);
 	}
 	else if (NumOfMacs <= 8)
 	{
+#ifndef NEW_MBSSID_MODE
 		if (pAd->CurrentAddress[5] % 8 != 0)
 			DBGPRINT(RT_DEBUG_ERROR, ("The 8-BSSID mode is enabled, the BSSID byte5 MUST be the multiple of 8\n"));
-	
+#endif
 		regValue |= (3<<16);
 		pAd->ApCfg.MacMask = ~(8-1);
 	}

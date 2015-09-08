@@ -69,7 +69,8 @@ VOID AsicUpdateProtect(
 	PROT_CFG_STRUC	ProtCfg, ProtCfg4;
 	UINT32 Protect[6];
 	USHORT offset;
-	UINT32 i, PhyMode = 0x4000;
+	UCHAR i;
+	UINT16 PhyMode = 0x4000;
 	UINT32 MacReg = 0;
 
 #ifdef RALINK_ATE
@@ -170,12 +171,19 @@ VOID AsicUpdateProtect(
 	}
 	else
 	{
-		/*ProtCfg.field.ProtectRate = pAd->CommonCfg.RtsRate;*/
-		ProtCfg.field.ProtectCtrl = 0;			/* CCK do not need to be protected*/
-		Protect[REG_IDX_CCK] = ProtCfg.word;
-		ProtCfg.field.ProtectCtrl = ASIC_CTS;	/* OFDM needs using CCK to protect*/
-		Protect[REG_IDX_OFDM] = ProtCfg.word;
-		pAd->FlgCtsEnabled = 1; /* CTS-self is used */
+		if (pAd->CommonCfg.Channel <= 14) {
+			/*ProtCfg.field.ProtectRate = pAd->CommonCfg.RtsRate;*/
+			ProtCfg.field.ProtectCtrl = 0;			/* CCK do not need to be protected*/
+			Protect[REG_IDX_CCK] = ProtCfg.word;
+			ProtCfg.field.ProtectCtrl = ASIC_CTS;	/* OFDM needs using CCK to protect*/
+			Protect[REG_IDX_OFDM] = ProtCfg.word;
+			pAd->FlgCtsEnabled = 1; /* CTS-self is used */
+		} else {
+			ProtCfg.field.ProtectCtrl = 0;
+			Protect[REG_IDX_CCK] = ProtCfg.word;
+			Protect[REG_IDX_OFDM] = ProtCfg.word;
+			pAd->FlgCtsEnabled = 0; /* CTS-self is not used */
+		}
 	}
 
 #ifdef DOT11_N_SUPPORT
@@ -520,7 +528,8 @@ VOID AsicSwitchChannel(
 {
 	UCHAR bw;
 
-
+	if (RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_RADIO_OFF))
+		return;
 
 #ifdef CONFIG_AP_SUPPORT
 #ifdef AP_QLOAD_SUPPORT
@@ -758,8 +767,34 @@ VOID AsicEnableBssSync(
 	IN PRTMP_ADAPTER pAd) 
 {
 	BCN_TIME_CFG_STRUC csr;
+#ifdef APCLI_SUPPORT	
+	UCHAR apidx;
+	BOOLEAN bMaskBcn;	
+#endif /* APCLI_SUPPORT */
 
 	DBGPRINT(RT_DEBUG_TRACE, ("--->AsicEnableBssSync(INFRA mode)\n"));
+
+#ifdef APCLI_SUPPORT	
+	// for apcli DFS, if ra0 not up, don,t send bcn
+	bMaskBcn = TRUE;
+	
+	for(apidx=0; apidx<pAd->ApCfg.BssidNum; apidx++)
+	{
+		if(BeaconTransmitRequired(pAd, apidx, &pAd->ApCfg.MBSSID[apidx]))
+		{
+			bMaskBcn = FALSE;
+			break;
+		}
+	}
+
+	if (bMaskBcn &&  APCLI_IF_UP_CHECK(pAd, 0)) {
+			DBGPRINT(RT_DEBUG_OFF, ("Apcli DFS need mask beacon!!!\n"));
+			AsicCtrlBcnMask(pAd, 0xFF);
+	}
+	else {
+		AsicCtrlBcnMask(pAd, 0x0);
+	}
+#endif /* APCLI_SUPPORT */
 
 	RTMP_IO_READ32(pAd, BCN_TIME_CFG, &csr.word);
 /*	RTMP_IO_WRITE32(pAd, BCN_TIME_CFG, 0x00000000);*/
@@ -2184,5 +2219,44 @@ VOID AsicSetExtendedMacAddr(
 	RTMP_IO_WRITE32(pAd, MAC_ADDR_EXT0_47_32 + (Idx*8), Addr4);
 }
 #endif /* MAC_REPEATER_SUPPORT */
+
+#ifdef DROP_MASK_SUPPORT
+VOID asic_set_drop_mask(
+	PRTMP_ADAPTER ad,
+	USHORT	wcid,
+	BOOLEAN enable)
+{
+	UINT32 mac_reg = 0, reg_id, group_index;
+	UINT32 drop_mask = (1 << (wcid % 32));
+
+	/* each group has 32 entries */
+	group_index = (wcid - (wcid % 32)) >> 5 /* divided by 32 */;
+	reg_id = TX_WCID_DROP_MASK0 + 4*group_index;
+	
+	RTMP_IO_READ32(ad, reg_id, &mac_reg);
+
+	mac_reg = (enable ? \
+				(mac_reg | drop_mask):(mac_reg & ~drop_mask));
+	RTMP_IO_WRITE32(ad, reg_id, mac_reg);
+	DBGPRINT(RT_DEBUG_TRACE,
+			("%s(%u):, wcid = %u, reg_id = 0x%08x, mac_reg = 0x%08x, group_index = %u, drop_mask = 0x%08x\n",
+			__FUNCTION__, enable, wcid, reg_id, mac_reg, group_index, drop_mask));
+}
+
+
+VOID asic_drop_mask_reset(
+	PRTMP_ADAPTER ad)
+{
+	UINT32 i, reg_id;
+	
+	for ( i = 0; i < 8 /* num of drop mask group */; i++)
+	{
+		reg_id = TX_WCID_DROP_MASK0 + i*4;
+		RTMP_IO_WRITE32(ad, reg_id, 0);
+	}
+
+	DBGPRINT(RT_DEBUG_TRACE, ("%s()\n", __FUNCTION__));
+}
+#endif /* DROP_MASK_SUPPORT */
 #endif /* RLT_MAC */
 

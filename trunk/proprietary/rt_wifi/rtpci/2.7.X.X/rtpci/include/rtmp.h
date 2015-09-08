@@ -1308,8 +1308,8 @@ typedef struct _MULTISSID_STRUCT {
 	UCHAR PortSecured;
 	NDIS_802_11_PRIVACY_FILTER PrivacyFilter;
 	UCHAR BANClass3Data;
-	ULONG IsolateInterStaTraffic;
-	UCHAR IsolateInterStaMBCast;
+	BOOLEAN IsolateInterStaTraffic;
+	BOOLEAN IsolateInterStaMBCast;
 
 	UCHAR RSNIE_Len[2];
 	UCHAR RSN_IE[2][MAX_LEN_OF_RSNIE];
@@ -1614,7 +1614,9 @@ typedef struct _COMMON_CONFIG {
 	BOOLEAN bMIMOPSEnable;
 	BOOLEAN bBADecline;
 	BOOLEAN bDisableReordering;
+#ifdef DOT11N_DRAFT3
 	BOOLEAN bForty_Mhz_Intolerant;
+#endif /* DOT11N_DRAFT3 */
 	BOOLEAN bExtChannelSwitchAnnouncement;
 	BOOLEAN bRcvBSSWidthTriggerEvents;
 	ULONG LastRcvBSSWidthTriggerEventsTime;
@@ -2186,7 +2188,9 @@ typedef struct _MAC_TABLE {
 	BOOLEAN fAnyStation20Only;	/* Check if any Station can't support GF. */
 	BOOLEAN fAnyStationMIMOPSDynamic;	/* Check if any Station is MIMO Dynamic */
 	BOOLEAN fAnyBASession;	/* Check if there is BA session.  Force turn on RTS/CTS */
+#ifdef DOT11N_DRAFT3
 	BOOLEAN fAnyStaFortyIntolerant;	/* Check if still has any station set the Intolerant bit on! */
+#endif /* DOT11N_DRAFT3 */
 	BOOLEAN fAllStationGainGoodMCS; /* Check if all stations more than MCS threshold */
 
 #ifdef CONFIG_AP_SUPPORT
@@ -2303,6 +2307,9 @@ typedef struct _APCLI_STRUCT {
 	ULONG AssocCurrState;
 	ULONG WpaPskCurrState;
 
+#ifdef APCLI_AUTO_CONNECT_SUPPORT
+	USHORT	ProbeReqCnt;
+#endif /* APCLI_AUTO_CONNECT_SUPPORT */
 	USHORT AuthReqCnt;
 	USHORT AssocReqCnt;
 
@@ -2396,13 +2403,17 @@ typedef struct _AP_ADMIN_CONFIG {
 	UCHAR BssidNum;
 	UCHAR MacMask;
 	MULTISSID_STRUCT MBSSID[HW_BEACON_MAX_NUM];
-	ULONG IsolateInterStaTrafficBTNBSSID;
+	BOOLEAN IsolateInterStaTrafficBTNBSSID;
 
 #ifdef APCLI_SUPPORT
 	UCHAR ApCliInfRunned;	/* Number of  ApClient interface which was running. value from 0 to MAX_APCLI_INTERFACE */
 	BOOLEAN FlgApCliIsUapsdInfoUpdated;
 	APCLI_STRUCT ApCliTab[MAX_APCLI_NUM];	/*AP-client */
-#endif				/* APCLI_SUPPORT */
+#ifdef APCLI_AUTO_CONNECT_SUPPORT
+	BOOLEAN		ApCliAutoConnectRunning;
+	BOOLEAN		ApCliAutoConnectChannelSwitching;
+#endif /* APCLI_AUTO_CONNECT_SUPPORT */
+#endif /* APCLI_SUPPORT */
 
 	/* for wpa */
 	RALINK_TIMER_STRUCT CounterMeasureTimer;
@@ -2423,7 +2434,6 @@ typedef struct _AP_ADMIN_CONFIG {
 	UINT32  ACSCheckCount;          /* if  ACSCheckCount > ACSCheckTime, then do ACS check */
 #endif /* AP_SCAN_SUPPORT */
 	BOOLEAN bAvoidDfsChannel;	/* 0: disable, 1: enable */
-	BOOLEAN bIsolateInterStaTraffic;
 	BOOLEAN bHideSsid;
 
 	/* temporary latch for Auto channel selection */
@@ -2516,6 +2526,15 @@ typedef struct _AP_ADMIN_CONFIG {
 #endif /* DOT11_N_SUPPORT */
 
 	UCHAR	EntryClientCount;
+
+#ifdef BAND_STEERING
+	/* 
+		This is used to let user config band steering on/off by profile.
+		0: OFF / 1: ON / 2: Auto ONOFF
+	*/
+	BOOLEAN BandSteering;
+	BND_STRG_CLI_TABLE BndStrgTable;
+#endif /* BAND_STEERING */
 } AP_ADMIN_CONFIG, *PAP_ADMIN_CONFIG;
 
 #ifdef IGMP_SNOOP_SUPPORT
@@ -5130,7 +5149,8 @@ VOID BssTableSsidSort(
 	IN  UCHAR SsidLen);
 
 VOID  BssTableSortByRssi(
-	IN OUT BSS_TABLE *OutTab);
+	IN OUT BSS_TABLE *OutTab,
+	IN BOOLEAN isInverseOrder);
 
 VOID BssCipherParse(
 	IN OUT  PBSS_ENTRY  pBss);
@@ -7776,8 +7796,10 @@ VOID dynamic_tune_be_tx_op(
 
 
 #ifdef DOT11_N_SUPPORT
+#ifdef DOT11N_DRAFT3
 VOID Handle_BSS_Width_Trigger_Events(
 	IN PRTMP_ADAPTER pAd);
+#endif /* DOT11N_DRAFT3 */
 
 void build_ext_channel_switch_ie(
 	IN PRTMP_ADAPTER pAd,

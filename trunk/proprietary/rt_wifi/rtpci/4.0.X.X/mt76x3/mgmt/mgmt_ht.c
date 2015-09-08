@@ -43,8 +43,7 @@ INT ht_mode_adjust(RTMP_ADAPTER *pAd, MAC_TABLE_ENTRY *pEntry, HT_CAPABILITY_IE 
 		pAd->CommonCfg.AddHTInfo.AddHtInfo2.NonGfPresent = 1;
 		pAd->MacTab.fAnyStationNonGF = TRUE;
 	}
-
-	if ((peer->HtCapInfo.ChannelWidth) && (my->ChannelWidth) && (pAd->CommonCfg.AddHTInfo.AddHtInfo.RecomWidth))
+	if ((peer->HtCapInfo.ChannelWidth) && (my->ChannelWidth) && (pAd->CommonCfg.AddHTInfo.AddHtInfo.RecomWidth == 1))
 	{
 		pEntry->MaxHTPhyMode.field.BW= BW_40;
 		pEntry->MaxHTPhyMode.field.ShortGI = ((my->ShortGIfor40) & (peer->HtCapInfo.ShortGIfor40));
@@ -203,6 +202,11 @@ VOID RTMPSetHT(
 #ifdef CONFIG_AP_SUPPORT
 	INT apidx;
 #endif /* CONFIG_AP_SUPPORT */
+#if defined(RT_CFG80211_SUPPORT) && defined(RT_CFG80211_P2P_CONCURRENT_DEVICE)
+	BSS_STRUCT *pMbss = &pAd->ApCfg.MBSSID[CFG_GO_BSSID_IDX];
+	struct wifi_dev *wdev = &pMbss->wdev;
+#endif /* defined(RT_CFG80211_SUPPORT) && defined(RT_CFG80211_P2P_CONCURRENT_DEVICE) */
+
 	INT bw;
 	RT_HT_CAPABILITY *rt_ht_cap = &pAd->CommonCfg.DesiredHtPhy;
 	HT_CAPABILITY_IE *ht_cap= &pAd->CommonCfg.HtCapability;
@@ -305,11 +309,13 @@ VOID RTMPSetHT(
 			break;
 	}
 
+#ifdef DOT11N_DRAFT3
 	if (pAd->CommonCfg.bForty_Mhz_Intolerant && (pHTPhyMode->BW == BW_40))
 	{
 		pHTPhyMode->BW = BW_20;
 		ht_cap->HtCapInfo.Forty_Mhz_Intolerant = 1;
 	}
+#endif /* DOT11N_DRAFT3 */
 
 	// TODO: shiang-6590, how about the "bw" when channel 14 for JP region???
 	//CFG_TODO
@@ -367,6 +373,14 @@ VOID RTMPSetHT(
 		pAd->CommonCfg.vht_cent_ch)
 		bw = BW_80;
 #endif /* DOT11_VHT_AC */
+
+#if defined(RT_CFG80211_SUPPORT) && defined(RT_CFG80211_P2P_CONCURRENT_DEVICE)
+	if ((wdev->bw == BW_20) && (wdev->channel != 0))
+		bbp_set_bw(pAd, wdev->bw);
+	else if (INFRA_ON(pAd))
+		bbp_set_bw(pAd, pAd->StaCfg.wdev.bw);
+	else
+#endif /* defined(RT_CFG80211_SUPPORT) && defined(RT_CFG80211_P2P_CONCURRENT_DEVICE) */
 	bbp_set_bw(pAd, bw);
 
 

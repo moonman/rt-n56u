@@ -27,7 +27,6 @@ var $j = jQuery.noConflict();
 $j(document).ready(function() {
 	init_itoggle('rt_greenap');
 	init_itoggle('rt_ap_isolate');
-	init_itoggle('rt_mbssid_isolate');
 });
 
 </script>
@@ -45,8 +44,13 @@ function initial(){
 		$("col_goto5").width = "33%";
 	}
 
-	if (support_2g_stream_tx()<2)
+	if (support_2g_ldpc())
+		showhide_div("row_ldpc", 1);
+
+	if (support_2g_stream_tx()<2) {
 		document.form.rt_stream_tx.remove(1);
+		showhide_div("row_greenap", 0);
+	}
 
 	if (support_2g_stream_rx()<2)
 		document.form.rt_stream_rx.remove(1);
@@ -60,24 +64,15 @@ function initial(){
 }
 
 function change_wmm() {
-	var gmode = document.form.rt_gmode.value;
+	var gm = document.form.rt_gmode.value;
 	if (document.form.rt_wme.value == "0") {
-		$("row_wme_no_ack").style.display = "none";
-		$("row_apsd_cap").style.display = "none";
-	}
-	else {
-		if (gmode == "5" || gmode == "3" || gmode == "2") { // G/N, N, B/G/N
-			$("row_wme_no_ack").style.display = "none";
-		} else {
-			$("row_wme_no_ack").style.display = "";
-		}
-		$("row_apsd_cap").style.display = "";
-	}
-	if(gmode == "3") { // N only
-		$("row_greenfield").style.display = "";
+		showhide_div("row_wme_no_ack", 0);
+		showhide_div("row_apsd_cap", 0);
 	}else{
-		$("row_greenfield").style.display = "none";
+		showhide_div("row_wme_no_ack", (gm == "5" || gm == "3" || gm == "2")?0:1);
+		showhide_div("row_apsd_cap", 1);
 	}
+	showhide_div("row_greenfield", (gm == "3")?1:0);
 }
 
 function applyRule(){
@@ -132,8 +127,7 @@ function done_validating(action){
     <input type="hidden" name="group_id" value="">
     <input type="hidden" name="action_mode" value="">
     <input type="hidden" name="action_script" value="">
-
-    <input type="hidden" name="rt_gmode" value="<% nvram_get_x("","rt_gmode"); %>">
+    <input type="hidden" name="rt_gmode" value="<% nvram_get_x("","rt_gmode"); %>" readonly="1">
 
     <div class="container-fluid">
         <div class="row-fluid">
@@ -180,7 +174,7 @@ function done_validating(action){
                                                 </select>
                                             </td>
                                         </tr>
-                                        <tr>
+                                        <tr id="row_greenap">
                                             <th><#WIFIGreenAP#></th>
                                             <td>
                                                 <div class="main_itoggle">
@@ -210,53 +204,39 @@ function done_validating(action){
                                             </td>
                                         </tr>
                                         <tr>
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 5);"><#WIFIGuestIsolate#></a></th>
-                                            <td>
-                                                <div class="main_itoggle">
-                                                    <div id="rt_mbssid_isolate_on_of">
-                                                        <input type="checkbox" id="rt_mbssid_isolate_fake" <% nvram_match_x("","rt_mbssid_isolate", "1", "value=1 checked"); %><% nvram_match_x("","rt_mbssid_isolate", "0", "value=0"); %>>
-                                                    </div>
-                                                    <div style="position: absolute; margin-left: -10000px;">
-                                                        <input type="radio" value="1" id="rt_mbssid_isolate_1" name="rt_mbssid_isolate" class="input" <% nvram_match_x("","rt_mbssid_isolate", "1", "checked"); %>/><#checkbox_Yes#>
-                                                        <input type="radio" value="0" id="rt_mbssid_isolate_0" name="rt_mbssid_isolate" class="input" <% nvram_match_x("","rt_mbssid_isolate", "0", "checked"); %>/><#checkbox_No#>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 4);"><#WLANConfig11n_PremblesType_itemname#></a></th>
                                             <td>
                                                 <select name="rt_preamble" class="input">
-                                                    <option value="0" <% nvram_match_x("","rt_preamble", "0","selected"); %>>Long (*)</option>
-                                                    <option value="1" <% nvram_match_x("","rt_preamble", "1","selected"); %>>Short</option>
+                                                    <option value="0" <% nvram_match_x("","rt_preamble", "0","selected"); %>>Long</option>
+                                                    <option value="1" <% nvram_match_x("","rt_preamble", "1","selected"); %>>Short (*)</option>
                                                 </select>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 9);"><#WLANConfig11b_x_Frag_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="rt_frag" class="input" value="<% nvram_get_x("", "rt_frag"); %>" onKeyPress="return is_number(this)" onChange="page_changed()" onBlur="validate_range(this, 256, 2346)"/>
+                                                <input type="text" maxlength="4" size="5" name="rt_frag" class="input" value="<% nvram_get_x("", "rt_frag"); %>" onKeyPress="return is_number(this,event);" onBlur="return validate_range(this, 256, 2346);"/>
                                                 &nbsp;<span style="color:#888;">[256..2346]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 10);"><#WLANConfig11b_x_RTS_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="rt_rts" class="input" value="<% nvram_get_x("", "rt_rts"); %>" onKeyPress="return is_number(this)"/>
+                                                <input type="text" maxlength="4" size="5" name="rt_rts" class="input" value="<% nvram_get_x("", "rt_rts"); %>" onKeyPress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1..2347]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this, 3, 11);"><#WLANConfig11b_x_DTIM_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="3" size="5" name="rt_dtim" class="input" value="<% nvram_get_x("", "rt_dtim"); %>" onKeyPress="return is_number(this)"  onBlur="validate_range(this, 1, 255)"/>
+                                                <input type="text" maxlength="3" size="5" name="rt_dtim" class="input" value="<% nvram_get_x("", "rt_dtim"); %>" onKeyPress="return is_number(this,event);" onBlur="return validate_range(this, 1, 255);"/>
                                                 &nbsp;<span style="color:#888;">[1..255]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 12);"><#WLANConfig11b_x_Beacon_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="rt_bcn" class="input" value="<% nvram_get_x("", "rt_bcn"); %>" onKeyPress="return is_number(this)" onBlur="validate_range(this, 20, 1000)"/>
+                                                <input type="text" maxlength="4" size="5" name="rt_bcn" class="input" value="<% nvram_get_x("", "rt_bcn"); %>" onKeyPress="return is_number(this,event);" onBlur="return validate_range(this, 20, 1000);"/>
                                                 &nbsp;<span style="color:#888;">[20..1000]</span>
                                             </td>
                                         </tr>
@@ -272,6 +252,15 @@ function done_validating(action){
                                                     <option value="5" <% nvram_match_x("", "rt_mrate", "5", "selected"); %>>OFDM 12 Mbps</option>
                                                     <option value="6" <% nvram_match_x("", "rt_mrate", "6", "selected"); %>>HTMIX 15 Mbps</option>
                                                     <option value="7" <% nvram_match_x("", "rt_mrate", "7", "selected"); %>>HTMIX 30 Mbps</option>
+                                                </select>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_ldpc" style="display:none">
+                                            <th><#WIFILDPC#></th>
+                                            <td>
+                                                <select name="rt_ldpc" class="input">
+                                                    <option value="0" <% nvram_match_x("","rt_ldpc", "0","selected"); %>><#btn_Disable#> (*)</option>
+                                                    <option value="1" <% nvram_match_x("","rt_ldpc", "1","selected"); %>>11n only</option>
                                                 </select>
                                             </td>
                                         </tr>

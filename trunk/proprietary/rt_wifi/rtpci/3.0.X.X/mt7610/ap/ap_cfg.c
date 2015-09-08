@@ -266,6 +266,10 @@ INT	Set_NoForwardingBTNSSID_Proc(
 	IN	PRTMP_ADAPTER	pAdapter, 
 	IN	PSTRING			arg);
 
+INT	Set_NoForwardingMBCast_Proc(
+	IN	PRTMP_ADAPTER	pAdapter, 
+	IN	PSTRING			arg);
+
 INT	Set_AP_WmmCapable_Proc(
 	IN	PRTMP_ADAPTER	pAdapter, 
 	IN	PSTRING			arg);
@@ -565,7 +569,9 @@ INT	Set_WscSetupLockTime_Proc(
 	IN	PRTMP_ADAPTER	pAd, 
 	IN	PSTRING			arg);
 #endif /* WSC_V2_SUPPORT */
-
+INT	Set_WscAutoTriggerDisable_Proc(
+	IN	PRTMP_ADAPTER	pAd, 
+	IN	PSTRING			arg);
 #endif /* WSC_AP_SUPPORT */
 
 
@@ -640,11 +646,15 @@ INT set_ed_sta_count_proc(RTMP_ADAPTER *pAd, PSTRING arg);
 INT set_ed_ap_count_proc(RTMP_ADAPTER *pAd, PSTRING arg);
 #endif /* CONFIG_AP_SUPPORT */
 
+INT set_ed_current_rssi_threhold_proc(RTMP_ADAPTER *pAd, PSTRING arg);
+
 
 INT set_ed_block_tx_thresh(RTMP_ADAPTER *pAd, PSTRING arg);
 INT set_ed_false_cca_threshold(RTMP_ADAPTER *pAd, PSTRING arg);
 INT set_ed_threshold(RTMP_ADAPTER *pAd, PSTRING arg);
 INT show_ed_stat_proc(RTMP_ADAPTER *pAd, PSTRING arg);
+INT set_ed_debug_proc(RTMP_ADAPTER *pAd, PSTRING arg);
+
 #endif /* ED_MONITOR */
 
 static struct {
@@ -747,6 +757,7 @@ static struct {
 #endif /* WMM_SUPPORT */
 	{"NoForwarding",				Set_NoForwarding_Proc},
 	{"NoForwardingBTNBSSID",		Set_NoForwardingBTNSSID_Proc},
+	{"NoForwardingMBCast",			Set_NoForwardingMBCast_Proc},
 	{"HideSSID",					Set_HideSSID_Proc},
 	{"IEEE80211H",				Set_IEEE80211H_Proc},
 	{"VLANID",					Set_VLANID_Proc},
@@ -983,6 +994,7 @@ static struct {
 	{"WscMaxPinAttack", 			Set_WscMaxPinAttack_Proc},
 	{"WscSetupLockTime", 			Set_WscSetupLockTime_Proc},
 #endif /* WSC_V2_SUPPORT */
+	{"WscAutoTriggerDisable", 		Set_WscAutoTriggerDisable_Proc},
 #endif /* WSC_AP_SUPPORT */
 #ifdef UAPSD_SUPPORT
 	{"UAPSDCapable",				Set_UAPSD_Proc},
@@ -1166,11 +1178,13 @@ static struct {
 	{"ed_ap_th", set_ed_ap_count_proc},
 #endif /* CONFIG_AP_SUPPORT */
 
+	{"ed_current_rssi_th", set_ed_current_rssi_threhold_proc},	
 
 	{"ed_th", set_ed_threshold},
 	{"ed_false_cca_th", set_ed_false_cca_threshold},
 	{"ed_blk_cnt", set_ed_block_tx_thresh},
 	{"ed_stat", show_ed_stat_proc},
+	{"ed_debug", set_ed_debug_proc},
 #endif /* ED_MONITOR */
 #ifdef BAND_STEERING
 	{"BndStrgEnable", 		Set_BndStrg_Enable},
@@ -1392,7 +1406,6 @@ INT RTMPAPSetInformation(
 
 #ifdef SNMP_SUPPORT	
 	/*snmp */
-    UINT						KeyIdx = 0;
     PNDIS_AP_802_11_KEY			pKey = NULL;
 	TX_RTY_CFG_STRUC			tx_rty_cfg;
 	ULONG						ShortRetryLimit, LongRetryLimit;
@@ -3193,7 +3206,6 @@ INT RTMPAPQueryInformation(
 #endif /* WSC_AP_SUPPORT */
 
 #ifdef SNMP_SUPPORT
-	ULONG ulInfo;
 	DefaultKeyIdxValue			*pKeyIdxValue;
 	INT							valueLen;
 	TX_RTY_CFG_STRUC			tx_rty_cfg;
@@ -3745,7 +3757,7 @@ INT RTMPAPQueryInformation(
 		}
 		case OID_802_11_WEPDEFAULTKEYVALUE:
 			DBGPRINT(RT_DEBUG_TRACE, ("Query::OID_802_11_WEPDEFAULTKEYVALUE \n"));
-			pKeyIdxValue = wrq->u.data.pointer;
+			pKeyIdxValue = (DefaultKeyIdxValue*)wrq->u.data.pointer;
 			DBGPRINT(RT_DEBUG_TRACE,("KeyIdxValue.KeyIdx = %d, \n",pKeyIdxValue->KeyIdx));
 
 			valueLen = pAd->SharedKey[pObj->ioctl_if][pAd->ApCfg.MBSSID[pObj->ioctl_if].DefaultKeyId].KeyLen;
@@ -3895,7 +3907,7 @@ INT RTMPAPQueryInformation(
 				pMbssStat->bcPktsTx=  pMbss->bcPktsTx;
 				pMbssStat->bcPktsRx=  pMbss->bcPktsRx;
 				wrq->u.data.length = sizeof(MBSS_STATISTICS);
-				copy_to_user(wrq->u.data.pointer, pMbssStat, wrq->u.data.length);
+				Status = copy_to_user(wrq->u.data.pointer, pMbssStat, wrq->u.data.length);
 				os_free_mem(pAd, pMbssStat);
 			}
 		}
@@ -4635,7 +4647,7 @@ INT	Set_NoForwarding_Proc(
 	ULONG NoForwarding;
 
 	POS_COOKIE	pObj = (POS_COOKIE) pAd->OS_Cookie;
-	
+
 	NoForwarding = simple_strtol(arg, 0, 10);
 
 	if (NoForwarding == 1)
@@ -4645,8 +4657,32 @@ INT	Set_NoForwarding_Proc(
 	else
 		return FALSE;  /*Invalid argument */
 	
-	DBGPRINT(RT_DEBUG_TRACE, ("IF(ra%d) Set_NoForwarding_Proc::(NoForwarding=%ld)\n", 
+	DBGPRINT(RT_DEBUG_TRACE, ("IF(ra%d) Set_NoForwarding_Proc::(NoForwarding=%d)\n", 
 		pObj->ioctl_if, pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaTraffic));
+
+	return TRUE;
+}
+
+
+INT	Set_NoForwardingMBCast_Proc(
+	IN	PRTMP_ADAPTER	pAd, 
+	IN	PSTRING			arg)
+{
+	ULONG NoForwardingMBCast;
+
+	POS_COOKIE	pObj = (POS_COOKIE) pAd->OS_Cookie;
+
+	NoForwardingMBCast = simple_strtol(arg, 0, 10);
+
+	if (NoForwardingMBCast == 1)
+		pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast = TRUE;
+	else if (NoForwardingMBCast == 0)
+		pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast = FALSE;
+	else
+		return FALSE;  //Invalid argument 
+	
+	DBGPRINT(RT_DEBUG_TRACE, ("IF(ra%d) Set_NoForwardingMBCast_Proc::(IsolateInterStaMBCast=%d)\n", 
+		pObj->ioctl_if, pAd->ApCfg.MBSSID[pObj->ioctl_if].IsolateInterStaMBCast));
 
 	return TRUE;
 }
@@ -4675,7 +4711,7 @@ INT	Set_NoForwardingBTNSSID_Proc(
 	else
 		return FALSE;  /*Invalid argument */
 
-	DBGPRINT(RT_DEBUG_TRACE, ("Set_NoForwardingBTNSSID_Proc::(NoForwarding=%ld)\n", pAd->ApCfg.IsolateInterStaTrafficBTNBSSID));
+	DBGPRINT(RT_DEBUG_TRACE, ("Set_NoForwardingBTNSSID_Proc::(NoForwarding=%d)\n", pAd->ApCfg.IsolateInterStaTrafficBTNBSSID));
 
 	return TRUE;
 }
@@ -5696,6 +5732,7 @@ INT	Set_AP_WPAPSK_Proc(
 
 	return TRUE;
 }
+
 
 /* 
     ==========================================================================
@@ -7747,7 +7784,7 @@ VOID RTMPAPIoctlRF(
 				sprintf(msg+strlen(msg), "%d %03d = %02X\n", bank_Id, rfId, regRF);
 			}
 		}
-		RtmpDrvAllRFPrint(NULL, msg, strlen(msg));
+		RtmpDrvAllRFPrint(NULL, (UCHAR *)msg, strlen(msg));
 		/* Copy the information into the user buffer */
 
 #ifdef LINUX
@@ -8396,6 +8433,7 @@ INT Set_ApCli_Ssid_Proc(
 		}
 #endif
 
+		pAd->ApCfg.ApCliTab[ifIndex].bPeerExist = FALSE;
 		NdisZeroMemory(pAd->ApCfg.ApCliTab[ifIndex].CfgSsid, MAX_LEN_OF_SSID);
 		NdisMoveMemory(pAd->ApCfg.ApCliTab[ifIndex].CfgSsid, arg, strlen(arg));
 		pAd->ApCfg.ApCliTab[ifIndex].CfgSsidLen = (UCHAR)strlen(arg);
@@ -8892,7 +8930,6 @@ INT Set_ApCli_Trial_Ch_Proc(
 }
 #endif
 
-
 #ifdef APCLI_WPA_SUPPLICANT_SUPPORT
 INT Set_ApCli_Wpa_Support(
     IN	PRTMP_ADAPTER	pAd, 
@@ -8954,36 +8991,6 @@ INT	Set_ApCli_IEEE8021X_Proc(
 }
 #endif /* APCLI_WPA_SUPPLICANT_SUPPORT */
 
-#ifdef MAC_REPEATER_SUPPORT
-INT Set_ReptMode_Enable_Proc(
-	IN  PRTMP_ADAPTER pAd, 
-	IN  PSTRING arg)
-{
-	UCHAR Enable;
-	UINT32 MacReg;
-
-	Enable = simple_strtol(arg, 0, 10);
-
-	RTMP_IO_READ32(pAd, MAC_ADDR_EXT_EN, &MacReg);
-	if (Enable)
-	{
-		MacReg |= 0x1;
-		pAd->ApCfg.bMACRepeaterEn = TRUE;
-		DBGPRINT(RT_DEBUG_TRACE, (" Repeater Mode (ON)\n"));
-	}
-	else
-	{
-		MacReg &= (~0x1);
-		pAd->ApCfg.bMACRepeaterEn = FALSE;
-		DBGPRINT(RT_DEBUG_TRACE, (" Repeate Mode (OFF)\n"));
-	}
-	RTMP_IO_WRITE32(pAd, MAC_ADDR_EXT_EN, MacReg);
-
-	DBGPRINT(RT_DEBUG_WARN, (" MACRepeaterEn = %d \n", pAd->ApCfg.bMACRepeaterEn));
-
-	return TRUE;
-}
-
 #ifdef APCLI_AUTO_CONNECT_SUPPORT
 /* 
     ==========================================================================
@@ -9029,7 +9036,6 @@ INT Set_ApCli_AutoConnect_Proc(
 }
 #endif  /* APCLI_AUTO_CONNECT_SUPPORT */
 
-#endif /* MAC_REPEATER_SUPPORT */
 
 #ifdef WSC_AP_SUPPORT
 INT Set_AP_WscSsid_Proc(
@@ -10625,9 +10631,25 @@ INT	Set_WscSetupLockTime_Proc(
 }
 
 #endif /* WSC_V2_SUPPORT */
+
+INT	Set_WscAutoTriggerDisable_Proc(
+	IN	PRTMP_ADAPTER	pAd, 
+	IN	PSTRING			arg)
+{
+	POS_COOKIE pObj = (POS_COOKIE) pAd->OS_Cookie;
+	UCHAR bEnable = (UCHAR)simple_strtol(arg, 0, 10);
+	PWSC_CTRL pWscCtrl = &pAd->ApCfg.MBSSID[pObj->ioctl_if].WscControl;
+
+	if (bEnable == 0)
+		pWscCtrl->bWscAutoTriggerDisable = FALSE;
+	else
+		pWscCtrl->bWscAutoTriggerDisable = TRUE;
+	
+	DBGPRINT(RT_DEBUG_TRACE, ("Set_WscAutoTriggerDisable_Proc::(bWscAutoTriggerDisable=%d)\n",
+								pWscCtrl->bWscAutoTriggerDisable));
+	return TRUE;
+}
 #endif /* WSC_AP_SUPPORT */
-
-
 
 #ifdef IAPP_SUPPORT
 INT	Set_IappPID_Proc(
@@ -11655,9 +11677,8 @@ INT RTMP_AP_IoctlHandle(
 					{
 						UINT modetmp = 0;
 						DBGPRINT(RT_DEBUG_TRACE, ("Query::Get phy mode (%02X) \n", pAd->CommonCfg.PhyMode));
-						modetmp = (UINT) pAd->CommonCfg.PhyMode;
+						modetmp = (UINT)wmode_2_cfgmode(pAd->CommonCfg.PhyMode);
 						wrq->u.data.length = 1;
-						/**(ULONG *)pData = (ULONG)pAd->CommonCfg.PhyMode; */
 						if (copy_to_user(pData, &modetmp, wrq->u.data.length))
 							Status = -EFAULT;							
 					}
@@ -11952,434 +11973,6 @@ INT RTMP_AP_IoctlHandle(
 }
 
 
-#ifdef ED_MONITOR
-INT edcca_tx_stop_start(RTMP_ADAPTER *pAd, BOOLEAN stop)
-{
-	UINT32 macCfg  = 0, macCfg_2 = 0, macStatus = 0;
-	UINT32 MTxCycle = 0;
-	ULONG stTime = 0, mt_time = 0, mr_time = 0;
-
-	/* Disable MAC Tx and wait MAC Tx/Rx status in idle state or direcyl enable tx */
-	NdisGetSystemUpTime(&stTime);
-	RTMP_IO_READ32(pAd, MAC_SYS_CTRL, &macCfg);
-
-
-	if (stop == TRUE) {
-		macCfg &= (~0x04);
-	} else {
-		macCfg |= 0x04;
-	}
-	RTMP_IO_WRITE32(pAd, MAC_SYS_CTRL, macCfg);
-
-			
-	if (stop == TRUE) {
-		for (MTxCycle = 0; MTxCycle < 10000; MTxCycle++)
-		{
-			RTMP_IO_READ32(pAd, MAC_STATUS_CFG, &macStatus);
-			if (macStatus & 0x1)
-				RTMPusecDelay(50);
-			else
-				break;
-		}
-		
-		NdisGetSystemUpTime(&mt_time);
-		mt_time -= stTime;
-		
-		if (MTxCycle == 10000)
-			DBGPRINT(RT_DEBUG_OFF, ("%s(cnt=%d,time=0x%lx):stop MTx,macStatus=0x%x!\n", 
-				__FUNCTION__, MTxCycle, mt_time, macStatus));
-	}
-
-	DBGPRINT(RT_DEBUG_OFF, ("%s():%s tx\n", 
-		__FUNCTION__, ((stop == TRUE) ? "stop" : "start")));
-
-	return TRUE;
-}
-
-INT ed_status_read(RTMP_ADAPTER *pAd)
-{
-	UINT32 period_us = pAd->ed_chk_period * 1000;
-	ULONG irqflag;
-	BOOLEAN stop_edcca = FALSE;
-	BOOLEAN stop_tx = FALSE;
-	INT percent;
-	RX_STA_CNT1_STRUC RxStaCnt1;
-	UINT32 ch_idle_stat=0, ch_busy_stat=0, ed_2nd_stat=0, ed_stat=0;
-	
-	RTMP_IO_READ32(pAd, CH_IDLE_STA, &ch_idle_stat);
-	RTMP_IO_READ32(pAd, 0x1140, &ed_stat);
-	RTMP_IO_READ32(pAd, RX_STA_CNT1, &RxStaCnt1.word);
-
-	RTMP_IRQ_LOCK(&pAd->irq_lock, irqflag);
-	
-	pAd->ch_idle_stat[pAd->ed_stat_lidx] = ch_idle_stat;
-	pAd->ch_busy_stat[pAd->ed_stat_lidx] = ch_busy_stat;
-	pAd->ed_2nd_stat[pAd->ed_stat_lidx] = ed_2nd_stat;
-	pAd->ed_stat[pAd->ed_stat_lidx] = ed_stat;
-	pAd->false_cca_stat[pAd->ed_stat_lidx] += RxStaCnt1.field.FalseCca;
-	pAd->RalinkCounters.OneSecFalseCCACnt += RxStaCnt1.field.FalseCca;
-			
-	NdisGetSystemUpTime(&pAd->chk_time[pAd->ed_stat_lidx]);
-	
-	if ((pAd->ed_threshold > 0) && (period_us > 0) && (pAd->ed_block_tx_threshold > 0)) {
-		percent = (pAd->ed_stat[pAd->ed_stat_lidx] * 100 ) / period_us;
-		if (percent > 100)
-			percent = 100;
-
-		/* sync with Shiang's ppt's Algorithm. (20131217) */
-		if (percent > pAd->ed_threshold) {
-			pAd->ed_trigger_cnt++;
-			pAd->ed_silent_cnt = 0;
-		} else {
-			pAd->ed_trigger_cnt = 0;
-			pAd->ed_silent_cnt++;
-
-			/* one point to disable edcca, we expect this is normal env not test env. */
-			if (pAd->false_cca_stat[pAd->ed_stat_lidx] > pAd->false_cca_threshold) {
-				pAd->ed_false_cca_cnt ++;
-				
-				if (pAd->ed_false_cca_cnt > pAd->ed_block_tx_threshold) {
-					stop_edcca = TRUE;
-
-					DBGPRINT(RT_DEBUG_ERROR, ("@@@ %s: pAd->false_cca_stat[%u]=%u,  pAd->false_cca_threshold=%u !!\n", 
-						__FUNCTION__, pAd->ed_stat_lidx, pAd->false_cca_stat[pAd->ed_stat_lidx],  pAd->false_cca_threshold));
-				}
-			} else
-				pAd->ed_false_cca_cnt = 0;
-		}
-	}
-	pAd->ed_trigger_stat[pAd->ed_stat_lidx] = pAd->ed_trigger_cnt;
-	pAd->ed_silent_stat[pAd->ed_stat_lidx] = pAd->ed_silent_cnt;
-
-	INC_RING_INDEX(pAd->ed_stat_lidx, ED_STAT_CNT);
-	pAd->false_cca_stat[pAd->ed_stat_lidx] = 0;
-
-	if (pAd->ed_stat_sidx == pAd->ed_stat_lidx) {
-		INC_RING_INDEX(pAd->ed_stat_sidx, ED_STAT_CNT);
-	}
-	
-	RTMP_IRQ_UNLOCK(&pAd->irq_lock, irqflag);
-	
-	if (stop_edcca) /* disable edcca!*/
-	{ 
-		if (pAd->ed_chk) {
-			DBGPRINT(RT_DEBUG_ERROR, ("@@@ %s: go to ed_monitor_exit()!!\n", __FUNCTION__));
-			ed_monitor_exit(pAd);
-		}
-	} 
-	else 
-	{
-		if (pAd->ed_trigger_cnt > pAd->ed_block_tx_threshold) {
-			if (pAd->ed_tx_stoped == FALSE) {
-				edcca_tx_stop_start(pAd, TRUE);
-				pAd->ed_tx_stoped = TRUE;
-			}
-		}
-
-		if (pAd->ed_silent_cnt > pAd->ed_block_tx_threshold) {
-			if (pAd->ed_tx_stoped == TRUE) {
-				edcca_tx_stop_start(pAd, FALSE);
-				pAd->ed_tx_stoped = FALSE;
-			}
-		}
-	}
-	
-	return TRUE;
-}
-
-/* this function will be called in multi entry */
-INT ed_monitor_exit(RTMP_ADAPTER *pAd)
-{
-	ULONG irqflag;
-	BOOLEAN old_ed_tx_stoped, old_ed_chk;
-		
-	RTMP_IRQ_LOCK(&pAd->irq_lock, irqflag);
-	DBGPRINT(RT_DEBUG_OFF, ("@@@ %s : ===>\n", __FUNCTION__));
-	
-	NdisZeroMemory(&pAd->ed_stat[0], sizeof(pAd->ed_stat));
-	NdisZeroMemory(&pAd->ch_idle_stat[0], sizeof(pAd->ch_idle_stat));
-	NdisZeroMemory(&pAd->ch_busy_stat[0], sizeof(pAd->ch_busy_stat));
-	NdisZeroMemory(&pAd->chk_time[0], sizeof(pAd->chk_time));
-	NdisZeroMemory(&pAd->ed_trigger_stat[0], sizeof(pAd->ed_trigger_stat));
-	NdisZeroMemory(&pAd->ed_silent_stat[0], sizeof(pAd->ed_silent_stat));
-	NdisZeroMemory(&pAd->false_cca_stat[0], sizeof(pAd->false_cca_stat));
-	
-	pAd->ed_stat_lidx = pAd->ed_stat_sidx = 0;
-	pAd->ed_trigger_cnt = 0;
-	pAd->ed_silent_cnt = 0;
-	/* ignore fisrt time's incorrect false cca */
-	pAd->ed_false_cca_cnt = 0;
-
-	old_ed_tx_stoped = pAd->ed_tx_stoped;
-	old_ed_chk = pAd->ed_chk;
-
-	pAd->ed_tx_stoped = FALSE;
-	/* also clear top level flags */
-	pAd->ed_chk = FALSE;
-	
-	DBGPRINT(RT_DEBUG_OFF, ("@@@ %s : <===\n", __FUNCTION__));
-	RTMP_IRQ_UNLOCK(&pAd->irq_lock, irqflag);
-
-	if (old_ed_tx_stoped)
-		edcca_tx_stop_start(pAd, FALSE);
-
-	if (old_ed_chk)
-		RTMP_CHIP_ASIC_SET_EDCCA(pAd, FALSE);
-	
-	return TRUE;
-}
-
-/* open & muanl cmd will call */
-INT ed_monitor_init(RTMP_ADAPTER *pAd)
-{
-	ULONG irqflag;
-	
-	RTMP_IRQ_LOCK(&pAd->irq_lock, irqflag);
-	DBGPRINT(RT_DEBUG_OFF, ("@@@ %s : ===>\n", __FUNCTION__));
-
-	NdisZeroMemory(&pAd->ed_stat[0], sizeof(pAd->ed_stat));
-	NdisZeroMemory(&pAd->ch_idle_stat[0], sizeof(pAd->ch_idle_stat));
-	NdisZeroMemory(&pAd->ch_busy_stat[0], sizeof(pAd->ch_busy_stat));
-	NdisZeroMemory(&pAd->chk_time[0], sizeof(pAd->chk_time));
-	NdisZeroMemory(&pAd->ed_trigger_stat[0], sizeof(pAd->ed_trigger_stat));
-	NdisZeroMemory(&pAd->ed_silent_stat[0], sizeof(pAd->ed_silent_stat));
-	NdisZeroMemory(&pAd->false_cca_stat[0], sizeof(pAd->false_cca_stat));
-	
-	pAd->ed_stat_lidx = pAd->ed_stat_sidx = 0;
-	pAd->ed_trigger_cnt = 0;
-	pAd->ed_silent_cnt = 0;
-	/* ignore first time's incorrect false cca */
-	pAd->ed_false_cca_cnt = 0;
-	pAd->ed_tx_stoped = FALSE;
-	/* also set top level flags */
-	pAd->ed_chk = TRUE;
-	
-	DBGPRINT(RT_DEBUG_OFF, ("@@@ %s : <===\n", __FUNCTION__));
-	RTMP_IRQ_UNLOCK(&pAd->irq_lock, irqflag);
-
-	RTMP_CHIP_ASIC_SET_EDCCA(pAd, TRUE);
-}
-
-INT set_ed_block_tx_thresh(RTMP_ADAPTER *pAd, PSTRING arg)
-{
-	UINT block_tx_threshold = simple_strtol(arg, 0, 10);
-
-	pAd->ed_block_tx_threshold = block_tx_threshold;
-	DBGPRINT(RT_DEBUG_OFF, ("%s()::ed_block_tx_threshold=%d\n", 
-		__FUNCTION__, pAd->ed_block_tx_threshold));
-
-	return TRUE;	
-}
-
-INT set_ed_threshold(RTMP_ADAPTER *pAd, PSTRING arg)
-{
-	ULONG percent = simple_strtol(arg, 0, 10);
-
-	if (percent > 100)
-		pAd->ed_threshold = (percent % 100);
-	else
-		pAd->ed_threshold = percent;
-
-	DBGPRINT(RT_DEBUG_OFF, ("%s()::ed_threshold=%d\n", 
-		__FUNCTION__, pAd->ed_threshold));
-
-	return TRUE;
-}
-
-INT set_ed_false_cca_threshold(RTMP_ADAPTER *pAd, PSTRING arg)
-{
-	ULONG false_cca_threshold = simple_strtol(arg, 0, 10);
-
-	pAd->false_cca_threshold = false_cca_threshold > 0 ? false_cca_threshold : 0;
-
-	DBGPRINT(RT_DEBUG_OFF, ("%s()::false_cca_threshold=%d\n", 
-		__FUNCTION__, pAd->false_cca_threshold));
-
-	return TRUE;
-}
-
-/* let run-time turn on/off */
-INT set_ed_chk_proc(RTMP_ADAPTER *pAd, PSTRING arg)
-{
-	UINT ed_chk = simple_strtol(arg, 0, 10);
-
-	DBGPRINT(RT_DEBUG_OFF, ("%s()::ed_chk=%d\n", 
-		__FUNCTION__, ed_chk));
-
-	if (ed_chk != 0)
-		ed_monitor_init(pAd);
-	else
-		ed_monitor_exit(pAd);
-	
-	return TRUE;
-}
-
-#ifdef CONFIG_AP_SUPPORT
-INT set_ed_sta_count_proc(RTMP_ADAPTER *pAd, PSTRING arg)
-{
-	UINT ed_sta_th = simple_strtol(arg, 0, 10);
-
-	DBGPRINT(RT_DEBUG_OFF, ("%s()::ed_sta_th=%d\n", 
-		__FUNCTION__, ed_sta_th));
-
-	pAd->ed_sta_threshold = ed_sta_th;
-
-	return TRUE;
-}
-
-INT set_ed_ap_count_proc(RTMP_ADAPTER *pAd, PSTRING arg)
-{
-	UINT ed_ap_th = simple_strtol(arg, 0, 10);
-
-	DBGPRINT(RT_DEBUG_OFF, ("%s()::ed_ap_th=%d\n", 
-		__FUNCTION__, ed_ap_th));
-
-	pAd->ed_ap_threshold = ed_ap_th;
-
-	return TRUE;
-}
-#endif /* CONFIG_AP_SUPPORT */
-
-
-INT show_ed_stat_proc(RTMP_ADAPTER *pAd, PSTRING arg)
-{
-	unsigned long irqflags;
-	UINT32 ed_stat[ED_STAT_CNT], ed_2nd_stat[ED_STAT_CNT], false_cca_stat[ED_STAT_CNT];
-	UINT32 silent_stat[ED_STAT_CNT], trigger_stat[ED_STAT_CNT]; 
-	UINT32 busy_stat[ED_STAT_CNT], idle_stat[ED_STAT_CNT];
-	ULONG chk_time[ED_STAT_CNT];
-	INT period_us = 0;
-	UCHAR start = 0, end = 0, idx = 0;
-		
-	RTMP_IRQ_LOCK(&pAd->irq_lock, irqflags);
-	start = pAd->ed_stat_sidx;
-	end = pAd->ed_stat_lidx;
-	NdisMoveMemory(&ed_stat[0], &pAd->ed_stat[0], sizeof(ed_stat));
-	NdisMoveMemory(&ed_2nd_stat[0], &pAd->ed_2nd_stat[0], sizeof(ed_2nd_stat));
-	NdisMoveMemory(&busy_stat[0], &pAd->ch_busy_stat[0], sizeof(busy_stat));
-	NdisMoveMemory(&idle_stat[0], &pAd->ch_idle_stat[0], sizeof(idle_stat));
-	NdisMoveMemory(&chk_time[0], &pAd->chk_time[0], sizeof(chk_time));
-	NdisMoveMemory(&trigger_stat[0], &pAd->ed_trigger_stat[0], sizeof(trigger_stat));
-	NdisMoveMemory(&silent_stat[0], &pAd->ed_silent_stat[0], sizeof(silent_stat));
-	NdisMoveMemory(&false_cca_stat[0], &pAd->false_cca_stat[0], sizeof(false_cca_stat));
-	RTMP_IRQ_UNLOCK(&pAd->irq_lock, irqflags);
-
-#ifdef CONFIG_AP_SUPPORT
-	DBGPRINT(RT_DEBUG_OFF, ("Dump ChannelBusy Counts, ed_chk=%u, ed_sta_threshold=%u, ed_ap_threshold=%u, false_cca_threshold=%u, ChkPeriod=%dms, ED_Threshold=%d%%, HitCntForBlockTx=%d\n", 
-		pAd->ed_chk, pAd->ed_sta_threshold, pAd->ed_ap_threshold, pAd->false_cca_threshold, 
-		pAd->ed_chk_period, pAd->ed_threshold, pAd->ed_block_tx_threshold));
-#endif /* CONFIG_AP_SUPPORT */
-
-
-	period_us = pAd->ed_chk_period * 1000;
-	DBGPRINT(RT_DEBUG_OFF, ("TimeSlot:"));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%ld  ", chk_time[idx]));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-
-	DBGPRINT(RT_DEBUG_OFF, ("Dump ED_STAT\n"));
-	DBGPRINT(RT_DEBUG_OFF, ("RawCnt:  "));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d  ", ed_stat[idx]));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-
-	DBGPRINT(RT_DEBUG_OFF, ("Percent:"));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d", (ed_stat[idx] * 100) / period_us));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-
-	DBGPRINT(RT_DEBUG_OFF, ("FalseCCA:"));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d", false_cca_stat[idx]));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-	
-	DBGPRINT(RT_DEBUG_OFF, ("TriggerCnt:"));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d", trigger_stat[idx]));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-
-	DBGPRINT(RT_DEBUG_OFF, ("SilentCnt:"));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d", silent_stat[idx]));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n==========================\n"));
-
-
-	DBGPRINT(RT_DEBUG_OFF, ("Dump ED_2nd_STAT\n"));
-	DBGPRINT(RT_DEBUG_OFF, ("RawCnt:  "));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d  ", ed_2nd_stat[idx]));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-
-	DBGPRINT(RT_DEBUG_OFF, ("Percent:"));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d", (ed_2nd_stat[idx] * 100) / period_us));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-	DBGPRINT(RT_DEBUG_OFF, ("\n==========================\n"));
-
-
-	DBGPRINT(RT_DEBUG_OFF, ("Dump CH_IDLE_STAT\n"));
-	DBGPRINT(RT_DEBUG_OFF, ("RawCnt:  "));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d  ", idle_stat[idx]));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-
-	DBGPRINT(RT_DEBUG_OFF, ("Percent:"));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d", (idle_stat[idx] *100)/ period_us));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-	DBGPRINT(RT_DEBUG_OFF, ("\n==========================\n"));	
-
-	DBGPRINT(RT_DEBUG_OFF, ("Dump CH_BUSY_STAT\n"));
-	DBGPRINT(RT_DEBUG_OFF, ("RawCnt:  "));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d  ", busy_stat[idx]));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-
-	DBGPRINT(RT_DEBUG_OFF, ("Percent:"));
-	idx = start;
-	do {
-		DBGPRINT(RT_DEBUG_OFF, ("\t%d", (busy_stat[idx] *100 )/ period_us));
-		INC_RING_INDEX(idx, ED_STAT_CNT);
-	} while (idx != end);
-	DBGPRINT(RT_DEBUG_OFF, ("\n"));
-	DBGPRINT(RT_DEBUG_OFF, ("\n==========================\n"));
-
-	return TRUE;
-}
-#endif /* ED_MONITOR */
-
 
 INT Set_HwTxLookupRate_Proc(
 	IN RTMP_ADAPTER		*pAd,
@@ -12455,6 +12048,37 @@ INT Set_EthRepeaterGid_Proc(
 	return TRUE;
 }
 
+INT Set_ReptMode_Enable_Proc(
+	IN  PRTMP_ADAPTER pAd, 
+	IN  PSTRING arg)
+{
+	UCHAR Enable;
+	UINT32 MacReg;
+
+	Enable = simple_strtol(arg, 0, 10);
+
+	RTMP_IO_READ32(pAd, MAC_ADDR_EXT_EN, &MacReg);
+	if (Enable)
+	{
+		MacReg |= 0x1;
+		pAd->ApCfg.bMACRepeaterEn = TRUE;
+		DBGPRINT(RT_DEBUG_TRACE, (" Repeater Mode (ON)\n"));
+	}
+	else
+	{
+		MacReg &= (~0x1);
+		pAd->ApCfg.bMACRepeaterEn = FALSE;
+		DBGPRINT(RT_DEBUG_TRACE, (" Repeate Mode (OFF)\n"));
+	}
+	RTMP_IO_WRITE32(pAd, MAC_ADDR_EXT_EN, MacReg);
+
+	DBGPRINT(RT_DEBUG_WARN, (" MACRepeaterEn = %d \n", pAd->ApCfg.bMACRepeaterEn));
+
+	return TRUE;
+}
+
+
+
 #endif /* MAC_REPEATER_SUPPORT */
 
 #ifdef DYNAMIC_VGA_SUPPORT
@@ -12464,6 +12088,7 @@ INT Set_DyncVgaEnable_Proc(
 {
 	UINT Enable;
 	UINT32 bbp_val, bbp_reg = AGC1_R8;
+	BOOLEAN Cancelled;
 
 	Enable = simple_strtol(arg, 0, 10);
 
@@ -12474,6 +12099,8 @@ INT Set_DyncVgaEnable_Proc(
 		RTMP_BBP_IO_READ32(pAd, bbp_reg, &bbp_val);
 		bbp_val = (bbp_val & 0xffff00ff) | (pAd->CommonCfg.MO_Cfg.Stored_BBP_R66 << 8);
 		RTMP_BBP_IO_WRITE32(pAd, bbp_reg, bbp_val);
+
+		RTMPCancelTimer(&pAd->CommonCfg.MO_Cfg.DyncVgaLockTimer, &Cancelled);
 	}
 		
 	DBGPRINT(RT_DEBUG_TRACE, ("Set_DyncVgaEnable_Proc::(enable = %d)\n", pAd->CommonCfg.MO_Cfg.bDyncVgaEnable));

@@ -8,6 +8,16 @@ config  RT5592_AP_LED
 	bool "LED Support"
 	depends on RT5592_AP
 
+config  RT5592_AP_LED_SOFT
+	bool "Soft LED Support"
+	depends on RT5592_AP && !RT5592_AP_LED && RALINK_GPIO_LED
+	default n
+
+config  RT5592_AP_LED_SOFT_GPIO
+	int "Soft LED GPIO pin"
+	depends on RT5592_AP && RT5592_AP_LED_SOFT
+	default -1
+
 config  RT5592_AP_WSC
 	bool "WSC (WiFi Simple Config)"
 	depends on RT5592_AP
@@ -67,6 +77,11 @@ config  RT5592_AP_DLS
 config  RT5592_AP_IDS
 	bool "IDS (Intrusion Detection System) Support"
 	depends on RT5592_AP
+
+#config  RT5592_AP_BAND_STEERING
+#	bool "Band Steering Support"
+#	depends on RT5592_AP
+#	default n
 
 config  RT5592_AP_GREENAP
 	bool "Green AP mode support"

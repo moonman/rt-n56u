@@ -65,24 +65,11 @@ struct RouteTable {
 static struct RouteTable   *routing_table;
 
 // Prototypes
-void logRouteTable(char *header);
-int  internAgeRoute(struct RouteTable*  croute);
-int internUpdateKernelRoute(struct RouteTable *route, int activate);
-
-// Socket for sending join or leave requests.
-int mcGroupSock = 0;
+static void logRouteTable(char *header);
+static int  internAgeRoute(struct RouteTable*  croute);
+static int internUpdateKernelRoute(struct RouteTable *route, int activate);
 
 
-/**
-*   Function for retrieving the Multicast Group socket.
-*/
-int getMcGroupSock() {
-    if( ! mcGroupSock ) {
-        mcGroupSock = openUdpSocket( INADDR_ANY, 0 );;
-    }
-    return mcGroupSock;
-}
- 
 /**
 *   Initializes the routing table.
 */
@@ -101,11 +88,11 @@ void initRouteTable() {
                          inetFmt(allrouters_group,s1),inetFmt(Dp->InAdr.s_addr,s2));
             
             //k_join(allrouters_group, Dp->InAdr.s_addr);
-            joinMcGroup( getMcGroupSock(), Dp, allrouters_group );
+            joinMcGroup( MRouterFD, Dp, allrouters_group );
 
             my_log(LOG_DEBUG, 0, "Joining all igmpv3 multicast routers group %s on vif %s",
                          inetFmt(alligmp3_group,s1),inetFmt(Dp->InAdr.s_addr,s2));
-            joinMcGroup( getMcGroupSock(), Dp, alligmp3_group );
+            joinMcGroup( MRouterFD, Dp, alligmp3_group );
         }
     }
 }
@@ -114,7 +101,7 @@ void initRouteTable() {
 *   Internal function to send join or leave requests for
 *   a specified route upstream...
 */
-void sendJoinLeaveUpstream(struct RouteTable* route, int join) {
+static void sendJoinLeaveUpstream(struct RouteTable* route, int join) {
     struct IfDesc*      upstrIf;
     
     // Get the upstream VIF...
@@ -150,7 +137,7 @@ void sendJoinLeaveUpstream(struct RouteTable* route, int join) {
                          inetFmt(upstrIf->InAdr.s_addr, s2));
 
             //k_join(route->group, upstrIf->InAdr.s_addr);
-            joinMcGroup( getMcGroupSock(), upstrIf, route->group );
+            joinMcGroup( MRouterFD, upstrIf, route->group );
 
             route->upstrState = ROUTESTATE_JOINED;
         } else {
@@ -166,7 +153,7 @@ void sendJoinLeaveUpstream(struct RouteTable* route, int join) {
                          inetFmt(upstrIf->InAdr.s_addr, s2));
             
             //k_leave(route->group, upstrIf->InAdr.s_addr);
-            leaveMcGroup( getMcGroupSock(), upstrIf, route->group );
+            leaveMcGroup( MRouterFD, upstrIf, route->group );
 
             route->upstrState = ROUTESTATE_NOTJOINED;
         }
@@ -495,7 +482,7 @@ int lastMemberGroupAge(uint32_t group) {
 *   Remove a specified route. Returns 1 on success,
 *   and 0 if route was not found.
 */
-int removeRoute(struct RouteTable*  croute) {
+static int removeRoute(struct RouteTable*  croute) {
     struct Config       *conf = getCommonConfig();
     int result = 1;
     
@@ -550,7 +537,7 @@ int removeRoute(struct RouteTable*  croute) {
 /**
 *   Ages a specific route
 */
-int internAgeRoute(struct RouteTable*  croute) {
+static int internAgeRoute(struct RouteTable*  croute) {
     struct Config *conf = getCommonConfig();
     int result = 0;
 
@@ -621,7 +608,7 @@ int internAgeRoute(struct RouteTable*  croute) {
 *   Updates the Kernel routing table. If activate is 1, the route
 *   is (re-)activated. If activate is false, the route is removed.
 */
-int internUpdateKernelRoute(struct RouteTable *route, int activate) {
+static int internUpdateKernelRoute(struct RouteTable *route, int activate) {
     struct   MRouteDesc     mrDesc;
     struct   IfDesc         *Dp;
     unsigned                Ix;
@@ -671,7 +658,7 @@ int internUpdateKernelRoute(struct RouteTable *route, int activate) {
 *   Debug function that writes the routing table entries
 *   to the log.
 */
-void logRouteTable(char *header) {
+static void logRouteTable(char *header) {
         struct RouteTable*  croute = routing_table;
         unsigned            rcount = 0;
         int                 i;

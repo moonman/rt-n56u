@@ -154,12 +154,18 @@ function hide_usb_share_list(idx){
 
 function set_usb_share(num, idx){
 	var path = usb_share_list[num][1];
-	if (idx == 0)
-		document.form.dlna_src1.value = "A,"+path+"/Audio";
-	else if (idx == 1)
-		document.form.dlna_src2.value = "V,"+path+"/Video";
+	var src1 = document.form.dlna_src1;
+	var src2 = document.form.dlna_src2;
+	var src3 = document.form.dlna_src3;
+	if (idx == 0){
+		if (src2.value == "" && src3.value == "")
+			src1.value = path;
+		else
+			src1.value = "A,"+path+"/Audio";
+	}else if (idx == 1)
+		src2.value = "V,"+path+"/Video";
 	else
-		document.form.dlna_src3.value = "P,"+path+"/Photo";
+		src3.value = "P,"+path+"/Photo";
 	hide_usb_share_list(idx);
 }
 
@@ -577,7 +583,7 @@ function done_validating(action){
                                                 <div id="share_list1" class="alert alert-info ddown-list"></div>
                                                 <div class="input-append">
                                                     <input type="text" name="dlna_src1" class="input" maxlength="255" size="32" value="<% nvram_get_x("", "dlna_src1"); %>" style="float:left; width: 260px"/>
-                                                    <button class="btn btn-chevron" id="chevron1" type="button" onclick="pull_usb_share_list(this, 0);" title="Select share for audio"><i class="icon icon-chevron-down"></i></button>
+                                                    <button class="btn btn-chevron" id="chevron1" type="button" onclick="pull_usb_share_list(this, 0);" title="Select common (or audio) share"><i class="icon icon-chevron-down"></i></button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -625,7 +631,7 @@ function done_validating(action){
                                                 <#StorageNotifyDLNA#>
                                             </th>
                                             <td colspan="2">
-                                                <input type="text" name="dlna_disc" class="input" maxlength="5" size="5" value="<% nvram_get_x("", "dlna_disc"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" name="dlna_disc" class="input" maxlength="5" size="5" value="<% nvram_get_x("", "dlna_disc"); %>" onkeypress="return is_number(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_dms_root">
@@ -708,7 +714,7 @@ function done_validating(action){
                                                 <#StoragePPortTRMD#>
                                             </th>
                                             <td colspan="2">
-                                                <input type="text" maxlength="5" size="5" name="trmd_pport" class="input" value="<% nvram_get_x("", "trmd_pport"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="5" size="5" name="trmd_pport" class="input" value="<% nvram_get_x("", "trmd_pport"); %>" onkeypress="return is_number(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_trmd_rport">
@@ -716,7 +722,7 @@ function done_validating(action){
                                                 <#StorageRPortTRMD#>
                                             </th>
                                             <td>
-                                               <input type="text" maxlength="5" size="5" name="trmd_rport" class="input" value="<% nvram_get_x("", "trmd_rport"); %>" onkeypress="return is_number(this)"/>
+                                               <input type="text" maxlength="5" size="5" name="trmd_rport" class="input" value="<% nvram_get_x("", "trmd_rport"); %>" onkeypress="return is_number(this,event);"/>
                                             </td>
                                             <td>
                                                <a href="javascript:on_rpc_link();" id="web_rpc_link">Web control</a>
@@ -750,7 +756,7 @@ function done_validating(action){
                                                 <#StoragePPortTRMD#>
                                             </th>
                                             <td>
-                                                <input type="text" maxlength="5" size="5" name="aria_pport" class="input" value="<% nvram_get_x("", "aria_pport"); %>" onkeypress="return is_number(this)"/>
+                                                <input type="text" maxlength="5" size="5" name="aria_pport" class="input" value="<% nvram_get_x("", "aria_pport"); %>" onkeypress="return is_number(this,event);"/>
                                             </td>
                                         </tr>
                                         <tr id="row_aria_rport">
@@ -758,7 +764,7 @@ function done_validating(action){
                                                 <#StorageRPortTRMD#>
                                             </th>
                                             <td>
-                                               <input type="text" maxlength="5" size="5" name="aria_rport" class="input" value="<% nvram_get_x("", "aria_rport"); %>" onkeypress="return is_number(this)"/>
+                                               <input type="text" maxlength="5" size="5" name="aria_rport" class="input" value="<% nvram_get_x("", "aria_rport"); %>" onkeypress="return is_number(this,event);"/>
                                             </td>
                                         </tr>
                                     </table>

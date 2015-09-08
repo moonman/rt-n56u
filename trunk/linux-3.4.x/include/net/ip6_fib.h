@@ -37,6 +37,7 @@ struct fib6_config {
 	int		fc_ifindex;
 	u32		fc_flags;
 	u32		fc_protocol;
+	u32		fc_type;	/* only 8 bits are used */
 
 	struct in6_addr	fc_dst;
 	struct in6_addr	fc_src;
@@ -169,6 +170,15 @@ static inline void rt6_set_from(struct rt6_info *rt, struct rt6_info *from)
 	rt->rt6i_flags &= ~RTF_EXPIRES;
 	rt->dst.from = new;
 	dst_hold(new);
+}
+
+static inline void ip6_rt_put(struct rt6_info *rt)
+{
+	/* dst_release() accepts a NULL parameter.
+	 * We rely on dst being first structure in struct rt6_info
+	 */
+	BUILD_BUG_ON(offsetof(struct rt6_info, dst) != 0);
+	dst_release(&rt->dst);
 }
 
 struct fib6_walker_t {

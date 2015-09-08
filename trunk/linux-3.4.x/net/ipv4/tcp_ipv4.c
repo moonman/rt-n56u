@@ -1572,7 +1572,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 		return 0;
 	}
 
-	if (skb->len < tcp_hdrlen(skb) || tcp_checksum_complete(skb))
+	if (tcp_checksum_complete(skb))
 		goto csum_err;
 
 	if (sk->sk_state == TCP_LISTEN) {
@@ -1655,6 +1655,7 @@ int tcp_v4_rcv(struct sk_buff *skb)
 	TCP_SKB_CB(skb)->end_seq = (TCP_SKB_CB(skb)->seq + th->syn + th->fin +
 				    skb->len - th->doff * 4);
 	TCP_SKB_CB(skb)->ack_seq = ntohl(th->ack_seq);
+	TCP_SKB_CB(skb)->tcp_flags = tcp_flag_byte(th);
 	TCP_SKB_CB(skb)->when	 = 0;
 	TCP_SKB_CB(skb)->ip_dsfield = ipv4_get_dsfield(iph);
 	TCP_SKB_CB(skb)->sacked	 = 0;
@@ -1672,8 +1673,10 @@ process:
 		goto discard_and_relse;
 	}
 
+#ifdef CONFIG_XFRM
 	if (!xfrm4_policy_check(sk, XFRM_POLICY_IN, skb))
 		goto discard_and_relse;
+#endif
 	nf_reset(skb);
 
 	if (sk_filter(sk, skb))
@@ -1699,10 +1702,12 @@ process:
 	return ret;
 
 no_tcp_socket:
+#ifdef CONFIG_XFRM
 	if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb))
 		goto discard_it;
+#endif
 
-	if (skb->len < (th->doff << 2) || tcp_checksum_complete(skb)) {
+	if (tcp_checksum_complete(skb)) {
 bad_packet:
 		TCP_INC_STATS_BH(net, TCP_MIB_INERRS);
 	} else {
@@ -1719,12 +1724,14 @@ discard_and_relse:
 	goto discard_it;
 
 do_time_wait:
+#ifdef CONFIG_XFRM
 	if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb)) {
 		inet_twsk_put(inet_twsk(sk));
 		goto discard_it;
 	}
+#endif
 
-	if (skb->len < (th->doff << 2) || tcp_checksum_complete(skb)) {
+	if (tcp_checksum_complete(skb)) {
 		TCP_INC_STATS_BH(net, TCP_MIB_INERRS);
 		inet_twsk_put(inet_twsk(sk));
 		goto discard_it;
@@ -2328,7 +2335,7 @@ static void get_openreq4(const struct sock *sk, const struct request_sock *req,
 			 struct seq_file *f, int i, int uid, int *len)
 {
 	const struct inet_request_sock *ireq = inet_rsk(req);
-	int ttd = req->expires - jiffies;
+	long delta = req->expires - jiffies;
 
 	seq_printf(f, "%4d: %08X:%04X %08X:%04X"
 		" %02X %08X:%08X %02X:%08lX %08X %5d %8d %u %d %pK%n",
@@ -2340,7 +2347,7 @@ static void get_openreq4(const struct sock *sk, const struct request_sock *req,
 		TCP_SYN_RECV,
 		0, 0, /* could print option size, but that is af dependent. */
 		1,    /* timers active (only the expire timer) */
-		jiffies_to_clock_t(ttd),
+		jiffies_delta_to_clock_t(delta),
 		req->retrans,
 		uid,
 		0,  /* non standard timer */
@@ -2391,7 +2398,7 @@ static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i, int *len)
 		tp->write_seq - tp->snd_una,
 		rx_queue,
 		timer_active,
-		jiffies_to_clock_t(timer_expires - jiffies),
+		jiffies_delta_to_clock_t(timer_expires - jiffies),
 		icsk->icsk_retransmits,
 		sock_i_uid(sk),
 		icsk->icsk_probes_out,
@@ -2410,10 +2417,7 @@ static void get_timewait4_sock(const struct inet_timewait_sock *tw,
 {
 	__be32 dest, src;
 	__u16 destp, srcp;
-	int ttd = tw->tw_ttd - jiffies;
-
-	if (ttd < 0)
-		ttd = 0;
+	s32 delta = tw->tw_ttd - inet_tw_time_stamp();
 
 	dest  = tw->tw_daddr;
 	src   = tw->tw_rcv_saddr;
@@ -2423,7 +2427,7 @@ static void get_timewait4_sock(const struct inet_timewait_sock *tw,
 	seq_printf(f, "%4d: %08X:%04X %08X:%04X"
 		" %02X %08X:%08X %02X:%08lX %08X %5d %8d %d %d %pK%n",
 		i, src, srcp, dest, destp, tw->tw_substate, 0, 0,
-		3, jiffies_to_clock_t(ttd), 0, 0, 0, 0,
+		3, jiffies_delta_to_clock_t(delta), 0, 0, 0, 0,
 		atomic_read(&tw->tw_refcnt), tw, len);
 }
 

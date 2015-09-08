@@ -9,6 +9,16 @@ config  MT7610_AP_LED
 	depends on MT7610_AP
 	default y
 
+config  MT7610_AP_LED_SOFT
+	bool "Soft LED Support"
+	depends on MT7610_AP && !MT7610_AP_LED && RALINK_GPIO_LED
+	default n
+
+config  MT7610_AP_LED_SOFT_GPIO
+	int "Soft LED GPIO pin"
+	depends on MT7610_AP && MT7610_AP_LED_SOFT
+	default -1
+
 config  MT7610_AP_WSC
 	bool "WSC (WiFi Simple Config)"
 	depends on MT7610_AP
@@ -77,12 +87,12 @@ config  MT7610_AP_CARRIER
 	default n
 
 config  MT7610_AP_ED_MONITOR
-	bool "ED CCA Monitor Support"
+	bool "ED CCA Monitor support"
 	depends on MT7610_AP
 	default n
 
 config  MT7610_AP_BAND_STEERING
-	bool "Band Steering"
+	bool "Band Steering support"
 	depends on MT7610_AP
 	default n
 
@@ -94,10 +104,6 @@ config  MT7610_AP_BAND_STEERING
 #	bool "Video Turbine support"
 #	depends on MT7610_AP
 #	default n
-
-#config  MT7610_AP_GREENAP
-#	bool "Green AP mode support"
-#	depends on MT7610_AP
 
 config  MT7610_AP_DLS
 	bool "802.11e DLS (Direct-Link Setup) Support"

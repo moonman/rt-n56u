@@ -1871,6 +1871,7 @@ static void HTParametersHook(
 		DBGPRINT(RT_DEBUG_TRACE, ("HT: STBC = %d\n", pAd->CommonCfg.RegTransmitSetting.field.STBC));
 	}
 
+#ifdef DOT11N_DRAFT3
 	/* 40_Mhz_Intolerant*/
 	if (RTMPGetKeyParameter("HT_40MHZ_INTOLERANT", pValueStr, 25, pInput, TRUE))
 	{
@@ -1885,6 +1886,8 @@ static void HTParametersHook(
 		}
 		DBGPRINT(RT_DEBUG_TRACE, ("HT: 40MHZ INTOLERANT = %d\n", pAd->CommonCfg.bForty_Mhz_Intolerant));
 	}
+#endif /* DOT11N_DRAFT3 */
+
 	/*HT_TxStream*/
 	if(RTMPGetKeyParameter("HT_TxStream", pValueStr, 10, pInput, TRUE))
 	{
@@ -2474,6 +2477,14 @@ NDIS_STATUS	RTMPSetProfileParameters(
 				pAd->ApCfg.DtimPeriod = (UCHAR) simple_strtol(tmpbuf, 0, 10);
 				DBGPRINT(RT_DEBUG_TRACE, ("DtimPeriod=%d\n", pAd->ApCfg.DtimPeriod));
 			}
+#ifdef BAND_STEERING
+			/* Band Steering Enable/Disable */
+			if(RTMPGetKeyParameter("BandSteering", tmpbuf, 10, pBuffer, TRUE))
+			{
+				pAd->ApCfg.BandSteering = (UCHAR) simple_strtol(tmpbuf, 0, 10);
+				DBGPRINT(RT_DEBUG_TRACE, ("BandSteering=%d\n", pAd->ApCfg.BandSteering));
+			}
+#endif /* BAND_STEERING */
 		}
 #endif /* CONFIG_AP_SUPPORT */					
 	    /*TxPower*/
@@ -2619,13 +2630,13 @@ NDIS_STATUS	RTMPSetProfileParameters(
 			/* MaxStaNum*/
 			if (RTMPGetKeyParameter("MaxStaNum", tmpbuf, 32, pBuffer, TRUE))
 			{
-			    for (i = 0, macptr = rstrtok(tmpbuf,";"); macptr; macptr = rstrtok(NULL,";"), i++)
-			    {
+				for (i = 0, macptr = rstrtok(tmpbuf,";"); macptr; macptr = rstrtok(NULL,";"), i++)
+				{
 					if (i >= pAd->ApCfg.BssidNum)
 						break;
 					
 					ApCfg_Set_MaxStaNum_Proc(pAd, i, macptr);					
-			    }
+				}
 			}
 		
 			/* IdleTimeout*/
@@ -2637,8 +2648,8 @@ NDIS_STATUS	RTMPSetProfileParameters(
 			/*NoForwarding*/
 			if(RTMPGetKeyParameter("NoForwarding", tmpbuf, 32, pBuffer, TRUE))
 			{
-			    for (i = 0, macptr = rstrtok(tmpbuf,";"); macptr; macptr = rstrtok(NULL,";"), i++)
-			    {
+				for (i = 0, macptr = rstrtok(tmpbuf,";"); macptr; macptr = rstrtok(NULL,";"), i++)
+				{
 					if (i >= pAd->ApCfg.BssidNum)
 						break;
 
@@ -2647,19 +2658,10 @@ NDIS_STATUS	RTMPSetProfileParameters(
 					else /*Disable*/
 						pAd->ApCfg.MBSSID[i].IsolateInterStaTraffic = FALSE;
 
-					DBGPRINT(RT_DEBUG_TRACE, ("I/F(ra%d) NoForwarding=%ld\n", i, pAd->ApCfg.MBSSID[i].IsolateInterStaTraffic));
-			    }
+					DBGPRINT(RT_DEBUG_TRACE, ("I/F(ra%d) NoForwarding=%d\n", i, pAd->ApCfg.MBSSID[i].IsolateInterStaTraffic));
+				}
 			}
-			/*NoForwardingBTNBSSID*/
-			if(RTMPGetKeyParameter("NoForwardingBTNBSSID", tmpbuf, 10, pBuffer, TRUE))
-			{
-				if(simple_strtol(tmpbuf, 0, 10) != 0)  /*Enable*/
-					pAd->ApCfg.IsolateInterStaTrafficBTNBSSID = TRUE;
-				else /*Disable*/
-					pAd->ApCfg.IsolateInterStaTrafficBTNBSSID = FALSE;
 
-				DBGPRINT(RT_DEBUG_TRACE, ("NoForwardingBTNBSSID=%ld\n", pAd->ApCfg.IsolateInterStaTrafficBTNBSSID));
-			}
 			//NoForwardingMBCast
 			if (RTMPGetKeyParameter("NoForwardingMBCast", tmpbuf, 32, pBuffer, TRUE))
 			{
@@ -2675,6 +2677,17 @@ NDIS_STATUS	RTMPSetProfileParameters(
 
 					DBGPRINT(RT_DEBUG_TRACE, ("I/F(ra%d) NoForwardingMBCast=%d\n", i, pAd->ApCfg.MBSSID[i].IsolateInterStaMBCast));
 				}
+			}
+
+			/*NoForwardingBTNBSSID*/
+			if(RTMPGetKeyParameter("NoForwardingBTNBSSID", tmpbuf, 10, pBuffer, TRUE))
+			{
+				if(simple_strtol(tmpbuf, 0, 10) != 0)  /*Enable*/
+					pAd->ApCfg.IsolateInterStaTrafficBTNBSSID = TRUE;
+				else /*Disable*/
+					pAd->ApCfg.IsolateInterStaTrafficBTNBSSID = FALSE;
+
+				DBGPRINT(RT_DEBUG_TRACE, ("NoForwardingBTNBSSID=%d\n", pAd->ApCfg.IsolateInterStaTrafficBTNBSSID));
 			}
 			/*HideSSID*/
 			if(RTMPGetKeyParameter("HideSSID", tmpbuf, 32, pBuffer, TRUE))

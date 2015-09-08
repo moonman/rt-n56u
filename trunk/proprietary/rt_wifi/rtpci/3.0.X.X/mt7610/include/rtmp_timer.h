@@ -174,4 +174,18 @@ DECLARE_TIMER_FUNCTION(BndStrg_PeriodicExec);
 DECLARE_TIMER_FUNCTION(ATEPeriodicExec);
 #endif /* RALINK_ATE */
 
+#ifdef DROP_MASK_SUPPORT
+DECLARE_TIMER_FUNCTION(drop_mask_timer_action);
+#endif /* DROP_MASK_SUPPORT */
+
+#ifdef PEER_DELBA_TX_ADAPT
+DECLARE_TIMER_FUNCTION(PeerDelBATxAdaptTimeOut);
+#endif /* PEER_DELBA_TX_ADAPT */
+
+#ifdef DYNAMIC_VGA_SUPPORT
+DECLARE_TIMER_FUNCTION(DyncVgaLockTimeout);
+#endif/* DYNAMIC_VGA_SUPPORT */
+#if defined (ED_MONITOR) && defined (ED_SMART)
+DECLARE_TIMER_FUNCTION(ed_testing_timeout);
+#endif /*ED_MONITOR*/
 #endif /* __RTMP_TIMER_H__ */

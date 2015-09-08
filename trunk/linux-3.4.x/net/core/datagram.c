@@ -65,7 +65,7 @@ static inline int connection_based(struct sock *sk)
 	return sk->sk_type == SOCK_SEQPACKET || sk->sk_type == SOCK_STREAM;
 }
 
-static int receiver_wake_function(wait_queue_t *wait, unsigned mode, int sync,
+static int receiver_wake_function(wait_queue_t *wait, unsigned int mode, int sync,
 				  void *key)
 {
 	unsigned long bits = (unsigned long)key;
@@ -128,6 +128,35 @@ out_noerr:
 	goto out;
 }
 
+static struct sk_buff *skb_set_peeked(struct sk_buff *skb)
+{
+	struct sk_buff *nskb;
+
+	if (skb->peeked)
+		return skb;
+
+	/* We have to unshare an skb before modifying it. */
+	if (!skb_shared(skb))
+		goto done;
+
+	nskb = skb_clone(skb, GFP_ATOMIC);
+	if (!nskb)
+		return ERR_PTR(-ENOMEM);
+
+	skb->prev->next = nskb;
+	skb->next->prev = nskb;
+	nskb->prev = skb->prev;
+	nskb->next = skb->next;
+
+	consume_skb(skb);
+	skb = nskb;
+
+done:
+	skb->peeked = 1;
+
+	return skb;
+}
+
 /**
  *	__skb_recv_datagram - Receive a datagram skbuff
  *	@sk: socket
@@ -159,10 +188,12 @@ out_noerr:
  *	quite explicitly by POSIX 1003.1g, don't change them without having
  *	the standard around please.
  */
-struct sk_buff *__skb_recv_datagram(struct sock *sk, unsigned flags,
+struct sk_buff *__skb_recv_datagram(struct sock *sk, unsigned int flags,
 				    int *peeked, int *off, int *err)
 {
+	struct sk_buff_head *queue = &sk->sk_receive_queue;
 	struct sk_buff *skb, *last;
+	unsigned long cpu_flags;
 	long timeo;
 	/*
 	 * Caller is allowed not to check sk->sk_err before skb_recv_datagram()
@@ -181,8 +212,6 @@ struct sk_buff *__skb_recv_datagram(struct sock *sk, unsigned flags,
 		 * Look at current nfs client by the way...
 		 * However, this function was correct in any case. 8)
 		 */
-		unsigned long cpu_flags;
-		struct sk_buff_head *queue = &sk->sk_receive_queue;
 		int _off = *off;
 
 		last = (struct sk_buff *)queue;
@@ -196,7 +225,12 @@ struct sk_buff *__skb_recv_datagram(struct sock *sk, unsigned flags,
 					_off -= skb->len;
 					continue;
 				}
-				skb->peeked = 1;
+
+				skb = skb_set_peeked(skb);
+				error = PTR_ERR(skb);
+				if (IS_ERR(skb))
+					goto unlock_err;
+
 				atomic_inc(&skb->users);
 			} else
 				__skb_unlink(skb, queue);
@@ -216,13 +250,15 @@ struct sk_buff *__skb_recv_datagram(struct sock *sk, unsigned flags,
 
 	return NULL;
 
+unlock_err:
+	spin_unlock_irqrestore(&queue->lock, cpu_flags);
 no_packet:
 	*err = error;
 	return NULL;
 }
 EXPORT_SYMBOL(__skb_recv_datagram);
 
-struct sk_buff *skb_recv_datagram(struct sock *sk, unsigned flags,
+struct sk_buff *skb_recv_datagram(struct sock *sk, unsigned int flags,
 				  int noblock, int *err)
 {
 	int peeked, off = 0;

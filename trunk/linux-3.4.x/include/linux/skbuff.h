@@ -2151,18 +2151,12 @@ static inline void skb_frag_list_init(struct sk_buff *skb)
 	skb_shinfo(skb)->frag_list = NULL;
 }
 
-static inline void skb_frag_add_head(struct sk_buff *skb, struct sk_buff *frag)
-{
-	frag->next = skb_shinfo(skb)->frag_list;
-	skb_shinfo(skb)->frag_list = frag;
-}
-
 #define skb_walk_frags(skb, iter)	\
 	for (iter = skb_shinfo(skb)->frag_list; iter; iter = iter->next)
 
-extern struct sk_buff *__skb_recv_datagram(struct sock *sk, unsigned flags,
+extern struct sk_buff *__skb_recv_datagram(struct sock *sk, unsigned int flags,
 					   int *peeked, int *off, int *err);
-extern struct sk_buff *skb_recv_datagram(struct sock *sk, unsigned flags,
+extern struct sk_buff *skb_recv_datagram(struct sock *sk, unsigned int flags,
 					 int noblock, int *err);
 extern unsigned int    datagram_poll(struct file *file, struct socket *sock,
 				     struct poll_table_struct *wait);
@@ -2556,6 +2550,7 @@ static inline bool skb_is_gso_v6(const struct sk_buff *skb)
 	return skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6;
 }
 
+#ifdef CONFIG_INET_LRO
 extern void __skb_warn_lro_forwarding(const struct sk_buff *skb);
 
 static inline bool skb_warn_if_lro(const struct sk_buff *skb)
@@ -2571,6 +2566,7 @@ static inline bool skb_warn_if_lro(const struct sk_buff *skb)
 	}
 	return false;
 }
+#endif
 
 static inline void skb_forward_csum(struct sk_buff *skb)
 {

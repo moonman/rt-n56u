@@ -14,7 +14,6 @@ BUILD_FIRMWARE="YES"
 ## Only used if BUILD_FIRMWARE="YES"##
 ## Comment out the lines containing configs you don't want to build.
 BUILD_FIRMWARE_CF=(\
-		   n56u_qos_k3.0.config \
 		   n56u_qos.config \
 		   n65u_qos_full.config \
 		   n14u_qos_full.config \
@@ -53,7 +52,7 @@ evaluate_path()
 
 if [ $BUILD_TOOLCHAIN = "YES" ]
 then
-  cd ../toolchain-rt3883
+  cd ../toolchain-mipsel
 
   ./clean_toolchain_3.0.x
   ./clean_toolchain_3.4.x

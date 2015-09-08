@@ -53,10 +53,12 @@ netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (is_broadcast_ether_addr(dest))
 		br_flood_deliver(br, skb);
 	else if (is_multicast_ether_addr(dest)) {
+#ifdef CONFIG_NETPOLL
 		if (unlikely(netpoll_tx_running(dev))) {
 			br_flood_deliver(br, skb);
 			goto out;
 		}
+#endif
 		if (br_multicast_rcv(br, NULL, skb)) {
 			kfree_skb(skb);
 			goto out;
@@ -128,9 +130,9 @@ static struct rtnl_link_stats64 *br_get_stats64(struct net_device *dev,
 		const struct br_cpu_netstats *bstats
 			= per_cpu_ptr(br->stats, cpu);
 		do {
-			start = u64_stats_fetch_begin(&bstats->syncp);
+			start = u64_stats_fetch_begin_bh(&bstats->syncp);
 			memcpy(&tmp, bstats, sizeof(tmp));
-		} while (u64_stats_fetch_retry(&bstats->syncp, start));
+		} while (u64_stats_fetch_retry_bh(&bstats->syncp, start));
 		sum.tx_bytes   += tmp.tx_bytes;
 		sum.tx_packets += tmp.tx_packets;
 		sum.rx_bytes   += tmp.rx_bytes;

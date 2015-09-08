@@ -27,14 +27,12 @@ var $j = jQuery.noConflict();
 $j(document).ready(function() {
 	init_itoggle('wl_greenap');
 	init_itoggle('wl_ap_isolate');
-	init_itoggle('wl_mbssid_isolate');
 });
 
 </script>
 <script>
 
 function initial(){
-
 	show_banner(1);
 	show_menu(5,2,6);
 	show_footer();
@@ -50,10 +48,15 @@ function initial(){
 		o2.options[2].text = "3R (1300Mbps)";
 	}
 
+	if (support_5g_ldpc())
+		showhide_div("row_ldpc", 1);
+
 	if (support_5g_stream_tx()<3)
 		document.form.wl_stream_tx.remove(2);
-	if (support_5g_stream_tx()<2)
+	if (support_5g_stream_tx()<2) {
 		document.form.wl_stream_tx.remove(1);
+		showhide_div("row_greenap", 0);
+	}
 
 	if (support_5g_stream_rx()<3)
 		document.form.wl_stream_rx.remove(2);
@@ -66,23 +69,15 @@ function initial(){
 }
 
 function change_wmm() {
-	var gmode = document.form.wl_gmode.value;
+	var gm = document.form.wl_gmode.value;
 	if (document.form.wl_wme.value == "0") {
-		$("row_wme_no_ack").style.display = "none";
-		$("row_apsd_cap").style.display = "none";
+		showhide_div("row_wme_no_ack", 0);
+		showhide_div("row_apsd_cap", 0);
 	}else{
-		if (gmode != "0") { // != A only
-			$("row_wme_no_ack").style.display = "none";
-		} else {
-			$("row_wme_no_ack").style.display = "";
-		}
-		$("row_apsd_cap").style.display = "";
+		showhide_div("row_wme_no_ack", (gm != "0")?0:1);
+		showhide_div("row_apsd_cap", 1);
 	}
-	if(gmode == "1" || gmode == "3") { // N, N/AC
-		$("row_greenfield").style.display = "";
-	}else{
-		$("row_greenfield").style.display = "none";
-	}
+	showhide_div("row_greenfield", (gm == "1" || gm == "3")?1:0);
 }
 
 function applyRule(){
@@ -137,7 +132,7 @@ function done_validating(action){
     <input type="hidden" name="group_id" value="">
     <input type="hidden" name="action_mode" value="">
     <input type="hidden" name="action_script" value="">
-    <input type="hidden" name="wl_gmode" value="<% nvram_get_x("","wl_gmode"); %>">
+    <input type="hidden" name="wl_gmode" value="<% nvram_get_x("","wl_gmode"); %>" readonly="1">
 
     <div class="container-fluid">
         <div class="row-fluid">
@@ -186,7 +181,7 @@ function done_validating(action){
                                                 </select>
                                             </td>
                                         </tr>
-                                        <tr>
+                                        <tr id="row_greenap">
                                             <th><#WIFIGreenAP#></th>
                                             <td>
                                                 <div class="main_itoggle">
@@ -217,21 +212,6 @@ function done_validating(action){
                                             </td>
                                         </tr>
                                         <tr>
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 5);"><#WIFIGuestIsolate#></a></th>
-                                            <td>
-                                                <div class="main_itoggle">
-                                                    <div id="wl_mbssid_isolate_on_of">
-                                                        <input type="checkbox" id="wl_mbssid_isolate_fake" <% nvram_match_x("","wl_mbssid_isolate", "1", "value=1 checked"); %><% nvram_match_x("","wl_mbssid_isolate", "0", "value=0"); %>>
-                                                    </div>
-                                                </div>
-
-                                                <div style="position: absolute; margin-left: -10000px;">
-                                                    <input type="radio" value="1" id="wl_mbssid_isolate_1" name="wl_mbssid_isolate" class="input" <% nvram_match_x("","wl_mbssid_isolate", "1", "checked"); %>/><#checkbox_Yes#>
-                                                    <input type="radio" value="0" id="wl_mbssid_isolate_0" name="wl_mbssid_isolate" class="input" <% nvram_match_x("","wl_mbssid_isolate", "0", "checked"); %>/><#checkbox_No#>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 4);"><#WLANConfig11n_PremblesType_itemname#></a></th>
                                             <td>
                                                 <select name="wl_preamble" class="input">
@@ -243,29 +223,40 @@ function done_validating(action){
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 9);"><#WLANConfig11b_x_Frag_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wl_frag" class="input" value="<% nvram_get_x("", "wl_frag"); %>" onKeyPress="return is_number(this)" onChange="page_changed()" onBlur="validate_range(this, 256, 2346)">
+                                                <input type="text" maxlength="4" size="5" name="wl_frag" class="input" value="<% nvram_get_x("", "wl_frag"); %>" onKeyPress="return is_number(this,event);" onBlur="return validate_range(this, 256, 2346);"/>
                                                 &nbsp;<span style="color:#888;">[256..2346]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 10);"><#WLANConfig11b_x_RTS_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wl_rts" class="input" value="<% nvram_get_x("", "wl_rts"); %>" onKeyPress="return is_number(this)">
+                                                <input type="text" maxlength="4" size="5" name="wl_rts" class="input" value="<% nvram_get_x("", "wl_rts"); %>" onKeyPress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1..2347]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this, 3, 11);"><#WLANConfig11b_x_DTIM_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="3" size="5" name="wl_dtim" class="input" value="<% nvram_get_x("", "wl_dtim"); %>" onKeyPress="return is_number(this)"  onBlur="validate_range(this, 1, 255)">
+                                                <input type="text" maxlength="3" size="5" name="wl_dtim" class="input" value="<% nvram_get_x("", "wl_dtim"); %>" onKeyPress="return is_number(this,event);" onBlur="return validate_range(this, 1, 255);"/>
                                                 &nbsp;<span style="color:#888;">[1..255]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 3, 12);"><#WLANConfig11b_x_Beacon_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="4" size="5" name="wl_bcn" class="input" value="<% nvram_get_x("", "wl_bcn"); %>" onKeyPress="return is_number(this)" onBlur="validate_range(this, 20, 1000)">
+                                                <input type="text" maxlength="4" size="5" name="wl_bcn" class="input" value="<% nvram_get_x("", "wl_bcn"); %>" onKeyPress="return is_number(this,event);" onBlur="return validate_range(this, 20, 1000);"/>
                                                 &nbsp;<span style="color:#888;">[20..1000]</span>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_ldpc" style="display:none">
+                                            <th><#WIFILDPC#></th>
+                                            <td>
+                                                <select name="wl_ldpc" class="input">
+                                                    <option value="0" <% nvram_match_x("","wl_ldpc", "0","selected"); %>><#btn_Disable#></option>
+                                                    <option value="1" <% nvram_match_x("","wl_ldpc", "1","selected"); %>>11n only</option>
+                                                    <option value="2" <% nvram_match_x("","wl_ldpc", "2","selected"); %>>11ac only (*)</option>
+                                                    <option value="3" <% nvram_match_x("","wl_ldpc", "3","selected"); %>>11n & 11ac</option>
+                                                </select>
                                             </td>
                                         </tr>
                                         <tr>

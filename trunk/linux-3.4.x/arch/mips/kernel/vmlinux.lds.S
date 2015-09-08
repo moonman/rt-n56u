@@ -118,8 +118,9 @@ SECTIONS
 	.exit.data : {
 		EXIT_DATA
 	}
-
+#ifdef CONFIG_SMP
 	PERCPU_SECTION(1 << CONFIG_MIPS_L1_CACHE_SHIFT)
+#endif
 	. = ALIGN(PAGE_SIZE);
 	__init_end = .;
 	/* freed after init ends here */

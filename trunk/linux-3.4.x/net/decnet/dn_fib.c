@@ -302,11 +302,12 @@ struct dn_fib_info *dn_fib_create_info(const struct rtmsg *r, struct dn_kern_rta
 		struct rtattr *attr = RTA_DATA(rta->rta_mx);
 
 		while(RTA_OK(attr, attrlen)) {
-			unsigned flavour = attr->rta_type;
+			unsigned int flavour = attr->rta_type;
+
 			if (flavour) {
 				if (flavour > RTAX_MAX)
 					goto err_inval;
-				fi->fib_metrics[flavour-1] = *(unsigned*)RTA_DATA(attr);
+				fi->fib_metrics[flavour-1] = *(unsigned int *)RTA_DATA(attr);
 			}
 			attr = RTA_NEXT(attr, attrlen);
 		}
@@ -502,6 +503,14 @@ static int dn_fib_check_attr(struct rtmsg *r, struct rtattr **rta)
 	}
 
 	return 0;
+}
+
+static inline u32 rtm_get_table(struct rtattr **rta, u8 table)
+{
+	if (rta[RTA_TABLE - 1])
+		table = nla_get_u32((struct nlattr *) rta[RTA_TABLE - 1]);
+
+	return table;
 }
 
 static int dn_fib_rtm_delroute(struct sk_buff *skb, struct nlmsghdr *nlh, void *arg)

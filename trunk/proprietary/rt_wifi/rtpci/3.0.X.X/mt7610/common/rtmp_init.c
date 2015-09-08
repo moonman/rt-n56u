@@ -1479,7 +1479,8 @@ NDIS_STATUS	NICInitializeAsic(
 			if (MACRegTable[Index].Register == MAX_LEN_CFG)
 			{
 				RTMP_IO_READ32(pAd, MAX_LEN_CFG, &MACRegTable[Index].Value);
-				continue;
+				MACRegTable[Index].Value &= ~(0xFFF);
+				MACRegTable[Index].Value |= (MAX_AGGREGATION_SIZE);
 			}
 
 			if (MACRegTable[Index].Register == PWR_PIN_CFG)
@@ -1617,12 +1618,11 @@ NDIS_STATUS	NICInitializeAsic(
 #if defined(RT2883) || defined(RT3883) || defined(RT3593) || defined(RT65xx)
 		if (IS_RT2883(pAd) || IS_RT3883(pAd) || IS_RT3593(pAd) || IS_RT65XX(pAd))
 		{
-			csr |= 0x3fff;
+			csr |= 0x3000;
 		}
 		else
 #endif /* defined(RT2883) || defined(RT3883) || defined(RT3593) */
 		{
-			csr &= 0xFFF;
 			csr |= 0x2000;
 		}
 		RTMP_IO_WRITE32(pAd, MAX_LEN_CFG, csr);
@@ -1787,7 +1787,9 @@ VOID NICUpdateFifoStaCounters(
 	IN PRTMP_ADAPTER pAd)
 {
 	TX_STA_FIFO_STRUC	StaFifo;
+#ifdef FIFO_EXT_SUPPORT
 	TX_STA_FIFO_EXT_STRUC StaFifoExt;
+#endif /* FIFO_EXT_SUPPORT */
 	MAC_TABLE_ENTRY		*pEntry = NULL;
 	UINT32				i = 0;
 	UCHAR				pid = 0, wcid = 0;
@@ -1928,6 +1930,19 @@ VOID NICUpdateFifoStaCounters(
 					{
 #ifdef DOT11_N_SUPPORT					
 						int tid;
+
+#ifdef NOISE_TEST_ADJUST
+						if ((pAd->MacTab.Size > 2) &&
+							(pEntry->HTPhyMode.field.MODE == MODE_VHT) &&
+							(pEntry->lowTrafficCount >= 4 /* 2 sec */))
+						{
+							pEntry->NoBADataCountDown = 10;
+						}
+						else
+						{
+							pEntry->NoBADataCountDown = 64;
+						}
+#endif /* NOISE_TEST_ADJUST */
 						for (tid=0; tid<NUM_OF_TID; tid++)
 							BAOriSessionTearDown(pAd, pEntry->Aid,  tid, FALSE, FALSE);
 #endif /* DOT11_N_SUPPORT */
@@ -2649,9 +2664,10 @@ VOID UserCfgInit(RTMP_ADAPTER *pAd)
 
 #ifdef CONFIG_AP_SUPPORT
 
+
 #ifdef MAC_REPEATER_SUPPORT
-	pAd->ApCfg.MACRepeaterOuiMode = 2;
-	pAd->ApCfg.bMACRepeaterEn = 1;
+	pAd->ApCfg.MACRepeaterOuiMode = 0;
+	pAd->ApCfg.bMACRepeaterEn = 0;
 #endif /* MAC_REPEATER_SUPPORT */
 #endif /* CONFIG_AP_SUPPORT */
 
@@ -2775,6 +2791,10 @@ VOID UserCfgInit(RTMP_ADAPTER *pAd)
 	pAd->CommonCfg.TrainUpLowThrd = 90;
 	pAd->CommonCfg.TrainUpHighThrd = 110;
 #endif /* NEW_RATE_ADAPT_SUPPORT */
+
+#ifdef PS_ENTRY_MAITENANCE
+	pAd->ps_timeout = 32;
+#endif /* PS_ENTRY_MAITENANCE */
 
 
 
@@ -3014,9 +3034,10 @@ VOID UserCfgInit(RTMP_ADAPTER *pAd)
 			pAd->ApCfg.ApCliTab[j].bAutoTxRateSwitch = TRUE;
 			pAd->ApCfg.ApCliTab[j].DesiredTransmitSetting.field.MCS = MCS_AUTO;
 			pAd->ApCfg.ApCliTab[j].UapsdInfo.bAPSDCapable = FALSE;
+			pAd->ApCfg.ApCliTab[j].bPeerExist = FALSE;
 #ifdef APCLI_CONNECTION_TRIAL
 			pAd->ApCfg.ApCliTab[j].TrialCh = 0;//if the channel is 0, AP will connect the rootap is in the same channel with ra0.
-#endif
+#endif /* APCLI_CONNECTION_TRIAL */
 
 #ifdef APCLI_WPA_SUPPLICANT_SUPPORT
 			pAd->ApCfg.ApCliTab[j].IEEE8021X=FALSE;
@@ -3039,12 +3060,17 @@ VOID UserCfgInit(RTMP_ADAPTER *pAd)
 		}
 #endif /* APCLI_SUPPORT */
 		pAd->ApCfg.EntryClientCount = 0;
+		pAd->ApCfg.ChangeTxOpClient = 0;
 	}
 
 #ifdef DYNAMIC_VGA_SUPPORT
 	pAd->CommonCfg.MO_Cfg.bDyncVgaEnable = TRUE;
 	pAd->CommonCfg.MO_Cfg.nFalseCCATh = 600;
 	pAd->CommonCfg.MO_Cfg.nLowFalseCCATh = 100;
+	pAd->CommonCfg.MO_Cfg.bPreviousTuneVgaUP = FALSE;
+	pAd->CommonCfg.MO_Cfg.TuneGainReverseTimes = 0;
+	RTMPInitTimer(pAd, &pAd->CommonCfg.MO_Cfg.DyncVgaLockTimer,
+		      GET_TIMER_FUNCTION(DyncVgaLockTimeout), pAd, FALSE);
 #endif /* DYNAMIC_VGA_SUPPORT */
 #endif /* CONFIG_AP_SUPPORT */
 
@@ -3157,6 +3183,13 @@ VOID UserCfgInit(RTMP_ADAPTER *pAd)
 	NdisZeroMemory(&pAd->ApCfg.ReptControl, sizeof(REPEATER_CTRL_STRUCT));
 #endif /* MAC_REPEATER_SUPPORT */
 
+#ifdef APCLI_SUPPORT
+#ifdef APCLI_AUTO_CONNECT_SUPPORT
+	pAd->ApCfg.ApCliAutoConnectRunning = FALSE;
+	pAd->ApCfg.ApCliAutoConnectChannelSwitching = FALSE;
+#endif /* APCLI_AUTO_CONNECT_SUPPORT */
+#endif /* APCLI_SUPPORT */
+
 #ifdef FPGA_MODE
 	pAd->fpga_on = 0x0;
 	pAd->tx_kick_cnt = 0;
@@ -3183,21 +3216,36 @@ VOID UserCfgInit(RTMP_ADAPTER *pAd)
 
 #ifdef DOT11_VHT_AC
 	pAd->CommonCfg.bNonVhtDisallow = FALSE;
+#ifdef DISANLE_VHT80_256_QAM
+	pAd->CommonCfg.disable_vht_256QAM = DISABLE_VHT80_256_QAM;
+#endif /* DISANLE_VHT80_256_QAM */
 #endif /* DOT11_VHT_AC */
+
 #ifdef ED_MONITOR
 	pAd->ed_chk = FALSE; //let country region to turn on
+	pAd->ed_learning_time_threshold = 50; //5 sec
+	pAd->ed_debug = FALSE;
 
 #ifdef CONFIG_AP_SUPPORT
 	pAd->ed_sta_threshold = 1;
 	pAd->ed_ap_threshold = 1;
 #endif /* CONFIG_AP_SUPPORT */
 
+	//change to common part
+	pAd->ed_rssi_threshold = -80;
 
 	pAd->ed_chk_period = 100;
-	pAd->ed_threshold = 90;
-	pAd->false_cca_threshold = 10000;
+	pAd->ed_threshold = 85;
+	pAd->ed_false_cca_threshold = 180;	
 	pAd->ed_block_tx_threshold = 2;
 #endif /* ED_MONITOR */
+
+#ifdef CONFIG_AP_SUPPORT
+	pAd->ApCfg.fAllStatIsHighTraffic = FALSE;
+	pAd->ApCfg.fDisableTrafficCnt = FALSE;
+	pAd->ApCfg.StalowTrafficThrd = 15;
+#endif /* CONFIG_AP_SUPPORT */
+
 	DBGPRINT(RT_DEBUG_TRACE, ("<-- UserCfgInit\n"));
 }
 
@@ -3716,7 +3764,7 @@ INT RtmpRaDevCtrlInit(VOID *pAdSrc, RTMP_INF_TYPE infType)
 
 #ifdef MCS_LUT_SUPPORT
 	if (pAd->chipCap.asic_caps & fASIC_CAP_MCS_LUT) {
-		if (MAX_LEN_OF_MAC_TABLE < 128) {
+		if (MAX_LEN_OF_MAC_TABLE <= 128) {
 			RTMP_SET_MORE_FLAG(pAd, fASIC_CAP_MCS_LUT);
 		} else {
 			DBGPRINT(RT_DEBUG_WARN, ("%s(): MCS_LUT not used becasue MacTb size(%d) > 128!\n",

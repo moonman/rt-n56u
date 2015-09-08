@@ -18,7 +18,7 @@
 #include <asm/rt2880/rt_mmap.h>
 #include <asm/rt2880/surfboardint.h>
 
-#include <linux/mtd/mtk_nand_dev.h>
+#include <ralink/mtk_nand_dev.h>
 
 #include "mtk_nand_def.h"
 #include "mtk_nand.h"
@@ -41,6 +41,7 @@
 
 #if defined(SKIP_BAD_BLOCK)
 static int shift_on_bbt = 0;
+static int is_skip_bad_block(struct mtd_info *mtd, int page);
 extern void nand_bbt_set_bad(struct mtd_info *mtd, int page);
 extern int nand_bbt_get(struct mtd_info *mtd, int page);
 #endif
@@ -98,17 +99,20 @@ static struct nand_ecclayout nand_oob_128 = {
 
 static const flashdev_info gen_FlashTable[]= {
 	/* Macronix */
-	{"MX30LF1G08AA",    0xC2F1, 0x801DC2, 4, 8,  128, 128, 2048,  64, 0x00044333, 0},
+	{"MX30LF1G08AA",    0xC2F1, 0x801DC2, 4, 8,  128, 128, 2048,  64, 0x00844333, 0},
+	{"MX30LF1G18AC",    0xC2F1, 0x809502, 4, 8,  128, 128, 2048,  64, 0x00444332, 0},
+	{"MX30LF2G18AC",    0xC2DA, 0x909506, 5, 8,  256, 128, 2048,  64, 0x00444332, 0},
+	{"MX30LF4G18AC",    0xC2DC, 0x909556, 5, 8,  512, 128, 2048,  64, 0x00444332, 0},
 
 	/* ESMT */
-	{"F59L1G81A",       0x92F1, 0x8095FF, 4, 8,  128, 128, 2048,  64, 0x30C77fff, 0},
-	{"F59L2G81A",       0xC8DA, 0x909544, 5, 8,  256, 128, 2048,  64, 0x30C77fff, 0},
-	{"F59L4G81A",       0xC8DC, 0x909554, 5, 8,  512, 128, 2048,  64, 0x30C77fff, 0},
+	{"F59L1G81A",       0x92F1, 0x8095FF, 4, 8,  128, 128, 2048,  64, 0x00844333, 0},
+	{"F59L2G81A",       0xC8DA, 0x909544, 5, 8,  256, 128, 2048,  64, 0x00844333, 0},
+	{"F59L4G81A",       0xC8DC, 0x909554, 5, 8,  512, 128, 2048,  64, 0x00844333, 0},
 
 	/* Spansion */
-	{"S34ML01G100TF",   0x01F1, 0x801D01, 4, 8,  128, 128, 2048,  64, 0x30C77fff, 0},
-	{"S34ML02G200TF",   0x01DA, 0x909546, 5, 8,  256, 128, 2048, 112, 0x30C77fff, 0},
-	{"S34ML04G200TF",   0x01DC, 0x909556, 5, 8,  512, 128, 2048, 112, 0x30C77fff, 0},
+	{"S34ML01G100TF",   0x01F1, 0x801D01, 4, 8,  128, 128, 2048,  64, 0x00844333, 0},
+	{"S34ML02G200TF",   0x01DA, 0x909546, 5, 8,  256, 128, 2048, 112, 0x00844333, 0},
+	{"S34ML04G200TF",   0x01DC, 0x909556, 5, 8,  512, 128, 2048, 112, 0x00844333, 0},
 
 	/* Samsung */
 	{"K9K8G8000",       0xECD3, 0x519558, 5, 8, 1024, 128, 2048,  64, 0x00044333, 0},
@@ -117,7 +121,8 @@ static const flashdev_info gen_FlashTable[]= {
 	{"TC58NVG3S0F",     0x98D3, 0x902676, 5, 8, 1024, 256, 4096, 224, 0x00C25332, 0},
 
 	/* Micron */
-	{"MT29F16G08ABABA", 0x2C48, 0x0026A9, 5, 8, 2048, 512, 4096, 224, 0x30C77fff, 0},
+	{"MT29F1G08ABAEA",  0x2CF1, 0x809504, 4, 8,  128, 128, 2048,  64, 0x00844333, 0},
+	{"MT29F16G08ABABA", 0x2C48, 0x0026A9, 5, 8, 2048, 512, 4096, 224, 0x00844333, 0},
 
 	{NULL,              0x0000, 0x000000, 0, 0,    0,   0,    0,   0,          0, 0},
 };
@@ -325,21 +330,31 @@ static bool mtk_nand_check_bch_error(struct mtd_info *mtd, u8 * pDataBuf, u32 u4
 					u4ErrByteLoc = u4ErrBitLoc1th / 8;
 					u4BitOffset = u4ErrBitLoc1th % 8;
 					pDataBuf[u4ErrByteLoc] = pDataBuf[u4ErrByteLoc] ^ (1 << u4BitOffset);
-					mtd->ecc_stats.corrected++;
+#if defined(SKIP_BAD_BLOCK)
+					if (!is_skip_bad_block(mtd, u4PageAddr))
+#endif
+						mtd->ecc_stats.corrected++;
 				} else {
-					mtd->ecc_stats.failed++;
-					//printk(KERN_WARNING "UnCorrectable ErrLoc=%d\n", au4ErrBitLoc[i]);
+#if defined(SKIP_BAD_BLOCK)
+					if (!is_skip_bad_block(mtd, u4PageAddr))
+#endif
+						mtd->ecc_stats.corrected++;
 				}
 				u4ErrBitLoc2nd = (au4ErrBitLoc[i] >> 16) & 0x1FFF;
-				if (0 != u4ErrBitLoc2nd) {
+				if (u4ErrBitLoc2nd != 0) {
 					if (u4ErrBitLoc2nd < 0x1000) {
 						u4ErrByteLoc = u4ErrBitLoc2nd / 8;
 						u4BitOffset = u4ErrBitLoc2nd % 8;
 						pDataBuf[u4ErrByteLoc] = pDataBuf[u4ErrByteLoc] ^ (1 << u4BitOffset);
-						mtd->ecc_stats.corrected++;
+#if defined(SKIP_BAD_BLOCK)
+						if (!is_skip_bad_block(mtd, u4PageAddr))
+#endif
+							mtd->ecc_stats.corrected++;
 					} else {
-						mtd->ecc_stats.failed++;
-						//printk(KERN_WARNING "UnCorrectable High ErrLoc=%d\n", au4ErrBitLoc[i]);
+#if defined(SKIP_BAD_BLOCK)
+						if (!is_skip_bad_block(mtd, u4PageAddr))
+#endif
+							mtd->ecc_stats.corrected++;
 					}
 				}
 			}
@@ -366,7 +381,10 @@ static bool mtk_nand_check_bch_error(struct mtd_info *mtd, u8 * pDataBuf, u32 u4
 			}
 		}
 		if ((correct_count > 2) && bRet) {
-			mtd->ecc_stats.corrected++;
+#if defined(SKIP_BAD_BLOCK)
+			if (!is_skip_bad_block(mtd, u4PageAddr))
+#endif
+				mtd->ecc_stats.corrected++;
 		} else {
 //			printk(KERN_INFO "Less than 2 bit error, ignore\n");
 		}
@@ -1087,6 +1105,7 @@ int check_block_remap(struct mtd_info *mtd, int block)
 
 	return block;
 }
+
 #else
 int check_block_remap(struct mtd_info *mtd, int block)
 {

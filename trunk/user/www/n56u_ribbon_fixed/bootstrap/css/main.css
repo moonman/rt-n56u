@@ -14,10 +14,28 @@ body.body_iframe{
     margin: 0 auto;
 }
 
-#logo{background-image: url("/bootstrap/img/asus_logo.png"); width: 150px; height: 71px; margin-top: 40px;}
-#logo:hover{cursor: pointer;}
+#logo {
+    background-image: url("/bootstrap/img/asus_logo.png");
+    width: 150px;
+    height: 71px;
+    margin-top: 40px;
+}
+#logo:hover {
+    cursor: pointer;
+}
+
+#cpu_info, #mem_info, .adv_info {
+    text-decoration: none;
+    border-bottom: 1px dotted #005580;
+}
+#cpu_info:hover, #mem_info:hover, .adv_info:hover {
+    cursor: pointer;
+    text-decoration: none;
+}
 
 #footer{color: #F5F5F5}
+
+.form_thin{margin-bottom: 0px}
 
 .round_all {
     border-radius: 3px 3px 3px 3px;
@@ -35,8 +53,7 @@ body.body_iframe{
     border-radius: 0 3px 3px 0;
 }
 
-.popup_bg
-{
+.popup_bg {
     position:absolute;
     margin: auto;
     top: 0;
@@ -50,8 +67,7 @@ body.body_iframe{
     opacity: 0.95;
 }
 
-.popup_bar_bg
-{
+.popup_bar_bg {
     position:absolute;
     margin: auto;
     top: 0;
@@ -63,8 +79,7 @@ body.body_iframe{
     overflow:hidden;
 }
 
-.loadingBlock
-{
+.loadingBlock {
     font-size:20px;
     color:#FFFFFF;
     opacity: 1;
@@ -153,9 +168,7 @@ body.body_iframe{
 .side_nav div.accordion {
     margin-bottom: 0;
 }
-
-.side_nav ul a img
-{
+.side_nav ul a img {
     margin: 5px 5px -12px -3px;
     position: relative;
     top: -6px;
@@ -241,22 +254,19 @@ li:last-child > div.accordion > a:last-child {
     margin-bottom: 0;
 }
 
-.clearfix li.active a
-{
+.clearfix li.active a {
     border-radius: 0 0 0 0;
     cursor: default;
 }
 
-.clearfix li.active > a
-{
+.clearfix li.active > a {
     border-bottom: 1px solid #666666;
     border-top: 1px solid #888888;
     color: #FFFFFF;
     text-shadow: none !important;
 }
 
-.clearfix li div.accordion
-{
+.clearfix li div.accordion {
     border-top: 0 solid #FFFFFF;
     color: #666666;
 }
@@ -325,26 +335,27 @@ li div.accordion a {
 }
 
 .big-icons{ background: url("../img/icons/big-icons.png") no-repeat top left;}
-.big-icons-globe{ background-position: 0 0; width: 47px; height: 47px; }
-.big-icons-laptop{ background-position: 0 -114px; width: 48px; height: 44px; }
-.big-icons-router{ background-position: 0 -222px; width: 48px; height: 48px; }
-.big-icons-usb{ background-position: 0 -338px; width: 48px; height: 48px; }
-.big-icons-usbhdd{ background-position: 0 -452px; width: 48px; height: 48px; }
-.big-icons-printer{ background-position: 0 -563px; width: 48px; height: 48px; }
-.big-icons-modem{ background-position: 0 -674px; width: 48px; height: 48px; }
-.big-icons-hub{ background-position: 0 -787px; width: 48px; height: 48px; }
+.big-icons-globe{ background-position: 0 0; width: 48px; height: 48px; }
+.big-icons-laptop{ background-position: 0 -114px; width: 48px; height: 48px; }
+.big-icons-router{ background-position: 0 -228px; width: 48px; height: 48px; }
+.big-icons-usb{ background-position: 0 -342px; width: 48px; height: 48px; }
+.big-icons-usbhdd{ background-position: 0 -456px; width: 48px; height: 48px; }
+.big-icons-printer{ background-position: 0 -570px; width: 48px; height: 48px; }
+.big-icons-modem{ background-position: 0 -684px; width: 48px; height: 48px; }
+.big-icons-hub{ background-position: 0 -798px; width: 48px; height: 48px; }
+.big-icons-mmc{ background-position: 0 -912px; width: 48px; height: 48px; }
 
-.big-icons-globe-active{ background-position: 0 -57px; width: 47px; height: 47px; }
-.big-icons-laptop-active{ background-position: 0 -168px; width: 48px; height: 44px; }
-.big-icons-router-active{ background-position: 0 -280px; width: 48px; height: 48px; }
-.big-icons-usb-active{ background-position: 0 -396px; width: 48px; height: 48px; }
-.big-icons-usbhdd-active{ background-position: 0 -508px; width: 48px; height: 48px; }
-.big-icons-printer-active{ background-position: 0 -618px; width: 48px; height: 48px; }
-.big-icons-modem-active{ background-position: 0 -729px; width: 48px; height: 48px; }
-.big-icons-hub-active{ background-position: 0 -844px; width: 48px; height: 48px; }
+.big-icons-globe-active{ background-position: 0 -57px; width: 48px; height: 48px; }
+.big-icons-laptop-active{ background-position: 0 -171px; width: 48px; height: 48px; }
+.big-icons-router-active{ background-position: 0 -285px; width: 48px; height: 48px; }
+.big-icons-usb-active{ background-position: 0 -399px; width: 48px; height: 48px; }
+.big-icons-usbhdd-active{ background-position: 0 -513px; width: 48px; height: 48px; }
+.big-icons-printer-active{ background-position: 0 -627px; width: 48px; height: 48px; }
+.big-icons-modem-active{ background-position: 0 -741px; width: 48px; height: 48px; }
+.big-icons-hub-active{ background-position: 0 -855px; width: 48px; height: 48px; }
+.big-icons-mmc-active{ background-position: 0 -969px; width: 48px; height: 48px; }
 
 .padding-top-20{ padding-top: 20px;}
-
 
 #navigation-1 {
     padding:1px 0;
@@ -382,7 +393,6 @@ li div.accordion a {
     width:60px;
     height:13px;
     border:1px solid #B7E1F7;
-
 }
 #navigation-1 li ul.navigation-2 {
     margin:0;
@@ -472,8 +482,7 @@ textarea[readonly] {
     cursor: default;
 }
 
-.aidisk_table
-{
+.aidisk_table {
     background: #F5F5F5;
     margin: 0 5px 0 5px;
     width: 370px;
@@ -502,7 +511,7 @@ textarea[readonly] {
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
-#syslog_panel_button{
+#syslog_panel_button {
     display: inline-block;
     *display: inline;
     margin-bottom: 0;
@@ -540,8 +549,7 @@ textarea[readonly] {
     font-size: 11px;
     line-height: 14px;
 }
-
-#syslog_panel_button:hover{
+#syslog_panel_button:hover {
     color: #333333;
     text-decoration: none;
     background-color: #e6e6e6;
@@ -578,29 +586,29 @@ textarea[readonly] {
     display:none;
 }
 
-.ddown-list div{
+.ddown-list div {
     height:20px;
     line-height:20px;
     text-decoration:none;
     padding-left:2px;
 }
 
-.ddown-list a{
+.ddown-list a {
     color:#000;
     font-size:12px;
     text-decoration:none;
 }
 
-.ddown-list div:hover, .share-list a:hover{
+.ddown-list div:hover, .share-list a:hover {
     cursor:default;
     color: #005580;
 }
 
-.input-append{
+.input-append {
     margin-bottom: 0px;
 }
 
-.input-append input{
+.input-append input {
     border-radius: 3px 0 0 3px;
 }
 

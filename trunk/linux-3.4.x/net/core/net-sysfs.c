@@ -74,15 +74,14 @@ static ssize_t netdev_store(struct device *dev, struct device_attribute *attr,
 			    int (*set)(struct net_device *, unsigned long))
 {
 	struct net_device *net = to_net_dev(dev);
-	char *endp;
 	unsigned long new;
 	int ret = -EINVAL;
 
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
 
-	new = simple_strtoul(buf, &endp, 0);
-	if (endp == buf)
+	ret = kstrtoul(buf, 0, &new);
+	if (ret)
 		goto err;
 
 	if (!rtnl_trylock())
@@ -232,7 +231,7 @@ NETDEVICE_SHOW(flags, fmt_hex);
 
 static int change_flags(struct net_device *net, unsigned long new_flags)
 {
-	return dev_change_flags(net, (unsigned) new_flags);
+	return dev_change_flags(net, (unsigned int) new_flags);
 }
 
 static ssize_t store_flags(struct device *dev, struct device_attribute *attr,
@@ -582,7 +581,7 @@ static ssize_t store_rps_map(struct netdev_rx_queue *queue,
 		return err;
 	}
 
-	map = kzalloc(max_t(unsigned,
+	map = kzalloc(max_t(unsigned int,
 	    RPS_MAP_SIZE(cpumask_weight(mask)), L1_CACHE_BYTES),
 	    GFP_KERNEL);
 	if (!map) {
@@ -605,14 +604,17 @@ static ssize_t store_rps_map(struct netdev_rx_queue *queue,
 	old_map = rcu_dereference_protected(queue->rps_map,
 					    lockdep_is_held(&rps_map_lock));
 	rcu_assign_pointer(queue->rps_map, map);
-	spin_unlock(&rps_map_lock);
 
 	if (map)
 		static_key_slow_inc(&rps_needed);
-	if (old_map) {
-		kfree_rcu(old_map, rcu);
+	if (old_map)
 		static_key_slow_dec(&rps_needed);
-	}
+
+	spin_unlock(&rps_map_lock);
+
+	if (old_map)
+		kfree_rcu(old_map, rcu);
+
 	free_cpumask_var(mask);
 	return len;
 }
@@ -903,7 +905,7 @@ static ssize_t bql_set_hold_time(struct netdev_queue *queue,
 				 const char *buf, size_t len)
 {
 	struct dql *dql = &queue->dql;
-	unsigned value;
+	unsigned int value;
 	int err;
 
 	err = kstrtouint(buf, 10, &value);
@@ -1107,7 +1109,7 @@ static ssize_t store_xps_map(struct netdev_queue *queue,
 		return err;
 	}
 
-	new_dev_maps = kzalloc(max_t(unsigned,
+	new_dev_maps = kzalloc(max_t(unsigned int,
 	    XPS_DEV_MAPS_SIZE, L1_CACHE_BYTES), GFP_KERNEL);
 	if (!new_dev_maps) {
 		free_cpumask_var(mask);

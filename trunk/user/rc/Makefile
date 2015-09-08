@@ -11,6 +11,7 @@ include $(SHDIR)/cflags.mk
 
 CFLAGS += -s -I. -I$(SHDIR) -I$(SHDIR)/include
 CFLAGS += -I$(USERDIR)/wireless_tools
+CFLAGS += -I$(ROOTDIR)/$(LINUXDIR)/include/ralink
 
 # Disable/Enable ugly httpd_check
 #CFLAGS += -DHTTPD_CHECK
@@ -80,6 +81,8 @@ romfs:
 	cd $(INSTALLDIR)/sbin && ln -sf rc start_ddns
 	cd $(INSTALLDIR)/sbin && ln -sf rc restart_dns
 	cd $(INSTALLDIR)/sbin && ln -sf rc restart_dhcpd
+	cd $(INSTALLDIR)/sbin && ln -sf rc restart_vpn_server
+	cd $(INSTALLDIR)/sbin && ln -sf rc restart_vpn_client
 	cd $(INSTALLDIR)/sbin && ln -sf rc run_telnetd
 	cd $(INSTALLDIR)/sbin && ln -sf rc restart_firewall
 	cd $(INSTALLDIR)/sbin && ln -sf rc pids
@@ -91,6 +94,8 @@ romfs:
 	cd $(INSTALLDIR)/sbin && ln -sf rc detect_internet
 	cd $(INSTALLDIR)/sbin && ln -sf rc detect_wan
 	cd $(INSTALLDIR)/sbin && ln -sf rc reset_to_defaults
+	cd $(INSTALLDIR)/sbin && ln -sf rc lan_eeprom_mac
+	cd $(INSTALLDIR)/sbin && ln -sf rc wan_eeprom_mac
 	cd $(INSTALLDIR)/sbin && ln -sf rc radio2_restart
 	cd $(INSTALLDIR)/sbin && ln -sf rc radio2_toggle
 	cd $(INSTALLDIR)/sbin && ln -sf rc radio2_toggle_off

@@ -243,20 +243,20 @@ function gen_isp_list(){
 		passlist = new Array("", "", "", "");
 	}
 	else if(country == "RU"){
-		protolist = new Array("0", "0", "0", "0", "0", "0", "1", "1", "3", "3");
-		isplist = new Array("BeeLine", "Megafon", "MTS", "PrimTel", "TELE2", "ETK", "SkyLink", "Wellcom", "Yota", "Megafon.4G");
-		apnlist = new Array("internet.beeline.ru", "internet.nw", "internet.mts.ru", "internet.primtel.ru", "internet.tele2.ru", "internet.etk.ru", "", "", "yota.ru", "internet");
-		diallist = new Array("*99***1#", "*99***1#", "*99***1#", "*99***1#", "*99#", "*99***1#", "#777", "#777", "", "");
-		userlist = new Array("beeline", "", "", "", "", "etk", "mobile", "cdma", "", "");
-		passlist = new Array("beeline", "", "", "", "", "etk", "internet", "cdma", "", "");
+		protolist = new Array("0", "0", "0", "0", "0", "0", "0", "1", "1", "3", "3");
+		isplist = new Array("BeeLine", "Megafon", "MTS", "PrimTel", "TELE2", "ETK", "Yota", "SkyLink", "Wellcom", "Yota", "Megafon.4G");
+		apnlist = new Array("internet.beeline.ru", "internet.nw", "internet.mts.ru", "internet.primtel.ru", "internet.tele2.ru", "internet.etk.ru", "yota.ru", "", "", "yota.ru", "internet");
+		diallist = new Array("*99***1#", "*99***1#", "*99***1#", "*99***1#", "*99#", "*99***1#", "*99#", "#777", "#777", "", "");
+		userlist = new Array("beeline", "", "", "", "", "etk", "", "mobile", "cdma", "", "");
+		passlist = new Array("beeline", "", "", "", "", "etk", "", "internet", "cdma", "", "");
 	}
 	else if(country == "UA"){
-		protolist = new Array("0", "0", "0", "0", "0", "0", "0", "0", "1", "1", "1", "1", "1", "3", "3");
-		isplist = new Array("BeeLine", "Life", "Kyivstar Contract", "Kyivstar Prepaid", "Kyivstar XL", "Kyivstart 3G", "Djuice", "Utel", "MTS", "PEOPLEnet", "Intertelecom", "Intertelecom.Rev.B", "CDMA-UA", "FreshTel", "Giraffe");
-		apnlist = new Array("internet.beeline.ua", "Internet", "www.kyivstar.net", "www.ab.kyivstar.net", "xl.kyivstar.net", "3g.kyivstar.net", "www.djuice.com.ua", "3g.utel.ua", "", "", "", "", "", "", "");
-		diallist = new Array("*99#", "*99#", "*99#", "*99#", "*99#", "*99#", "*99#", "*99#", "#777", "#777", "#777", "#777", "#777", "", "");
-		userlist = new Array("mobile", "", "", "", "", "", "", "", "mobile", "", "IT", "3G_TURBO", "", "freshtel", "");
-		passlist = new Array("internet", "", "", "", "", "", "",  "", "internet", "000000", "IT", "3G_TURBO", "", "freshtel", "");
+		protolist = new Array("0", "0", "0", "0", "0", "0", "0", "0", "0", "1", "1", "1", "1", "1", "3", "3");
+		isplist = new Array("BeeLine", "MTS", "Life", "Kyivstar Contract", "Kyivstar Prepaid", "Kyivstar XL", "Kyivstar 3G", "Djuice", "Utel", "MTS", "PEOPLEnet", "Intertelecom", "Intertelecom.Rev.B", "CDMA-UA", "FreshTel", "Giraffe");
+		apnlist = new Array("internet.beeline.ua", "internet", "Internet", "www.kyivstar.net", "www.ab.kyivstar.net", "xl.kyivstar.net", "3g.kyivstar.net", "www.djuice.com.ua", "3g.utel.ua", "", "", "", "", "", "", "");
+		diallist = new Array("*99#", "*99#", "*99#", "*99#", "*99#", "*99#", "*99#", "*99#", "*99#", "#777", "#777", "#777", "#777", "#777", "", "");
+		userlist = new Array("mobile", "", "", "", "", "", "", "", "", "mobile", "", "IT", "3G_TURBO", "", "freshtel", "");
+		passlist = new Array("internet", "", "", "", "", "", "", "",  "", "internet", "000000", "IT", "3G_TURBO", "", "freshtel", "");
 	}
 	else if(country == "TH"){
 		protolist = new Array("0", "0", "0");
@@ -273,7 +273,7 @@ function gen_isp_list(){
 		diallist = new Array("*99#", "*99***1#", "*99***1#", "*99#", "*99***1#", "*99***1#", "*99#");
 		userlist = new Array("", "", "erainternet", "internet", "plusgsm", "heyah", "internet");
 		passlist = new Array("", "", "erainternet", "internet", "plusgsm", "heyah", "internet");
-	 }
+	}
 	else if(country == "INDI"){
 		protolist = new Array("1", "1", "1", "0", "0", "0");
 		isplist = new Array("Reliance", "Tata", "MTS", "Airtel", "Idea", "MTNL");

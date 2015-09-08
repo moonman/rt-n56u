@@ -323,14 +323,14 @@ BOOLEAN ApCliLinkUp(
 
 				wdev = &pAd->ApCfg.ApCliTab[ifIndex];
 
-				printk("!!! APCLI LINK UP - IF(apcli%d) AuthMode(%d)=%s, WepStatus(%d)=%s !!!\n", 
-											ifIndex, 
+				printk("!!! APCLI LINK UP - IF(%s%d) AuthMode(%d)=%s, WepStatus(%d)=%s !!!\n", 
+											INF_APCLI_DEV_NAME, ifIndex, 
 											wdev->AuthMode, GetAuthMode(wdev->AuthMode),
 											wdev->WepStatus, GetEncryptType(wdev->WepStatus));
 			}
 			else
 			{
-				DBGPRINT(RT_DEBUG_ERROR, ("!!! ERROR : APCLI LINK UP - IF(apcli%d)!!!\n", ifIndex));
+				DBGPRINT(RT_DEBUG_ERROR, ("!!! ERROR : APCLI LINK UP - IF(%s%d)!!!\n", INF_APCLI_DEV_NAME, ifIndex));
 				result = FALSE;
 				break;
 			}
@@ -351,7 +351,7 @@ BOOLEAN ApCliLinkUp(
 #endif /* MAC_REPEATER_SUPPORT */
 			)
 		{
-			DBGPRINT(RT_DEBUG_ERROR, ("!!! ERROR : This link had existed - IF(apcli%d)!!!\n", ifIndex));
+			DBGPRINT(RT_DEBUG_ERROR, ("!!! ERROR : This link had existed - IF(%s%d)!!!\n", INF_APCLI_DEV_NAME, ifIndex));
 			result = FALSE;
 			break;
 		}
@@ -573,14 +573,17 @@ BOOLEAN ApCliLinkUp(
 				 
 				if (pAd->ApCfg.ApCliTab[ifIndex].DesiredTransmitSetting.field.MCS != MCS_AUTO)
 				{
-					DBGPRINT(RT_DEBUG_TRACE, ("IF-apcli%d : Desired MCS = %d\n", ifIndex,
+					DBGPRINT(RT_DEBUG_TRACE, ("IF-%s%d : Desired MCS = %d\n", INF_APCLI_DEV_NAME, ifIndex,
 						wdev->DesiredTransmitSetting.field.MCS));
 
 					set_ht_fixed_mcs(pAd, pMacEntry, wdev->DesiredTransmitSetting.field.MCS, wdev->HTPhyMode.field.MCS);
 				}
 
 				pMacEntry->MaxHTPhyMode.field.STBC = (pHtCapability->HtCapInfo.RxSTBC & (pAd->CommonCfg.DesiredHtPhy.TxSTBC));
-				pMacEntry->MpduDensity = pHtCapability->HtCapParm.MpduDensity;
+				if (pHtCapability->HtCapParm.MpduDensity < 5)
+					pMacEntry->MpduDensity = 5;
+				else
+					pMacEntry->MpduDensity = pHtCapability->HtCapParm.MpduDensity;
 				pMacEntry->MaxRAmpduFactor = pHtCapability->HtCapParm.MaxRAmpduFactor;
 				pMacEntry->MmpsMode = (UCHAR)pHtCapability->HtCapInfo.MimoPs;
 				pMacEntry->AMsduSize = (UCHAR)pHtCapability->HtCapInfo.AMsduSize;				
@@ -636,6 +639,22 @@ BOOLEAN ApCliLinkUp(
 							&pApCliEntry->ApCliMlmeAux.HtCapability,
 							pApCliEntry->ApCliMlmeAux.HtCapabilityLen);
 
+#ifdef DISANLE_VHT80_256_QAM
+			/*
+				To check SupportVHTMCS for APCLI again.
+			*/
+			if (WMODE_CAP_AC(pAd->CommonCfg.PhyMode) && pApCliEntry->ApCliMlmeAux.vht_cap_len &&  pApCliEntry->ApCliMlmeAux.vht_op_len)
+			{
+				if (pApCliEntry->ApCliMlmeAux.vht_op.vht_op_info.ch_width != VHT_BW_80)
+				{
+					pMacEntry->SupportVHTMCS[8] = TRUE;
+					if (pMacEntry->MaxHTPhyMode.field.BW == BW_40)
+					{
+						pMacEntry->SupportVHTMCS[9] = TRUE;
+					}
+				}
+			}
+#endif /* DISANLE_VHT80_256_QAM */
 			
 			if (pAd->ApCfg.ApCliTab[ifIndex].bAutoTxRateSwitch == FALSE)
 			{
@@ -805,15 +824,15 @@ VOID ApCliLinkDown(
 		{
 			CliIdx = ((ifIndex - 64) % 16);
 			ifIndex = ((ifIndex - 64) / 16);
-			printk("!!! REPEATER CLI LINK DOWN - IF(apcli%d) Cli %d !!!\n", ifIndex, CliIdx);
+			printk("!!! REPEATER CLI LINK DOWN - IF(%s%d) Cli %d !!!\n", INF_APCLI_DEV_NAME, ifIndex, CliIdx);
 		}
 		else
 #endif /* MAC_REPEATER_SUPPORT */
-			printk("!!! APCLI LINK DOWN - IF(apcli%d)!!!\n", ifIndex);
+			printk("!!! APCLI LINK DOWN - IF(%s%d)!!!\n", INF_APCLI_DEV_NAME, ifIndex);
 	}
 	else
 	{
-		DBGPRINT(RT_DEBUG_TRACE, ("!!! ERROR : APCLI LINK DOWN - IF(apcli%d)!!!\n", ifIndex));
+		DBGPRINT(RT_DEBUG_TRACE, ("!!! ERROR : APCLI LINK DOWN - IF(%s%d)!!!\n", INF_APCLI_DEV_NAME, ifIndex));
 		return;
 	}
     	
@@ -847,6 +866,7 @@ VOID ApCliLinkDown(
 	else
 #endif /* MAC_REPEATER_SUPPORT */
 	pApCliEntry->Valid = FALSE;	/* This link doesn't associated with any remote-AP */
+	pAd->ApCfg.ApCliTab[ifIndex].bPeerExist = FALSE;
 
 #ifdef APCLI_WPA_SUPPLICANT_SUPPORT
 	if (pApCliEntry->WpaSupplicantUP) 
@@ -870,7 +890,7 @@ VOID ApCliIfUp(
 	PAPCLI_STRUCT pApCliEntry;
 #ifdef APCLI_CONNECTION_TRIAL
 	PULONG pCurrState = NULL;
-#endif
+#endif /* APCLI_CONNECTION_TRIAL */
 
 	/* Reset is in progress, stop immediately */
 	if ( RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_RESET_IN_PROGRESS) ||
@@ -894,11 +914,26 @@ VOID ApCliIfUp(
 			&& (pApCliEntry->Valid == FALSE)
 #ifdef	APCLI_CONNECTION_TRIAL
 			&& (ifIndex == 0)
-#endif
+#endif /* APCLI_CONNECTION_TRIAL */
 		)
 		{
+			if (IS_DOT11_H_RADAR_STATE(pAd, RD_SILENCE_MODE))
+			{	
+				if (pApCliEntry->bPeerExist == TRUE)
+				{
+					/* Got peer's beacon; change to normal mode */
+					pAd->Dot11_H.RDCount = pAd->Dot11_H.ChMovingTime;
+					DBGPRINT(RT_DEBUG_TRACE, ("ApCliIfUp - PeerExist\n"));
+				}
+				else
+					DBGPRINT(RT_DEBUG_TRACE, ("ApCliIfUp - Stop probing while Radar state is silent\n"));
+				
+				continue;
+			}
 			DBGPRINT(RT_DEBUG_TRACE, ("(%s) ApCli interface[%d] startup.\n", __FUNCTION__, ifIndex));
 			MlmeEnqueue(pAd, APCLI_CTRL_STATE_MACHINE, APCLI_CTRL_JOIN_REQ, 0, NULL, ifIndex);
+			/* Reset bPeerExist each time in case we could keep old status */
+			pApCliEntry->bPeerExist = FALSE;
 		}
 #ifdef APCLI_CONNECTION_TRIAL
 		else if (
@@ -914,7 +949,7 @@ VOID ApCliIfUp(
 			DBGPRINT(RT_DEBUG_TRACE, ("(%s) Enqueue APCLI_CTRL_TRIAL_CONNECT\n", __func__));
 			MlmeEnqueue(pAd, APCLI_CTRL_STATE_MACHINE, APCLI_CTRL_TRIAL_CONNECT, 0, NULL, ifIndex);
 		}
-#endif
+#endif /* APCLI_CONNECTION_TRIAL */
 	}
 
 	return;
@@ -1049,8 +1084,11 @@ VOID ApCliIfMonitor(
 				&& (RTMP_TIME_AFTER(pAd->Mlme.Now32 , (pApCliEntry->ApCliLinkUpTime + (30 * OS_HZ)))))
 				bForceBrocken = TRUE;
  
-			if (RTMP_TIME_AFTER(pAd->Mlme.Now32 , (pApCliEntry->ApCliRcvBeaconTime + (8 * OS_HZ))))
+			if (RTMP_TIME_AFTER(pAd->Mlme.Now32 , (pApCliEntry->ApCliRcvBeaconTime + (12 * OS_HZ))))
+			{
+				printk("ApCliIfMonitor: IF(%s%d) - no Beacon is received from Root-AP.\n", INF_APCLI_DEV_NAME, index);
 				bForceBrocken = TRUE;
+			}
 
 		}
 		else
@@ -1058,7 +1096,6 @@ VOID ApCliIfMonitor(
  
 		if (bForceBrocken == TRUE)
 		{
-			DBGPRINT(RT_DEBUG_TRACE, ("ApCliIfMonitor: IF(apcli%d) - no Beancon is received from root-AP.\n", index));
 			DBGPRINT(RT_DEBUG_TRACE, ("ApCliIfMonitor: Reconnect the Root-Ap again.\n"));
 
 #ifdef MAC_REPEATER_SUPPORT
@@ -2484,6 +2521,33 @@ VOID ApCliUpdateMlmeRate(
 	DBGPRINT(RT_DEBUG_TRACE, ("RTMPUpdateMlmeRate ==>   MlmeTransmit = 0x%x  \n" , pAd->CommonCfg.MlmeTransmit.word));
 }
 
+
+VOID ApCliCheckPeerExistence(RTMP_ADAPTER *pAd, CHAR *Ssid, UCHAR SsidLen, UCHAR Channel)
+{
+	UCHAR ifIndex;
+	APCLI_STRUCT *pApCliEntry;
+	
+	for (ifIndex = 0; ifIndex < MAX_APCLI_NUM; ifIndex++)
+	{
+		pApCliEntry = &pAd->ApCfg.ApCliTab[ifIndex];
+
+
+		if (pApCliEntry->bPeerExist == TRUE)
+			continue;
+
+		else if (Channel == pAd->CommonCfg.Channel &&
+			(NdisEqualMemory(Ssid, pApCliEntry->CfgSsid, SsidLen) || SsidLen == 0 /* Hidden */))
+		{
+			pApCliEntry->bPeerExist = TRUE;
+		}
+		else
+		{
+			/* No Root AP match the SSID */
+		}
+	}
+}
+
+
 VOID APCli_Init(
 	IN	PRTMP_ADAPTER				pAd,
 	IN	RTMP_OS_NETDEV_OP_HOOK		*pNetDevOps)
@@ -2849,11 +2913,11 @@ BOOLEAN ApCliAutoConnectExec(
 				DBGPRINT(RT_DEBUG_TRACE, 
 						("Found desired ssid in Entry %2d:\n", entryIdx));
 				DBGPRINT(RT_DEBUG_TRACE,
-						("I/F(apcli%d) ApCliAutoConnectExec:(Len=%d,Ssid=%s, Channel=%d, Rssi=%d)\n", 
-						ifIdx, pBssEntry->SsidLen, pBssEntry->Ssid,
+						("I/F(%s%d) ApCliAutoConnectExec:(Len=%d,Ssid=%s, Channel=%d, Rssi=%d)\n", 
+						INF_APCLI_DEV_NAME, ifIdx, pBssEntry->SsidLen, pBssEntry->Ssid,
 						pBssEntry->Channel, pBssEntry->Rssi));
 				DBGPRINT(RT_DEBUG_TRACE,
-						("I/F(apcli%d) ApCliAutoConnectExec::(AuthMode=%s, EncrypType=%s)\n", ifIdx,
+						("I/F(%s%d) ApCliAutoConnectExec::(AuthMode=%s, EncrypType=%s)\n", INF_APCLI_DEV_NAME, ifIdx,
 						GetAuthMode(pBssEntry->AuthMode),
 						GetEncryptType(pBssEntry->WepStatus)) );
 				NdisMoveMemory(&pSsidBssTab->BssEntry[pSsidBssTab->BssNr++],

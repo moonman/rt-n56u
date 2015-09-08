@@ -37,7 +37,7 @@ MODULE_DESCRIPTION("Xtables: packet \"rejection\" target for IPv6");
 MODULE_LICENSE("GPL");
 
 /* Send RST reply */
-static void send_reset(struct net *net, struct sk_buff *oldskb)
+static void send_reset(struct net *net, struct sk_buff *oldskb, int hook)
 {
 	struct sk_buff *nskb;
 	struct tcphdr otcph, *tcph;
@@ -86,8 +86,7 @@ static void send_reset(struct net *net, struct sk_buff *oldskb)
 	}
 
 	/* Check checksum. */
-	if (csum_ipv6_magic(&oip6h->saddr, &oip6h->daddr, otcplen, IPPROTO_TCP,
-			    skb_checksum(oldskb, tcphoff, otcplen, 0))) {
+	if (nf_ip6_checksum(oldskb, hook, tcphoff, IPPROTO_TCP)) {
 		pr_debug("TCP checksum is invalid\n");
 		return;
 	}
@@ -132,6 +131,7 @@ static void send_reset(struct net *net, struct sk_buff *oldskb)
 	ip6h->saddr = oip6h->daddr;
 	ip6h->daddr = oip6h->saddr;
 
+	skb_reset_transport_header(nskb);
 	tcph = (struct tcphdr *)skb_put(nskb, sizeof(struct tcphdr));
 	/* Truncate to length (no data) */
 	tcph->doff = sizeof(struct tcphdr)/4;
@@ -185,7 +185,6 @@ reject_tg6(struct sk_buff *skb, const struct xt_action_param *par)
 	const struct ip6t_reject_info *reject = par->targinfo;
 	struct net *net = dev_net((par->in != NULL) ? par->in : par->out);
 
-	pr_debug("%s: medium point\n", __func__);
 	switch (reject->with) {
 	case IP6T_ICMP6_NO_ROUTE:
 		send_unreach(net, skb, ICMPV6_NOROUTE, par->hooknum);
@@ -206,10 +205,7 @@ reject_tg6(struct sk_buff *skb, const struct xt_action_param *par)
 		/* Do nothing */
 		break;
 	case IP6T_TCP_RESET:
-		send_reset(net, skb);
-		break;
-	default:
-		net_info_ratelimited("case %u not handled yet\n", reject->with);
+		send_reset(net, skb, par->hooknum);
 		break;
 	}
 

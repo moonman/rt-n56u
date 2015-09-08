@@ -33,6 +33,9 @@
 
 #include "rc.h"
 
+#define DHCPD_STATIC_MAX	64
+#define DHCPD_MULTIMAC_MAX	8
+#define DHCPD_HOSTS_DIR		"/etc/dnsmasq/dhcp"
 #define DHCPD_LEASE_FILE	"/tmp/dnsmasq.leases"
 #define UPNPD_LEASE_FILE	"/tmp/miniupnpd.leases"
 #define INADYN_USER_DIR		"/etc/storage/inadyn"
@@ -69,7 +72,7 @@ static void
 arpbind_clear(void)
 {
 	FILE *fp;
-	char buffer[256], arp_ip[INET_ADDRSTRLEN], arp_if[32];
+	char buffer[256], arp_ip[16], arp_if[32];
 	unsigned int arp_flags;
 
 	fp = fopen("/proc/net/arp", "r");
@@ -79,7 +82,7 @@ arpbind_clear(void)
 		
 		while (fgets(buffer, sizeof(buffer), fp)) {
 			arp_flags = 0;
-			if (sscanf(buffer, "%s %*s 0x%x %*s %*s %s", arp_ip, &arp_flags, arp_if) == 3) {
+			if (sscanf(buffer, "%15s %*s 0x%x %*s %*s %31s", arp_ip, &arp_flags, arp_if) == 3) {
 				if ((arp_flags & 0x04) && strcmp(arp_if, IFNAME_BR) == 0)
 					doSystem("arp -i %s -d %s", IFNAME_BR, arp_ip);
 			}
@@ -89,69 +92,180 @@ arpbind_clear(void)
 	}
 }
 
-/*
-static int
-find_static_mac(int idx, int num_items, const char *ip, char mac[13])
-{
-	int i;
-	in_addr_t ip1, ip2;
-	char nvram_mac[32], nvram_ip[32], *smac;
+struct ip4_items_t {
+	in_addr_t ip4;
+	int count;
+	char *hname;
+	char *mac[DHCPD_MULTIMAC_MAX];
+};
 
-	ip1 = inet_addr_safe(ip);
-
-	for (i = idx; i < num_items; i++) {
-		snprintf(nvram_mac, sizeof(nvram_mac), "dhcp_staticmac_x%d", i);
-		smac = nvram_safe_get(nvram_mac);
-		if (strlen(smac) == 12) {
-			snprintf(nvram_ip, sizeof(nvram_ip), "dhcp_staticip_x%d", i);
-			ip2 = inet_addr_safe(nvram_safe_get(nvram_ip));
-			if (ip2 == ip1 && ip2 != INADDR_NONE) {
-				strcpy(mac, smac);
-				return i;
-			}
-		}
-	}
-
-	return -1;
-}
-*/
-
-static int
+static void
 fill_static_ethers(const char *lan_ip, const char *lan_mask)
 {
-	FILE *fp;
-	int i, i_use_static, i_arpbind, i_max_items, i_ethers = 0;
-	char nvram_mac[32], nvram_ip[32], *smac, *sip;
+	FILE *fp[3];
+	in_addr_t ip4, ip4_lan;
+	struct ip4_items_t ip4_list[DHCPD_STATIC_MAX];
+	int i, j, i_max_items, i_arp_bind;
+	char dh_fn[64], nvram_key[32], *smac, *sip4, *shname;
 
-	i_use_static = nvram_get_int("dhcp_static_x");
+	memset(ip4_list, 0, sizeof(ip4_list));
 
-	/* create /etc/ethers */
-	fp = fopen("/etc/ethers", "w+");
-	if (fp) {
-		if (i_use_static == 1) {
-			i_arpbind = nvram_get_int("dhcp_static_arp");
-			i_max_items = nvram_safe_get_int("dhcp_staticnum_x", 0, 0, 64);
-			for (i = 0; i < i_max_items; i++) {
-				snprintf(nvram_mac, sizeof(nvram_mac), "dhcp_staticmac_x%d", i);
-				smac = nvram_safe_get(nvram_mac);
-				if (strlen(smac) == 12) {
-					snprintf(nvram_ip, sizeof(nvram_ip), "dhcp_staticip_x%d", i);
-					sip = nvram_safe_get(nvram_ip);
-					if (is_valid_ipv4(sip) && is_same_subnet(sip, lan_ip, lan_mask)) {
-						i_ethers++;
-						fprintf(fp, "%c%c:%c%c:%c%c:%c%c:%c%c:%c%c %s\n", 
-							smac[0], smac[1], smac[2], smac[3], smac[4], smac[5], 
-							smac[6], smac[7], smac[8], smac[9], smac[10], smac[11], sip);
-						if (i_arpbind)
-							doSystem("arp -i %s -s %s %s", IFNAME_BR, sip, smac);
+	mkdir_if_none(DHCPD_HOSTS_DIR, "755");
+	snprintf(dh_fn, sizeof(dh_fn), "%s/dhcp-hosts.rc", DHCPD_HOSTS_DIR);
+
+	fp[0] = fopen(dh_fn, "w+");
+	fp[1] = fopen("/etc/ethers", "w+");
+	fp[2] = fopen("/tmp/hosts.static", "w+");
+
+	if (nvram_get_int("dhcp_static_x") == 1) {
+		ip4_lan = inet_addr_safe(lan_ip);
+		i_arp_bind = nvram_get_int("dhcp_static_arp");
+		i_max_items = nvram_get_int("dhcp_staticnum_x");
+		if (i_max_items > DHCPD_STATIC_MAX)
+			i_max_items = DHCPD_STATIC_MAX;
+		
+		/* first pass */
+		for (j = 0; j < i_max_items; j++) {
+			snprintf(nvram_key, sizeof(nvram_key), "dhcp_staticmac_x%d", j);
+			smac = nvram_safe_get(nvram_key);
+			if (strlen(smac) != 12)
+				continue;
+			snprintf(nvram_key, sizeof(nvram_key), "dhcp_staticip_x%d", j);
+			sip4 = nvram_safe_get(nvram_key);
+			ip4 = inet_addr_safe(sip4);
+			if (ip4 == INADDR_ANY || ip4 == INADDR_NONE || ip4 == ip4_lan)
+				continue;
+			if (!is_same_subnet(sip4, lan_ip, lan_mask))
+				continue;
+			snprintf(nvram_key, sizeof(nvram_key), "dhcp_staticname_x%d", j);
+			shname = nvram_safe_get(nvram_key);
+			
+			/* fill multi-items array by IP */
+			for (i = 0; i < DHCPD_STATIC_MAX; i++) {
+				struct ip4_items_t *ipl = &ip4_list[i];
+				
+				if (!ipl->ip4) {
+					ipl->ip4 = ip4;
+					ipl->count = 1;
+					ipl->mac[0] = strdup(smac);
+					if (is_valid_hostname(shname))
+						ipl->hname = strdup(shname);
+					break;
+				}
+				if (ipl->ip4 == ip4) {
+					if (ipl->count < DHCPD_MULTIMAC_MAX) {
+						ipl->mac[ipl->count] = strdup(smac);
+						ipl->count++;
 					}
+					if (!ipl->hname && is_valid_hostname(shname))
+						ipl->hname = strdup(shname);
+					break;
 				}
 			}
 		}
-		fclose(fp);
+		
+		/* second pass */
+		for (i = 0; i < DHCPD_STATIC_MAX; i++) {
+			struct ip4_items_t *ipl = &ip4_list[i];
+			struct in_addr in;
+			
+			if (!ipl->ip4)
+				break;
+			
+			in.s_addr = ipl->ip4;
+			sip4 = inet_ntoa(in);
+			if (fp[0] && ipl->count > 0) {
+				for (j = 0; j < ipl->count; j++) {
+					smac = ipl->mac[j];
+					if (!smac)
+						continue;
+					fprintf(fp[0], "%c%c:%c%c:%c%c:%c%c:%c%c:%c%c,",
+						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+						smac[6], smac[7], smac[8], smac[9], smac[10], smac[11]);
+				}
+				fprintf(fp[0], "%s\n", sip4);
+			}
+			
+			/* use only unique IP for /etc/ethers (ARP binds) */
+			if (i_arp_bind && ipl->count == 1 && ipl->mac[0]) {
+				smac = ipl->mac[0];
+				if (fp[1]) {
+					fprintf(fp[1], "%c%c:%c%c:%c%c:%c%c:%c%c:%c%c %s\n",
+						smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+						smac[6], smac[7], smac[8], smac[9], smac[10], smac[11], sip4);
+				}
+				doSystem("arp -i %s -s %s %s", IFNAME_BR, sip4, smac);
+			}
+			
+			if (fp[2] && ipl->hname)
+				fprintf(fp[2], "%s %s\n", sip4, sanity_hostname(ipl->hname));
+		}
+		
+		/* cleanup items */
+		for (i = 0; i < DHCPD_STATIC_MAX; i++) {
+			struct ip4_items_t *ipl = &ip4_list[i];
+			
+			for (j = 0; j < DHCPD_MULTIMAC_MAX; j++) {
+				if (ipl->mac[j])
+					free(ipl->mac[j]);
+			}
+			if (ipl->hname)
+				free(ipl->hname);
+		}
 	}
 
-	return i_ethers;
+	for (i = 0; i < ARRAY_SIZE(fp); i++) {
+		if (fp[i])
+			fclose(fp[i]);
+	}
+}
+
+int
+fill_dnsmasq_servers(void)
+{
+	FILE *fp;
+	int lock;
+	char word[256], *next, *wan_dns, *wan_dom;
+	const char *storage_dir = "/etc/storage/dnsmasq";
+
+	lock = file_lock("dservers");
+
+	fp = fopen(DNS_SERVERS_FILE, "w");
+	if (!fp) {
+		file_unlock(lock);
+		return -1;
+	}
+
+	/* add DNS servers (via specific domain) for static VPN client */
+	if (nvram_get_int("vpnc_pdns") > 0) {
+		wan_dom = nvram_safe_get("vpnc_dom_t");
+		wan_dns = nvram_safe_get("vpnc_dns_t");
+		if (strlen(wan_dom) > 1 && strlen(wan_dns) > 6) {
+			foreach(word, wan_dns, next) {
+				if (is_valid_ipv4(word))
+					fprintf(fp, "server=/%s/%s\n", wan_dom, word);
+			}
+		}
+	}
+
+	/* add DNS servers (via specific domain) for MAN subnet */
+	wan_dom = nvram_safe_get("wanx_domain");
+	wan_dns = nvram_safe_get("wanx_dns");
+	if (strlen(wan_dom) > 1 && strlen(wan_dns) > 6) {
+		foreach(word, wan_dns, next) {
+			if (is_valid_ipv4(word))
+				fprintf(fp, "server=/%s/%s\n", wan_dom, word);
+		}
+	}
+
+	/* fill from user dnsmasq.servers */
+	load_user_config(fp, storage_dir, "dnsmasq.servers", NULL);
+
+	fclose(fp);
+
+	file_unlock(lock);
+
+	return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -177,34 +291,31 @@ int
 start_dns_dhcpd(int is_ap_mode)
 {
 	FILE *fp;
-	int i_ethers, i_verbose, i_dhcp_enable, is_dhcp_used, is_dns_used;
+	int i_verbose, i_dhcp_enable, is_dhcp_used, is_dns_used;
 	char dhcp_start[32], dhcp_end[32], dns_all[64];
 	char *ipaddr, *netmask, *gw, *dns1, *dns2, *dns3, *wins, *domain;
-	char *leases_dhcp = DHCPD_LEASE_FILE;
-	char *resolv_conf = "/etc/resolv.conf";
-	char *storage_dir = "/etc/storage/dnsmasq";
-
-	if (!is_ap_mode) {
-		/* create /etc/hosts */
-		update_hosts_router();
-		
-		/* touch resolv.conf if not exist */
-		create_file(resolv_conf);
-	}
+	const char *storage_dir = "/etc/storage/dnsmasq";
 
 	i_dhcp_enable = is_dhcpd_enabled(is_ap_mode);
-
-	/* touch dnsmasq.leases if not exist */
-	create_file(leases_dhcp);
-
 	i_verbose = nvram_get_int("dhcp_verbose");
 
 	ipaddr  = nvram_safe_get("lan_ipaddr");
 	netmask = nvram_safe_get("lan_netmask");
 	domain  = nvram_safe_get("lan_domain");
 
+	/* touch dnsmasq.leases if not exist */
+	create_file(DHCPD_LEASE_FILE);
+
 	/* create /etc/ethers */
-	i_ethers = fill_static_ethers(ipaddr, netmask);
+	fill_static_ethers(ipaddr, netmask);
+
+	if (!is_ap_mode) {
+		/* create /etc/hosts (run after fill_static_ethers!) */
+		update_hosts_router(ipaddr);
+		
+		/* touch resolv.conf if not exist */
+		create_file(DNS_RESOLV_CONF);
+	}
 
 	/* create /etc/dnsmasq.conf */
 	if (!(fp = fopen("/etc/dnsmasq.conf", "w")))
@@ -214,20 +325,25 @@ start_dns_dhcpd(int is_ap_mode)
 		    "resolv-file=%s\n"
 		    "no-poll\n"
 		    "bogus-priv\n"
-		    "interface=%s\n"
-		    "listen-address=%s\n"
-		    "bind-dynamic\n"
 		    "no-negcache\n"
-		    "clear-on-reload\n",
+		    "clear-on-reload\n"
+		    "bind-dynamic\n"
+		    "interface=%s\n",
 		    SYS_USER_NOBODY,
-		    resolv_conf,
-		    IFNAME_BR,
-		    ipaddr);
+		    DNS_RESOLV_CONF,
+		    IFNAME_BR);
+
+	if (!is_ap_mode) {
+		/* listen DNS queries from clients of VPN server */
+		fprintf(fp, "listen-address=%s\n", ipaddr);
+	}
 
 	if (!is_ap_mode) {
 		is_dns_used = 1;
+		fprintf(fp, "min-port=%d\n", 4096);
 		fprintf(fp, "cache-size=%d\n", DNS_RELAY_CACHE_MAX);
 		fprintf(fp, "addn-hosts=%s/hosts\n", storage_dir);
+		fprintf(fp, "servers-file=%s\n", DNS_SERVERS_FILE);
 	} else {
 		is_dns_used = 0;
 		fprintf(fp, "cache-size=%d\n", 0);
@@ -293,12 +409,8 @@ start_dns_dhcpd(int is_ap_mode)
 		else if (nvram_get_int("wins_enable"))
 			fprintf(fp, "dhcp-option=%d,%s\n", 44, ipaddr);
 #endif
-		
 		if (i_verbose == 0 || i_verbose == 2)
 			fprintf(fp, "quiet-dhcp\n");
-		
-		if (i_ethers)
-			fprintf(fp, "read-ethers\n");
 		
 		is_dhcp_used = 1;
 	}
@@ -345,12 +457,20 @@ start_dns_dhcpd(int is_ap_mode)
 	}
 #endif
 	if (is_dhcp_used) {
-		fprintf(fp, "dhcp-leasefile=%s\n", leases_dhcp);
+		fprintf(fp, "dhcp-hostsfile=%s\n", DHCPD_HOSTS_DIR);
+		fprintf(fp, "dhcp-leasefile=%s\n", DHCPD_LEASE_FILE);
 		fprintf(fp, "dhcp-authoritative\n");
 	}
 
+#if (BOARD_NUM_USB_PORTS > 0)
+	fprintf(fp, "tftp-no-fail\n");
+#endif
+
 	fprintf(fp, "conf-file=%s/dnsmasq.conf\n", storage_dir);
 	fclose(fp);
+
+	if (is_dns_used)
+		fill_dnsmasq_servers();
 
 	if (is_dns_used || is_dhcp_used)
 		return eval("/usr/sbin/dnsmasq");
@@ -473,7 +593,7 @@ start_wins(void)
 	if (nvram_match("wins_enable", "0"))
 		return;
 
-	mkdir_if_none("/etc/samba");
+	mkdir_if_none("/etc/samba", "777");
 
 	fp = write_smb_conf_header();
 	if (fp)
@@ -575,7 +695,8 @@ start_upnp(void)
 		return errno;
 	}
 
-	fprintf(fp, "# automagically generated\n"
+	fprintf(fp, "# automatically generated\n");
+	fprintf(fp,
 		"ext_ifname=%s\n"
 		"listening_ip=%s\n"
 		"port=%d\n"
@@ -660,6 +781,11 @@ update_upnp(void)
 		return;
 	}
 
+	if (nvram_get_int("wan_nat_x") == 0) {
+		stop_upnp();
+		return;
+	}
+
 	/* update upnp forwards from lease file */
 	if (check_if_file_exist(UPNPD_LEASE_FILE)) {
 		doSystem("killall %s %s", "-SIGUSR1", "miniupnpd");
@@ -715,7 +841,10 @@ static const struct inadyn_system_t {
 	{ "WWW.DHIS.ORG",         "default@dhis.org"           },
 	{ "WWW.NIC.RU",           "default@nic.ru"             },
 	{ "WWW.DUCKDNS.ORG",      "default@duckdns.org"        },
-	{ "WWW.TUNNELBROKER.NET", "ipv6tb@he.net"              },
+	{ "WWW.DTDNS.COM",        "default@dtdns.com"          },
+	{ "WWW.OVH.COM",          "default@ovh.com"            },
+	{ "WWW.LOOPIA.COM",       "default@loopia.com"         },
+	{ "WWW.TUNNELBROKER.NET", "default@tunnelbroker.net"   },
 	{ "DNS.HE.NET",           "dyndns@he.net"              },
 	{ "TB.NETASSIST.UA",      "ipv6tb@netassist.ua"        },
 	{ "IPV4.NSUPDATE.INFO",   "ipv4@nsupdate.info"         },
@@ -738,6 +867,7 @@ inadyn_checkip_url[] = {
 	"checkip.two-dns.de /",
 	"ipv4.wtfismyip.com /text",
 	"ipv4.nsupdate.info /myip",
+	"myip.dtdns.com /",
 };
 
 static const char *
@@ -798,15 +928,18 @@ write_inadyn_conf(const char *conf_file, int use_delay)
 	ddns1_pass     = nvram_safe_get("ddns_passwd_x");
 
 	if (strcmp(ddns1_svc, "update@asus.com") == 0) {
-		char mac_str[16] = {0};
+		char *mac_nvram, mac_str[16] = {0};
 		unsigned char mac_bin[ETHER_ADDR_LEN] = {0};
 		
-#if defined (BOARD_N14U) || defined (BOARD_N11P)
-		/* use original MAC from EEPROM */
-		ether_atoe(nvram_safe_get("il0macaddr"), mac_bin);
-#else
-		ether_atoe(nvram_safe_get("il1macaddr"), mac_bin);
-#endif
+		if (get_wired_mac_is_single()) {
+			/* use original MAC LAN from EEPROM */
+			mac_nvram = "il0macaddr";
+		} else {
+			mac_nvram = "il1macaddr";
+		}
+		
+		ether_atoe(nvram_safe_get(mac_nvram), mac_bin);
+		
 		i_ddns1_ssl = 0;
 		ddns1_hname[1] = "";
 		ddns1_hname[2] = "";
@@ -821,7 +954,7 @@ write_inadyn_conf(const char *conf_file, int use_delay)
 	ddns2_pass  = nvram_safe_get("ddns2_pass");
 
 	if (use_delay)
-		use_delay = (nvram_get_int("ntpc_counter") < 1) ? 15 : 3;
+		use_delay = (!is_ntpc_updated()) ? 15 : 3;
 
 	fp = fopen(conf_file, "w");
 	if (fp) {
@@ -918,7 +1051,7 @@ get_ddns_fqdn(void)
 		return NULL;
 
 	ddns_svc = get_inadyn_system(nvram_safe_get("ddns_server_x"));
-	if (ddns_svc && strncmp(ddns_svc, "ipv6tb@", 7) != 0) {
+	if (ddns_svc && strncmp(ddns_svc, "ipv6tb@", 7) != 0 && !strstr(ddns_svc, "tunnelbroker.net")) {
 		ddns_fqdn = nvram_safe_get("ddns_hostname_x");
 		if (strcmp(ddns_svc, "update@asus.com") == 0) {
 			if (!strstr(ddns_fqdn, ".asuscomm.com"))
@@ -937,7 +1070,7 @@ get_ddns_fqdn(void)
 
 	if (!ddns_fqdn) {
 		ddns_svc = get_inadyn_system(nvram_safe_get("ddns2_server"));
-		if (ddns_svc && strncmp(ddns_svc, "ipv6tb@", 7) != 0) {
+		if (ddns_svc && strncmp(ddns_svc, "ipv6tb@", 7) != 0 && !strstr(ddns_svc, "tunnelbroker.net")) {
 			ddns_fqdn = nvram_safe_get("ddns2_hname");
 			if (!strchr(ddns_fqdn, '.'))
 				ddns_fqdn = NULL;
@@ -951,7 +1084,7 @@ void
 manual_ddns_hostname_check(void)
 {
 	int i_ddns_source;
-	char mac_str[16], wan_ifname[16];
+	char *mac_nvram, mac_str[16], wan_ifname[16];
 	const char *nvram_key = "ddns_return_code";
 	unsigned char mac_bin[ETHER_ADDR_LEN] = {0};
 	char *inadyn_argv[] = {
@@ -975,12 +1108,14 @@ manual_ddns_hostname_check(void)
 
 	stop_ddns();
 
-#if defined (BOARD_N14U) || defined (BOARD_N11P)
-	/* use original MAC from EEPROM */
-	ether_atoe(nvram_safe_get("il0macaddr"), mac_bin);
-#else
-	ether_atoe(nvram_safe_get("il1macaddr"), mac_bin);
-#endif
+	if (get_wired_mac_is_single()) {
+		/* use original MAC LAN from EEPROM */
+		mac_nvram = "il0macaddr";
+	} else {
+		mac_nvram = "il1macaddr";
+	}
+
+	ether_atoe(nvram_safe_get(mac_nvram), mac_bin);
 
 	wan_ifname[0] = 0;
 	i_ddns_source = nvram_get_int("ddns_source");

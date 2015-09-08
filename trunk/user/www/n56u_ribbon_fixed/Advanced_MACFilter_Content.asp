@@ -114,7 +114,6 @@ function setClientMAC(num){
 function showLANIPList(){
 	var code = "";
 	var show_name = "";
-	
 	for(var i = 0; i < clients_info.length ; i++){
 		if(clients_info[i][0] && clients_info[i][0].length > 20)
 			show_name = clients_info[i][0].substring(0, 18) + "..";
@@ -189,14 +188,6 @@ function validNewRow(max_rows) {
 
 	var starttime = eval(document.form.macfilter_time_x_starthour.value + document.form.macfilter_time_x_startmin.value);
 	var endtime = eval(document.form.macfilter_time_x_endhour.value + document.form.macfilter_time_x_endmin.value);
-
-	if(starttime > endtime){
-		alert("<#FirewallConfig_URLActiveTime_itemhint#>");
-		document.form.macfilter_time_x_starthour.focus();
-		document.form.macfilter_time_x_starthour.select();
-		return false;
-	}
-
 	if(starttime == endtime){
 		alert("<#FirewallConfig_URLActiveTime_itemhint2#>");
 		document.form.macfilter_time_x_starthour.focus();
@@ -277,15 +268,14 @@ function showMFList(){
 		document.form.macfilter_date_x_0.value = "1111111";
 	}
 	else{
-		for(var i = 0; i < MACList.length; i++){
-		    code +='<tr id="row' + i + '">';
-		    code +='<td width="25%">' + MACList[i][0] + '</td>';
-		    code +='<td width="25%" style="text-align: center;">' + format_time(MACList[i][1]) + '</td>';
-		    code +='<td width="45%">' + format_date(MACList[i][2]) + '</td>';
-		    code +='<td width="5%" style="text-align: center;"><input type="checkbox" name="MFList_s" value="' + i + '" onClick="changeBgColor(this,' + i + ');" id="check' + i + '"></td>';
-		    code +='</tr>';
-		}
-		
+	    for(var i = 0; i < MACList.length; i++){
+		code +='<tr id="row' + i + '">';
+		code +='<td width="25%">&nbsp;' + MACList[i][0] + '</td>';
+		code +='<td width="25%" style="text-align: center;">' + format_time(MACList[i][1]) + '</td>';
+		code +='<td width="45%">' + format_date(MACList[i][2]) + '</td>';
+		code +='<td width="5%" style="text-align: center;"><input type="checkbox" name="MFList_s" value="' + i + '" onClick="changeBgColor(this,' + i + ');" id="check' + i + '"></td>';
+		code +='</tr>';
+	    }
 		code += '<tr>';
 		code += '<td colspan="3">&nbsp;</td>'
 		code += '<td><button class="btn btn-danger" type="submit" onclick="return markGroupMAC(this, 64, \' Del \');" name="MFList"><i class="icon icon-minus icon-white"></i></button></td>';
@@ -333,6 +323,14 @@ function done_validating(action){
 .radio.inline + .radio.inline,
 .checkbox.inline + .checkbox.inline {
     margin-left: 3px;
+}
+.table-list td {
+    padding: 6px 8px;
+}
+.table-list input,
+.table-list select {
+    margin-top: 0px;
+    margin-bottom: 0px;
 }
 </style>
 </head>
@@ -393,8 +391,8 @@ function done_validating(action){
 
                                     <table width="100%" cellpadding="4" cellspacing="0" class="table">
                                         <tr>
-                                            <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,18,1);"><#FirewallConfig_MFMethod_itemname#></a></th>
-                                            <td>
+                                            <th width="50%" style="border-top: 0 none;"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,18,1);"><#FirewallConfig_MFMethod_itemname#></a></th>
+                                            <td style="border-top: 0 none;">
                                                 <select name="macfilter_enable_x" class="input" onchange="change_macfilter()">
                                                     <option value="0" <% nvram_match_x("","macfilter_enable_x", "0","selected"); %>><#CTL_Disabled#></option>
                                                     <option value="1" <% nvram_match_x("","macfilter_enable_x", "1","selected"); %>><#FirewallConfig_MFMethod_item1#></option>
@@ -419,7 +417,7 @@ function done_validating(action){
                                         </tr>
                                     </table>
 
-                                    <table width="100%" align="center" cellpadding="4" cellspacing="0" class="table" id="MFList_Block">
+                                    <table width="100%" align="center" cellpadding="4" cellspacing="0" class="table table-list" id="MFList_Block">
                                         <tr>
                                             <th colspan="4" style="background-color: #E3E3E3;"><#FirewallConfig_MFList_groupitemname#></th>
                                         </tr>
@@ -433,15 +431,15 @@ function done_validating(action){
                                             <td width="25%">
                                                 <div id="ClientList_Block" class="alert alert-info ddown-list" style="width: 400px;"></div>
                                                 <div class="input-append">
-                                                    <input type="text" maxlength="12" class="span12" size="12" name="macfilter_list_x_0" onKeyPress="return is_hwaddr()" style="float:left; width: 110px">
+                                                    <input type="text" maxlength="12" class="span12" size="12" name="macfilter_list_x_0" onKeyPress="return is_hwaddr(event);" style="float:left; width: 110px">
                                                     <button class="btn btn-chevron" id="chevron" type="button" onclick="pullLANIPList(this);" title="Select the MAC of LAN clients."><i class="icon icon-chevron-down"></i></button>
                                                 </div>
                                             </td>
                                             <td width="25%">
-                                                <input type="text" maxlength="2" class="input" style="width: 18px;" size="2" name="macfilter_time_x_starthour" onKeyPress="return is_number(this)">:
-                                                <input type="text" maxlength="2" class="input" style="width: 18px;" size="2" name="macfilter_time_x_startmin" onKeyPress="return is_number(this)">&nbsp;-
-                                                <input type="text" maxlength="2" class="input" style="width: 18px;" size="2" name="macfilter_time_x_endhour" onKeyPress="return is_number(this)">:
-                                                <input type="text" maxlength="2" class="input" style="width: 18px;" size="2" name="macfilter_time_x_endmin" onKeyPress="return is_number(this)">
+                                                <input type="text" maxlength="2" class="input" style="width: 18px;" size="2" name="macfilter_time_x_starthour" onKeyPress="return is_number(this,event);"/>:
+                                                <input type="text" maxlength="2" class="input" style="width: 18px;" size="2" name="macfilter_time_x_startmin" onKeyPress="return is_number(this,event);"/>&nbsp;-
+                                                <input type="text" maxlength="2" class="input" style="width: 18px;" size="2" name="macfilter_time_x_endhour" onKeyPress="return is_number(this,event);"/>:
+                                                <input type="text" maxlength="2" class="input" style="width: 18px;" size="2" name="macfilter_time_x_endmin" onKeyPress="return is_number(this,event);"/>
                                             </td>
                                             <td width="45%">
                                                 <div class="controls">

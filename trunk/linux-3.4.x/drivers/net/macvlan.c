@@ -773,7 +773,8 @@ static int macvlan_fill_info(struct sk_buff *skb,
 {
 	struct macvlan_dev *vlan = netdev_priv(dev);
 
-	NLA_PUT_U32(skb, IFLA_MACVLAN_MODE, vlan->mode);
+	if (nla_put_u32(skb, IFLA_MACVLAN_MODE, vlan->mode))
+		goto nla_put_failure;
 	return 0;
 
 nla_put_failure:
@@ -840,7 +841,6 @@ static int macvlan_device_event(struct notifier_block *unused,
 		list_for_each_entry_safe(vlan, next, &port->vlans, list)
 			vlan->dev->rtnl_link_ops->dellink(vlan->dev, &list_kill);
 		unregister_netdevice_many(&list_kill);
-		list_del(&list_kill);
 		break;
 	case NETDEV_PRE_TYPE_CHANGE:
 		/* Forbid underlaying device to change its type. */

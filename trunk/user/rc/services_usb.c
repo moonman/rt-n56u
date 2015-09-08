@@ -234,52 +234,54 @@ write_vsftpd_conf(void)
 	int i_maxuser, i_ftp_mode;
 
 	fp=fopen("/etc/vsftpd.conf", "w");
-	if (!fp) return;
-	
-	fprintf(fp, "listen%s=YES\n", 
+	if (!fp)
+		return;
+
 #if defined (USE_IPV6)
-	(get_ipv6_type() != IPV6_DISABLED) ? "_ipv6" :
+	if (get_ipv6_type() != IPV6_DISABLED) {
+		fprintf(fp, "listen_ipv6=%s\n", "YES");
+		fprintf(fp, "listen=%s\n", "NO");
+	} else
 #endif
-	"");
-	fprintf(fp, "background=YES\n");
-	fprintf(fp, "connect_from_port_20=NO\n");
-	fprintf(fp, "pasv_enable=YES\n");
+		fprintf(fp, "listen=%s\n", "YES");
+
+	fprintf(fp, "background=%s\n", "YES");
+	fprintf(fp, "connect_from_port_20=%s\n", "NO");
+	fprintf(fp, "pasv_enable=%s\n", "YES");
 	fprintf(fp, "pasv_min_port=%d\n", 50000);
 	fprintf(fp, "pasv_max_port=%d\n", 50100);
-	fprintf(fp, "ssl_enable=NO\n");
-	fprintf(fp, "tcp_wrappers=NO\n");
-	fprintf(fp, "isolate=NO\n");
-	fprintf(fp, "isolate_network=NO\n");
-	fprintf(fp, "use_sendfile=YES\n");
+	fprintf(fp, "use_sendfile=%s\n", "YES");
+#if defined (SUPPORT_FTPD_SSL)
+	fprintf(fp, "ssl_enable=%s\n", "NO");
+#endif
 
 	i_ftp_mode = nvram_get_int("st_ftp_mode");
 	if (i_ftp_mode == 1 || i_ftp_mode == 3) {
 		fprintf(fp, "local_enable=%s\n", "NO");
 		fprintf(fp, "anonymous_enable=%s\n", "YES");
 		if (i_ftp_mode == 1){
-			fprintf(fp, "anon_upload_enable=YES\n");
-			fprintf(fp, "anon_mkdir_write_enable=YES\n");
-			fprintf(fp, "anon_other_write_enable=YES\n");
-			fprintf(fp, "anon_umask=000\n");
+			fprintf(fp, "anon_upload_enable=%s\n", "YES");
+			fprintf(fp, "anon_mkdir_write_enable=%s\n", "YES");
+			fprintf(fp, "anon_other_write_enable=%s\n", "YES");
+			fprintf(fp, "anon_umask=%s\n", "000");
 		}
-	}
-	else {
+	} else {
 		fprintf(fp, "local_enable=%s\n", "YES");
-		fprintf(fp, "local_umask=000\n");
+		fprintf(fp, "local_umask=%s\n", "000");
 		fprintf(fp, "anonymous_enable=%s\n", (i_ftp_mode == 2) ? "NO" : "YES");
 	}
 
-	fprintf(fp, "nopriv_user=root\n");
-	fprintf(fp, "write_enable=YES\n");
-	fprintf(fp, "chroot_local_user=YES\n");
-	fprintf(fp, "allow_writable_root=YES\n");
-	fprintf(fp, "check_shell=NO\n");
-	fprintf(fp, "xferlog_enable=NO\n");
+	fprintf(fp, "nopriv_user=%s\n", "root");
+	fprintf(fp, "write_enable=%s\n", "YES");
+	fprintf(fp, "chroot_local_user=%s\n", "YES");
+	fprintf(fp, "allow_writable_root=%s\n", "YES");
+	fprintf(fp, "check_shell=%s\n", "NO");
+	fprintf(fp, "xferlog_enable=%s\n", "NO");
 	fprintf(fp, "syslog_enable=%s\n", (nvram_get_int("st_ftp_log") == 0) ? "NO" : "YES");
-	fprintf(fp, "force_dot_files=YES\n");
-	fprintf(fp, "dirmessage_enable=YES\n");
-	fprintf(fp, "hide_ids=YES\n");
-	fprintf(fp, "utf8=YES\n");
+	fprintf(fp, "force_dot_files=%s\n", "YES");
+	fprintf(fp, "dirmessage_enable=%s\n", "YES");
+	fprintf(fp, "hide_ids=%s\n", "YES");
+	fprintf(fp, "utf8=%s\n", "YES");
 	fprintf(fp, "idle_session_timeout=%d\n", 600);
 
 	i_maxuser = nvram_get_int("st_max_user");
@@ -288,7 +290,7 @@ write_vsftpd_conf(void)
 
 	fprintf(fp, "max_clients=%d\n", i_maxuser);
 	fprintf(fp, "max_per_ip=%d\n", i_maxuser);
-	fprintf(fp, "ftpd_banner=Welcome to ASUS %s FTP service.\n", nvram_safe_get("productid"));
+	fprintf(fp, "ftpd_banner=Welcome to %s FTP service.\n", nvram_safe_get("productid"));
 	
 	fclose(fp);
 }
@@ -628,7 +630,7 @@ void run_samba(void)
 	if (nvram_match("enable_samba", "0") || nvram_match("st_samba_mode", "0"))
 		return;
 
-	mkdir_if_none("/etc/samba");
+	mkdir_if_none("/etc/samba", "777");
 
 	has_nmbd = pids("nmbd");
 	if (!has_nmbd) {
@@ -672,16 +674,15 @@ void restart_smbd(void)
 #endif
 
 #if defined(APP_NFSD)
-void write_nfsd_exports(void)
+static void
+write_nfsd_exports(void)
 {
 	FILE *procpt, *fp;
-	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160], acl_mask[64];
-	const char* exports_link = "/etc/storage/exports";
-	const char* exports_file = "/etc/exports";
-	int dummy1, dummy2;
-	char *nfsmm, *lan_ipaddr, *lan_netmask;
-	unsigned int acl_addr;
-	struct in_addr ina;
+	char line[256], devname[32], mpname[128], system_type[16], mount_mode[164], acl_lan[32], acl_vpn[32];
+	const char *exports_link = "/etc/storage/exports";
+	const char *exports_file = "/etc/exports";
+	const char *exports_rule = "async,insecure,no_root_squash,no_subtree_check";
+	char *nfsmm, *acl_addr, *acl_mask;
 
 	unlink(exports_file);
 
@@ -694,40 +695,50 @@ void write_nfsd_exports(void)
 	if (!fp)
 		return;
 
-	lan_ipaddr  = nvram_safe_get("lan_ipaddr_t");
-	lan_netmask = nvram_safe_get("lan_netmask_t");
-	if (!lan_ipaddr || !*lan_ipaddr)
-		lan_ipaddr = nvram_safe_get("lan_ipaddr");
-	if (!lan_netmask || !*lan_netmask)
-		lan_netmask = nvram_safe_get("lan_netmask");
-	if (!lan_ipaddr || !*lan_ipaddr)
-		lan_ipaddr = "192.168.1.1";
-	if (!lan_netmask || !*lan_netmask)
-		lan_netmask = "255.255.255.0";
+	acl_addr = nvram_safe_get("lan_ipaddr_t");
+	acl_mask = nvram_safe_get("lan_netmask_t");
+	if (!is_valid_ipv4(acl_addr) || !is_valid_ipv4(acl_mask)) {
+		acl_addr = nvram_safe_get("lan_ipaddr");
+		acl_mask = nvram_safe_get("lan_netmask");
+	}
 
-	acl_addr = ntohl(inet_addr(lan_ipaddr));
-	acl_addr = acl_addr & ntohl(inet_addr(lan_netmask));
+	acl_lan[0] = 0;
+	ip2class(acl_addr, acl_mask, acl_lan, sizeof(acl_lan));
 
-	ina.s_addr = htonl(acl_addr);
-
-	sprintf(acl_mask, "%s/%s", inet_ntoa(ina), lan_netmask);
+	acl_vpn[0] = 0;
+	if (!get_ap_mode() && nvram_get_int("vpns_enable") && nvram_get_int("vpns_vuse")) {
+		acl_addr = nvram_safe_get("vpns_vnet");
+		acl_mask = VPN_SERVER_SUBNET_MASK;
+#if defined (APP_OPENVPN)
+		if (nvram_get_int("vpns_type") == 2) {
+			if (nvram_get_int("vpns_ov_mode") == 1)
+				ip2class(acl_addr, acl_mask, acl_vpn, sizeof(acl_vpn));
+		} else
+#endif
+			ip2class(acl_addr, acl_mask, acl_vpn, sizeof(acl_vpn));
+		
+		if (strcmp(acl_lan, acl_vpn) == 0)
+			acl_vpn[0] = 0;
+	}
 
 	fprintf(fp, "# %s\n\n", "auto-created file");
 
 	procpt = fopen("/proc/mounts", "r");
 	if (procpt) {
 		while (fgets(line, sizeof(line), procpt)) {
-			if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+			if (sscanf(line, "%31s %127s %15s %163s %*s %*s", devname, mpname, system_type, mount_mode) != 4)
 				continue;
 			
 			if (!strcmp(system_type, "fuseblk"))
 				continue;
 			
 			if (!strncmp(devname, "/dev/sd", 7) && !strncmp(mpname, "/media/", 7)) {
-				nfsmm = "rw";
-				if (!strncmp(mount_mode, "ro", 2))
-					nfsmm = "ro";
-				fprintf(fp, "%s    %s(%s,async,insecure,no_root_squash,no_subtree_check)\n", mpname, acl_mask, nfsmm);
+				nfsmm = (strncmp(mount_mode, "ro", 2) == 0) ? "ro" : "rw";
+				fprintf(fp, "%s\t", mpname);
+				fprintf(fp, " %s(%s,%s)", acl_lan, nfsmm, exports_rule);
+				if (acl_vpn[0])
+					fprintf(fp, " %s(%s,%s)", acl_vpn, nfsmm, exports_rule);
+				fprintf(fp, "\n");
 			}
 		}
 		
@@ -761,6 +772,16 @@ void run_nfsd(void)
 	eval("/usr/bin/nfsd.sh", "start");
 }
 
+void reload_nfsd(void)
+{
+	if (nvram_invmatch("nfsd_enable", "1"))
+		return;
+
+	write_nfsd_exports();
+
+	eval("/usr/bin/nfsd.sh", "reload");
+}
+
 void restart_nfsd(void)
 {
 	stop_nfsd();
@@ -777,15 +798,15 @@ void restart_nfsd(void)
 int create_mp_link(char *search_dir, char *link_path, int force_first_valid)
 {
 	FILE *procpt;
-	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160], target_path[256];
-	int dummy1, dummy2, link_created;
+	char line[256], devname[32], mpname[128], system_type[16], mount_mode[164], target_path[256];
+	int link_created;
 
 	link_created = 0;
 
 	procpt = fopen("/proc/mounts", "r");
 	if (procpt) {
 		while (fgets(line, sizeof(line), procpt)) {
-			if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+			if (sscanf(line, "%31s %127s %15s %163s %*s %*s", devname, mpname, system_type, mount_mode) != 4)
 				continue;
 			
 #if 0
@@ -804,7 +825,7 @@ int create_mp_link(char *search_dir, char *link_path, int force_first_valid)
 						}
 					}
 				} else {
-					if (mkdir_if_none(target_path)) {
+					if (mkdir_if_none(target_path, "777")) {
 						if (symlink(target_path, link_path) == 0) {
 							link_created = 1;
 							break;
@@ -1076,10 +1097,8 @@ void run_itunes(void)
 		return;
 
 	unlink(link_path);
-	if (!create_mp_link(dest_dir, link_path, 0))
-	{
-		if (!create_mp_link(dest_dir, link_path, 1))
-		{
+	if (!create_mp_link(dest_dir, link_path, 0)) {
+		if (!create_mp_link(dest_dir, link_path, 1)) {
 			logmessage(apps_name, "Cannot start: unable to create DB dir (/%s) on any volumes!", dest_dir);
 			return;
 		}
@@ -1149,8 +1168,7 @@ void run_torrent(void)
 		return;
 
 	unlink(link_path);
-	if (!create_mp_link(dest_dir, link_path, 0))
-	{
+	if (!create_mp_link(dest_dir, link_path, 0)) {
 		logmessage(apps_name, "Cannot start: please create dir \"%s\" on target volume!", dest_dir);
 		return;
 	}
@@ -1215,8 +1233,7 @@ void run_aria(void)
 		return;
 
 	unlink(link_path);
-	if (!create_mp_link(dest_dir, link_path, 0))
-	{
+	if (!create_mp_link(dest_dir, link_path, 0)) {
 		logmessage(apps_name, "Cannot start: please create dir \"%s\" on target volume!", dest_dir);
 		return;
 	}
@@ -1245,36 +1262,29 @@ void
 umount_ejected(void)
 {
 	FILE *procpt, *procpt2;
-	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160], ptname[32];
-	int dummy1, dummy2, ma, mi, sz;
+	char line[256], devname[32], mpname[128], system_type[16], mount_mode[164], ptname[32];
+	int ma, mi, sz;
 	int active;
 
 	procpt = fopen("/proc/mounts", "r");
-	if (procpt)
-	{
-		while (fgets(line, sizeof(line), procpt))
-		{
-			if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+	if (procpt) {
+		while (fgets(line, sizeof(line), procpt)) {
+			if (sscanf(line, "%31s %127s %15s %163s %*s %*s", devname, mpname, system_type, mount_mode) != 4)
 				continue;
-			if (strncmp(devname, "/dev/sd", 7) == 0)
-			{
+			if (strncmp(devname, "/dev/sd", 7) == 0) {
 				active = 0;
 				procpt2 = fopen("/proc/partitions", "r");
-				if (procpt2)
-				{
-					while (fgets(line, sizeof(line), procpt2))
-					{
-						if (sscanf(line, " %d %d %d %[^\n ]", &ma, &mi, &sz, ptname) != 4)
+				if (procpt2) {
+					while (fgets(line, sizeof(line), procpt2)) {
+						if (sscanf(line, " %d %d %d %31[^\n ]", &ma, &mi, &sz, ptname) != 4)
 							continue;
-						if (strcmp(devname+5, ptname) == 0)
-						{
+						if (strcmp(devname+5, ptname) == 0) {
 							active = 1;
 							break;
 						}
 					}
 					
-					if (!active)
-					{
+					if (!active) {
 						umount(mpname);
 						rmdir(mpname);
 					}
@@ -1292,8 +1302,7 @@ void
 umount_dev(char *sd_dev)
 {
 	FILE *procpt;
-	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160];
-	int dummy1, dummy2;
+	char line[256], devname[32], mpname[128], system_type[16], mount_mode[164];
 
 	if (!sd_dev)
 		return;
@@ -1301,7 +1310,7 @@ umount_dev(char *sd_dev)
 	procpt = fopen("/proc/mounts", "r");
 	if (procpt) {
 		while (fgets(line, sizeof(line), procpt)) {
-			if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+			if (sscanf(line, "%31s %127s %15s %163s %*s %*s", devname, mpname, system_type, mount_mode) != 4)
 				continue;
 			if (!strncmp(devname, "/dev/sd", 7)) {
 				if (!strcmp(devname+5, sd_dev)) {
@@ -1321,8 +1330,7 @@ void
 umount_dev_all(char *sd_dev)
 {
 	FILE *procpt;
-	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160];
-	int dummy1, dummy2;
+	char line[256], devname[32], mpname[128], system_type[16], mount_mode[164];
 
 	if (!sd_dev || !(*sd_dev))
 		return;
@@ -1330,16 +1338,12 @@ umount_dev_all(char *sd_dev)
 	detach_swap_partition(sd_dev);
 
 	procpt = fopen("/proc/mounts", "r");
-	if (procpt)
-	{
-		while (fgets(line, sizeof(line), procpt))
-		{
-			if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+	if (procpt) {
+		while (fgets(line, sizeof(line), procpt)) {
+			if (sscanf(line, "%31s %127s %15s %163s %*s %*s", devname, mpname, system_type, mount_mode) != 4)
 				continue;
-			if (!strncmp(devname, "/dev/sd", 7))
-			{
-				if (!strncmp(devname+5, sd_dev, 3))
-				{
+			if (!strncmp(devname, "/dev/sd", 7)) {
+				if (!strncmp(devname+5, sd_dev, 3)) {
 					eval("/usr/bin/opt-umount.sh", devname, mpname);
 					umount(mpname);
 					rmdir(mpname);
@@ -1355,20 +1359,16 @@ void
 umount_sddev_all(void)
 {
 	FILE *procpt;
-	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160];
-	int dummy1, dummy2;
-	
+	char line[256], devname[32], mpname[128], system_type[16], mount_mode[164];
+
 	detach_swap_partition(NULL);
-	
+
 	procpt = fopen("/proc/mounts", "r");
-	if (procpt)
-	{
-		while (fgets(line, sizeof(line), procpt))
-		{
-			if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+	if (procpt) {
+		while (fgets(line, sizeof(line), procpt)) {
+			if (sscanf(line, "%31s %127s %15s %163s %*s %*s", devname, mpname, system_type, mount_mode) != 4)
 				continue;
-			if (!strncmp(devname, "/dev/sd", 7))
-			{
+			if (!strncmp(devname, "/dev/sd", 7)) {
 				umount(mpname);
 				rmdir(mpname);
 			}
@@ -1382,15 +1382,13 @@ int
 count_sddev_mountpoint(void)
 {
 	FILE *procpt;
-	char line[256], devname[32], mpname[128], system_type[16], mount_mode[160];
-	int dummy1, dummy2, count = 0;
+	char line[256], devname[32], mpname[128], system_type[16], mount_mode[164];
+	int count = 0;
 
 	procpt = fopen("/proc/mounts", "r");
-	if (procpt)
-	{
-		while (fgets(line, sizeof(line), procpt))
-		{
-			if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+	if (procpt) {
+		while (fgets(line, sizeof(line), procpt)) {
+			if (sscanf(line, "%31s %127s %15s %163s %*s %*s", devname, mpname, system_type, mount_mode) != 4)
 				continue;
 				
 			if (strstr(devname, "/dev/sd"))
@@ -1411,17 +1409,14 @@ count_sddev_partition(void)
 	int ma, mi, sz, count = 0;
 
 	procpt = fopen("/proc/partitions", "r");
-	if (procpt)
-	{
-		while (fgets(line, sizeof(line), procpt))
-		{
-			if (sscanf(line, " %d %d %d %[^\n ]", &ma, &mi, &sz, ptname) != 4)
+	if (procpt) {
+		while (fgets(line, sizeof(line), procpt)) {
+			if (sscanf(line, " %d %d %d %31[^\n ]", &ma, &mi, &sz, ptname) != 4)
 				continue;
 			
 			if (!strncmp(ptname, "sd", 2))
 				count++;
 		}
-
 		fclose(procpt);
 	}
 

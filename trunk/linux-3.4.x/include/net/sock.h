@@ -239,7 +239,6 @@ struct cg_proto;
   *	@sk_sndtimeo: %SO_SNDTIMEO setting
   *	@sk_rxhash: flow hash received from netif layer
   *	@sk_filter: socket filtering instructions
-  *	@sk_protinfo: private area, net family specific, when not using slab
   *	@sk_timer: sock cleanup timer
   *	@sk_stamp: time stamp of last packet received
   *	@sk_socket: Identd and reporting IO signals
@@ -349,7 +348,6 @@ struct sock {
 	const struct cred	*sk_peer_cred;
 	long			sk_rcvtimeo;
 	long			sk_sndtimeo;
-	void			*sk_protinfo;
 	struct timer_list	sk_timer;
 	ktime_t			sk_stamp;
 	struct socket		*sk_socket;
@@ -782,7 +780,7 @@ extern void sk_stream_wait_close(struct sock *sk, long timeo_p);
 extern int sk_stream_error(struct sock *sk, int flags, int err);
 extern void sk_stream_kill_queues(struct sock *sk);
 
-extern int sk_wait_data(struct sock *sk, long *timeo);
+extern int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb);
 
 struct request_sock_ops;
 struct timewait_sock_ops;

@@ -213,18 +213,22 @@ static int ip_local_deliver_finish(struct sk_buff *skb)
 		if (ipprot != NULL) {
 			int ret;
 
+#ifdef CONFIG_NET_NS
 			if (!net_eq(net, &init_net) && !ipprot->netns_ok) {
 				net_info_ratelimited("%s: proto %d isn't netns-ready\n",
 						     __func__, protocol);
 				kfree_skb(skb);
 				goto out;
 			}
+#endif
 
 			if (!ipprot->no_policy) {
+#ifdef CONFIG_XFRM
 				if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb)) {
 					kfree_skb(skb);
 					goto out;
 				}
+#endif
 				nf_reset(skb);
 			}
 			ret = ipprot->handler(skb);
@@ -235,11 +239,15 @@ static int ip_local_deliver_finish(struct sk_buff *skb)
 			IP_INC_STATS_BH(net, IPSTATS_MIB_INDELIVERS);
 		} else {
 			if (!raw) {
+#ifdef CONFIG_XFRM
 				if (xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb)) {
+#endif
 					IP_INC_STATS_BH(net, IPSTATS_MIB_INUNKNOWNPROTOS);
 					icmp_send(skb, ICMP_DEST_UNREACH,
 						  ICMP_PROT_UNREACH, 0);
+#ifdef CONFIG_XFRM
 				}
+#endif
 				kfree_skb(skb);
 			} else {
 				IP_INC_STATS_BH(net, IPSTATS_MIB_INDELIVERS);
@@ -247,7 +255,9 @@ static int ip_local_deliver_finish(struct sk_buff *skb)
 			}
 		}
 	}
+#if defined(CONFIG_NET_NS) || defined(CONFIG_XFRM)
  out:
+#endif
 	rcu_read_unlock();
 
 	return 0;

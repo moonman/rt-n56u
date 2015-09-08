@@ -65,6 +65,9 @@ function initial(){
 		$("col_goto5").width = "33%";
 	}
 
+	if (get_ap_mode())
+		$("col_isolate").innerHTML = "<#WIFIGuestIsolate#>";
+
 	load_body();
 
 	change_guest_enabled(0);
@@ -167,7 +170,7 @@ function change_guest_enabled(mflag) {
 	showhide_div('row_guest_4', v);
 	showhide_div('row_guest_5', v);
 	showhide_div('row_guest_6', v);
-	showhide_div('row_guest_lan_iso', (v && !get_ap_mode()));
+	showhide_div('row_guest_7', v);
 	showhide_div('row_guest_8', v);
 	showhide_div('row_guest_9', v);
 	showhide_div('row_guest_10', v);
@@ -247,6 +250,7 @@ function change_guest_auth_mode(mflag) {
     <input type="hidden" name="action_mode" value="">
     <input type="hidden" name="action_script" value="">
 
+    <input type="hidden" name="rt_gmode" value="<% nvram_get_x("","rt_gmode"); %>" readonly="1">
     <input type="hidden" name="rt_country_code" value="<% nvram_get_x("","rt_country_code"); %>">
     <input type="hidden" name="rt_guest_ssid_org" value="<% nvram_char_to_ascii("", "rt_guest_ssid"); %>">
     <input type="hidden" name="rt_guest_wpa_mode" value="<% nvram_get_x("","rt_guest_wpa_mode"); %>">
@@ -311,10 +315,10 @@ function change_guest_auth_mode(mflag) {
                                         <tr id="row_guest_2" style="display:none;">
                                             <th style="border-top: 0 none;"><#WIFIGuestTime#></th>
                                             <td style="border-top: 0 none;">
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time_x_starthour" onKeyPress="return is_number(this)">:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time_x_startmin" onKeyPress="return is_number(this)">&nbsp;-&nbsp;
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time_x_endhour" onKeyPress="return is_number(this)">:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time_x_endmin" onKeyPress="return is_number(this)">
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time_x_starthour" onKeyPress="return is_number(this,event);">:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time_x_startmin" onKeyPress="return is_number(this,event);">&nbsp;-&nbsp;
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time_x_endhour" onKeyPress="return is_number(this,event);">:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time_x_endmin" onKeyPress="return is_number(this,event);">
                                             </td>
                                         </tr>
                                         <tr id="row_guest_3" style="display:none;">
@@ -329,15 +333,15 @@ function change_guest_auth_mode(mflag) {
                                         <tr id="row_guest_4" style="display:none;">
                                             <th style="border-top: 0 none;"><#WIFIGuestTime2#></th>
                                             <td style="border-top: 0 none;">
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time2_x_starthour" onKeyPress="return is_number(this)">:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time2_x_startmin" onKeyPress="return is_number(this)">&nbsp;-&nbsp;
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time2_x_endhour" onKeyPress="return is_number(this)">:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time2_x_endmin" onKeyPress="return is_number(this)">
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time2_x_starthour" onKeyPress="return is_number(this,event);">:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time2_x_startmin" onKeyPress="return is_number(this,event);">&nbsp;-&nbsp;
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time2_x_endhour" onKeyPress="return is_number(this,event);">:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="rt_guest_time2_x_endmin" onKeyPress="return is_number(this,event);">
                                             </td>
                                         </tr>
                                         <tr id="row_guest_5" style="display:none;">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 1);"><#WIFIGuestSSID#></a></th>
-                                            <td><input type="text" maxlength="32" class="input" size="32" name="rt_guest_ssid" value="" onkeypress="return is_string(this)"/></td>
+                                            <td><input type="text" maxlength="32" class="input" size="32" name="rt_guest_ssid" value="" onkeypress="return is_string(this,event);"/></td>
                                         </tr>
                                         <tr id="row_guest_6" style="display:none;">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 2);"><#WLANConfig11b_x_BlockBCSSID_itemname#></a></th>
@@ -354,8 +358,8 @@ function change_guest_auth_mode(mflag) {
                                                 </div>
                                             </td>
                                         </tr>
-                                        <tr id="row_guest_lan_iso" style="display:none;">
-                                            <th><#WIFIGuestIsoLAN#></th>
+                                        <tr id="row_guest_7" style="display:none;">
+                                            <th id="col_isolate"><#WIFIGuestIsoLAN#></th>
                                             <td>
                                                 <div class="main_itoggle">
                                                     <div id="rt_guest_lan_isolate_on_of">

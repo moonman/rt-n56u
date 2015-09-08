@@ -92,6 +92,12 @@ ULONG RTDebugFunc = 0;
 ULONG RTPktOffsetData = 0, RTPktOffsetLen = 0, RTPktOffsetCB = 0;
 #endif /* OS_ABL_FUNC_SUPPORT */
 
+#ifdef RTMP_RBUS_SUPPORT
+#if defined(CONFIG_RA_CLASSIFIER) || defined(CONFIG_RA_CLASSIFIER_MODULE)
+extern int (*ra_classifier_hook_rx) (struct sk_buff *skb, unsigned long cycle);
+extern volatile unsigned long classifier_cur_cycle;
+#endif /* CONFIG_RA_CLASSIFIER */
+#endif /* RTMP_RBUS_SUPPORT */
 
 #ifdef VENDOR_FEATURE4_SUPPORT
 ULONG OS_NumOfMemAlloc = 0, OS_NumOfMemFree = 0;
@@ -858,9 +864,14 @@ void RtmpOSFileSeek(RTMP_OS_FD osfd, int offset)
 
 int RtmpOSFileRead(RTMP_OS_FD osfd, char *pDataPtr, int readLen)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 	/* The object must have a read method */
 	if (osfd->f_op && osfd->f_op->read) {
 		return osfd->f_op->read(osfd, pDataPtr, readLen, &osfd->f_pos);
+#else
+	if (osfd && osfd->f_mode & FMODE_CAN_READ) {
+		return __vfs_read(osfd, pDataPtr, readLen, &osfd->f_pos);
+#endif
 	} else {
 		DBGPRINT(RT_DEBUG_ERROR, ("no file read method\n"));
 		return -1;
@@ -870,7 +881,11 @@ int RtmpOSFileRead(RTMP_OS_FD osfd, char *pDataPtr, int readLen)
 
 int RtmpOSFileWrite(RTMP_OS_FD osfd, char *pDataPtr, int writeLen)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 	return osfd->f_op->write(osfd, pDataPtr, (size_t) writeLen, &osfd->f_pos);
+#else
+	return __vfs_write(osfd, pDataPtr, (size_t) writeLen, &osfd->f_pos);
+#endif
 }
 
 
@@ -883,6 +898,9 @@ static inline void __RtmpOSFSInfoChange(OS_FS_INFO * pOSFSInfo, BOOLEAN bSet)
 		pOSFSInfo->fsuid = current->fsuid;
 		pOSFSInfo->fsgid = current->fsgid;
 		current->fsuid = current->fsgid = 0;
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
+		pOSFSInfo->fsuid = __kuid_val(current_fsuid());
+		pOSFSInfo->fsgid = __kgid_val(current_fsgid());
 #else
 		pOSFSInfo->fsuid = current_fsuid();
 		pOSFSInfo->fsgid = current_fsgid();
@@ -2107,6 +2125,14 @@ int RtmpOSIRQRelease(
 	}
 #endif /* RTMP_PCI_SUPPORT */
 
+#ifdef RTMP_RBUS_SUPPORT
+	if (infType == RTMP_DEV_INF_RBUS) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0)
+		synchronize_irq(net_dev->irq);
+#endif
+		free_irq(net_dev->irq, (net_dev));
+	}
+#endif /* RTMP_RBUS_SUPPORT */
 
 	return 0;
 }

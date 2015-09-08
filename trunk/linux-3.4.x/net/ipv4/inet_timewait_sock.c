@@ -263,7 +263,7 @@ rescan:
 void inet_twdr_hangman(unsigned long data)
 {
 	struct inet_timewait_death_row *twdr;
-	int unsigned need_timer;
+	unsigned int need_timer;
 
 	twdr = (struct inet_timewait_death_row *)data;
 	spin_lock(&twdr->death_lock);
@@ -388,11 +388,11 @@ void inet_twsk_schedule(struct inet_timewait_sock *tw,
 			if (slot >= INET_TWDR_TWKILL_SLOTS)
 				slot = INET_TWDR_TWKILL_SLOTS - 1;
 		}
-		tw->tw_ttd = jiffies + timeo;
+		tw->tw_ttd = inet_tw_time_stamp() + timeo;
 		slot = (twdr->slot + slot) & (INET_TWDR_TWKILL_SLOTS - 1);
 		list = &twdr->cells[slot];
 	} else {
-		tw->tw_ttd = jiffies + (slot << INET_TWDR_RECYCLE_TICK);
+		tw->tw_ttd = inet_tw_time_stamp() + (slot << INET_TWDR_RECYCLE_TICK);
 
 		if (twdr->twcal_hand < 0) {
 			twdr->twcal_hand = 0;

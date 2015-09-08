@@ -68,7 +68,7 @@ VOID MBSS_Init(RTMP_ADAPTER *pAd, RTMP_OS_NETDEV_OP_HOOK *pNetDevOps)
 {
 	PNET_DEV pDevNew;
 	INT32 IdBss, MaxNumBss;
-	INT status;
+	//INT status;
 	RTMP_OS_NETDEV_OP_HOOK netDevHook;
 
 	MaxNumBss = pAd->ApCfg.BssidNum;
@@ -150,7 +150,7 @@ VOID MBSS_Init(RTMP_ADAPTER *pAd, RTMP_OS_NETDEV_OP_HOOK *pNetDevOps)
 		NdisMoveMemory(&netDevHook.devAddr[0], &wdev->bssid[0], MAC_ADDR_LEN);
 
 		/* register this device to OS */
-		status = RtmpOSNetDevAttach(pAd->OpMode, pDevNew, &netDevHook);
+		/*status =*/ RtmpOSNetDevAttach(pAd->OpMode, pDevNew, &netDevHook);
 		ASSERT(pMbss);
 		if (pMbss) {
 			wdev_bcn_buf_init(pAd, &pMbss->bcn_buf);
@@ -246,6 +246,8 @@ INT32 mbss_cr_enable(PNET_DEV pDev)
 	PRTMP_ADAPTER pAd;
 	INT BssId;
 	UINT32 Value = 0;
+	//register for sub Bssid start from 0x603000a0
+	UINT32 bssid_reg_base = LPON_SBTOR1;
 
 	pAd = RTMP_OS_NETDEV_GET_PRIV(pDev);
 	BssId = RT28xx_MBSS_IdxGet(pAd, pDev);
@@ -256,8 +258,6 @@ INT32 mbss_cr_enable(PNET_DEV pDev)
     if (pAd->chipCap.hif_type != HIF_MT)
         return 0;
 
-    //register for sub Bssid start from 0x603000a0
-    UINT32 bssid_reg_base = LPON_SBTOR1;
 
     if (BssId >= 1) {
         //if there is any sub bssid is enable. this bit in LPON_SBTOR1 shall be 1 always.
@@ -291,6 +291,7 @@ INT mbss_cr_disable(PNET_DEV pDev)
 	PRTMP_ADAPTER pAd;
 	INT BssId;
 	UINT32 Value;
+	UINT32 bssid_reg_base = LPON_SBTOR1;
     UCHAR loop = 0;
     BOOLEAN any_mbss_enable = FALSE;
 
@@ -309,7 +310,6 @@ INT mbss_cr_disable(PNET_DEV pDev)
             any_mbss_enable = TRUE;
     }
 
-    UINT32 bssid_reg_base = LPON_SBTOR1;
     if (BssId >= 1) {
         RTMP_IO_READ32(pAd, (bssid_reg_base + (BssId - 1) * (0x4)), &Value);
         Value = 0;
@@ -350,15 +350,28 @@ INT32 MBSS_Open(PNET_DEV pDev)
 {
 	PRTMP_ADAPTER pAd;
 	INT BssId;
-	UINT32 Value;
+	UINT32 u4MaxMBSSIDSize;
 
+	u4MaxMBSSIDSize = sizeof(pAd->ApCfg.MBSSID)/sizeof(pAd->ApCfg.MBSSID[0]);
 	pAd = RTMP_OS_NETDEV_GET_PRIV(pDev);
 	BssId = RT28xx_MBSS_IdxGet(pAd, pDev);
 	if (BssId < 0)
 		return -1;
 
-	pAd->ApCfg.MBSSID[BssId].bcn_buf.bBcnSntReq = TRUE;
+	if(BssId >= u4MaxMBSSIDSize)
+	{
+		DBGPRINT(RT_DEBUG_ERROR, ("%s(): Over buffer size!\n", __FUNCTION__));
+		return -1;
+	}
 
+#ifdef AIRPLAY_SUPPORT
+		if (AIRPLAY_ON(pAd))
+			pAd->ApCfg.MBSSID[BssId].bcn_buf.bBcnSntReq = TRUE;
+		else
+			pAd->ApCfg.MBSSID[BssId].bcn_buf.bBcnSntReq = FALSE;
+#else
+		 pAd->ApCfg.MBSSID[BssId].bcn_buf.bBcnSntReq = TRUE;
+#endif /* AIRPLAY_SUPPORT */
 
 	return 0;
 }
@@ -383,7 +396,7 @@ INT MBSS_Close(PNET_DEV pDev)
 {
 	PRTMP_ADAPTER pAd;
 	INT BssId;
-
+	UINT32 u4MaxMBSSIDSize;
 
 	pAd = RTMP_OS_NETDEV_GET_PRIV(pDev);
 	BssId = RT28xx_MBSS_IdxGet(pAd, pDev);
@@ -394,6 +407,13 @@ INT MBSS_Close(PNET_DEV pDev)
 
 	/* kick out all stas behind the Bss */
 	MbssKickOutStas(pAd, BssId, REASON_DISASSOC_INACTIVE);
+
+	u4MaxMBSSIDSize = sizeof(pAd->ApCfg.MBSSID)/sizeof(pAd->ApCfg.MBSSID[0]);
+	if(BssId >= u4MaxMBSSIDSize)
+	{
+		DBGPRINT(RT_DEBUG_ERROR, ("%s(): Over buffer size!\n", __FUNCTION__));
+	    return -1;
+	}
 
 	pAd->ApCfg.MBSSID[BssId].bcn_buf.bBcnSntReq = FALSE;
 

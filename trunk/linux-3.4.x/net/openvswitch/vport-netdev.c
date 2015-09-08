@@ -140,9 +140,9 @@ int ovs_netdev_get_ifindex(const struct vport *vport)
 	return netdev_vport->dev->ifindex;
 }
 
-static unsigned packet_length(const struct sk_buff *skb)
+static unsigned int packet_length(const struct sk_buff *skb)
 {
-	unsigned length = skb->len - ETH_HLEN;
+	unsigned int length = skb->len - ETH_HLEN;
 
 	if (skb->protocol == htons(ETH_P_8021Q))
 		length -= VLAN_HLEN;
@@ -163,8 +163,10 @@ static int netdev_send(struct vport *vport, struct sk_buff *skb)
 		goto error;
 	}
 
+#ifdef CONFIG_INET_LRO
 	if (unlikely(skb_warn_if_lro(skb)))
 		goto error;
+#endif
 
 	skb->dev = netdev_vport->dev;
 	len = skb->len;

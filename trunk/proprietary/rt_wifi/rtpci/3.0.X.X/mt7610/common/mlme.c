@@ -581,41 +581,13 @@ VOID MlmeResetRalinkCounters(
 
 	return;
 }
-#ifdef DYNAMIC_VGA_SUPPORT
-void update_rssi_for_channel_model(RTMP_ADAPTER * pAd)
-{
-	INT32 rx0_rssi, rx1_rssi;
-	
-#ifdef CONFIG_AP_SUPPORT
-	IF_DEV_CONFIG_OPMODE_ON_AP(pAd)
-	{
-		rx0_rssi = (CHAR)(pAd->ApCfg.RssiSample.LastRssi0);
-		rx1_rssi = (CHAR)(pAd->ApCfg.RssiSample.LastRssi1);
-	}
-#endif /* CONFIG_AP_SUPPORT */
-
-	DBGPRINT(RT_DEBUG_INFO, ("%s:: rx0_rssi(%d), rx1_rssi(%d)\n", 
-		__FUNCTION__, rx0_rssi, rx1_rssi));	
-
-	/*
-		RSSI_DUT(n) = RSSI_DUT(n-1)*15/16 + RSSI_R2320_100ms_sample*1/16
-	*/
-	pAd->chipCap.avg_rssi_0 = ((pAd->chipCap.avg_rssi_0) * 15)/16 + (rx0_rssi << 8)/16;
-	//pAd->chipCap.avg_rssi_1 = ((pAd->chipCap.avg_rssi_1) * 15)/16 + (rx1_rssi << 8)/16;
-	//pAd->chipCap.avg_rssi_all = (pAd->chipCap.avg_rssi_0 + pAd->chipCap.avg_rssi_1)/512;
-	pAd->chipCap.avg_rssi_all = pAd->chipCap.avg_rssi_0 / 256;
-
-	DBGPRINT(RT_DEBUG_INFO, ("%s:: update rssi all(%d)\n", 
-		__FUNCTION__, pAd->chipCap.avg_rssi_all));
-}
-
-#endif /*DYNAMIC_VGA_SUPPORT*/
 
 
 //edcca same channel ap count
 /* get ap counts from some channel*/
 #ifdef ED_MONITOR
 ULONG BssChannelAPCount(
+	IN PRTMP_ADAPTER pAd,
 	IN BSS_TABLE *Tab, 
 	IN UCHAR	 Channel) 
 {
@@ -623,8 +595,10 @@ ULONG BssChannelAPCount(
 	ULONG ap_count = 0;
 	
 	for (i = 0; i < Tab->BssNr; i++) 
-	{
-		if (Tab->BssEntry[i].Channel == Channel)
+	{		
+		//change to also check rssi threshold
+		if ((Tab->BssEntry[i].Channel == Channel) && 
+		(Tab->BssEntry[i].Rssi > pAd->ed_rssi_threshold))		
 		{
 			ap_count ++; 
 		}
@@ -741,11 +715,7 @@ VOID MlmePeriodicExec(
 	pAd->Mlme.GPIORound++;
 
 #ifdef DYNAMIC_VGA_SUPPORT
-#ifdef MT76x0
-		if (IS_MT76x0(pAd)) {
-			update_rssi_for_channel_model(pAd);			
-		}
-#endif /* MT76x0 */
+	RTMP_UPDATE_RSSI_FOR_DYNAMIC_VGA(pAd);
 #endif /* DYNAMIC_VGA_SUPPORT */
 
 
@@ -809,6 +779,12 @@ VOID MlmePeriodicExec(
                            ((pAd->Mlme.OneSecPeriodicRound % 10) == 0))
 			{
 				CHAR CurTempSensorState;
+				UINT32 vga_ext_val[3][3]={
+				/*               20MHz      40MHz      80MHz  */	
+				/* NORMAL */	{0x122C54F2, 0x122C54F2, 0x122C54F2},
+				/* HIGH   */	{0x122C54F2, 0x122C54F2, 0x122C54F2},
+				/* LOW    */	{0x122C50F2, 0x122C50F2, 0x122C50F2}}; 
+				
 				if ((pAd->chipCap.LastTempSensorState == MT7610_TS_STATE_NORMAL) &&
 				   (pAd->chipCap.NowTemperature > 50))	
 				{
@@ -834,20 +810,14 @@ VOID MlmePeriodicExec(
 					CurTempSensorState = pAd->chipCap.LastTempSensorState;
 				}
 
-				UINT32 vga_ext_val[3][3]={
-				/*               20MHz      40MHz      80MHz  */	
-				/* NORMAL */	{0x122C54F2, 0x122C54F2, 0x122C54F2},
-				/* HIGH   */	{0x122C54F2, 0x122C54F2, 0x122C54F2},
-				/* LOW    */	{0x122C50F2, 0x122C50F2, 0x122C50F2}}; 
-
 				/* Apply the new CR */
 				if ((CurTempSensorState != pAd->chipCap.LastTempSensorState) ||
                     (pAd->chipCap.IsTempSensorStateReset == TRUE))
 				{
 					INT tsIdx=0, bwIdx=0;
-					bwIdx = pAd->CommonCfg.BBPCurrentBW; 
-					tsIdx = CurTempSensorState;
 					UINT32 eLNAgain = (vga_ext_val[tsIdx][bwIdx] & 0x0000FF00) >> 8;
+					bwIdx = pAd->CommonCfg.BBPCurrentBW; 
+					tsIdx = CurTempSensorState;					
 
                     if (pAd->CommonCfg.Channel < 100)
                     {
@@ -880,83 +850,13 @@ VOID MlmePeriodicExec(
 			}
 
 			//dynamic VGA adjust
-			BOOLEAN disableByLongRange = TRUE;			
-			DBGPRINT(RT_DEBUG_TRACE,("%s() : avg_rssi_0 == %d pAd->CommonCfg.BBPCurrentBW == %d ,init gain =0x%x\n",
-						__FUNCTION__, pAd->chipCap.avg_rssi_all,pAd->CommonCfg.BBPCurrentBW,pAd->CommonCfg.MO_Cfg.Stored_BBP_R66));
-			if( pAd->OpMode == OPMODE_AP &&
-				((pAd->chipCap.avg_rssi_all > -82 && pAd->CommonCfg.BBPCurrentBW == BW_20)  || 
-				(pAd->chipCap.avg_rssi_all > -79 && pAd->CommonCfg.BBPCurrentBW == BW_40) ||
-				(pAd->chipCap.avg_rssi_all > -76 && pAd->CommonCfg.BBPCurrentBW == BW_80)))
-			{
-				disableByLongRange = FALSE;  // do dynamic VGA				
+#ifdef CONFIG_AP_SUPPORT
+			IF_DEV_CONFIG_OPMODE_ON_AP(pAd) {
+				if (pAd->Mlme.OneSecPeriodicRound % 1 == 0)
+					RTMP_ASIC_DYNAMIC_VGA_GAIN_CONTROL(pAd);
 			}
-			else
-			{
-				UINT32 bbp_val;
-				
-				disableByLongRange = TRUE;   // skip dynamic VGA , resume initial gain
-				RTMP_BBP_IO_READ32(pAd, AGC1_R8, &bbp_val);
-				if(((bbp_val & 0x0000ff00) >> 8) == pAd->CommonCfg.MO_Cfg.Stored_BBP_R66)
-				{
-					DBGPRINT(RT_DEBUG_INFO,
-						("%s() : VGA gain == init gain: 0x%x \n",
-						__FUNCTION__, pAd->CommonCfg.MO_Cfg.Stored_BBP_R66));
-				}
-				else
-				{
-					bbp_val = (bbp_val & 0xffff00ff) | (pAd->CommonCfg.MO_Cfg.Stored_BBP_R66 << 8);
-					RTMP_BBP_IO_WRITE32(pAd, AGC1_R8, bbp_val);
-#ifdef DFS_SUPPORT
-			        pAd->CommonCfg.RadarDetect.bAdjustDfsAgc = TRUE;
-#endif					
-					DBGPRINT(RT_DEBUG_TRACE,
-						("%s() : AP AvgRssi0 : %d  BW : 0x%x  disable Dynamic VGA! resume gain: 0x%x\n",
-						__FUNCTION__,pAd->chipCap.avg_rssi_all, pAd->CommonCfg.BBPCurrentBW
-						,pAd->CommonCfg.MO_Cfg.Stored_BBP_R66));
-				}
-			}
+#endif /* CONFIG_AP_SUPPORT */
 			
-			if ((pAd->CommonCfg.MO_Cfg.bDyncVgaEnable) &&
-				OPSTATUS_TEST_FLAG(pAd, fOP_AP_STATUS_MEDIA_STATE_CONNECTED)
-				&& !disableByLongRange)
-			{
-				UCHAR val;
-				UINT32 bbp_val, bbp_reg = AGC1_R8;
-
-				RTMP_BBP_IO_READ32(pAd, bbp_reg, &bbp_val);
-				val = ((bbp_val & (0x0000ff00)) >> 8) & 0xff;
-
-				DBGPRINT(RT_DEBUG_TRACE,
-					("one second False CCA=%d, fixed R66 at 0x%x\n", pAd->RalinkCounters.OneSecFalseCCACnt, val));
-
-				if (pAd->RalinkCounters.OneSecFalseCCACnt > pAd->CommonCfg.MO_Cfg.nFalseCCATh)
-				{
-					if (val > (pAd->CommonCfg.MO_Cfg.Stored_BBP_R66 - 0x10))
-					{
-						val -= 2;
-						bbp_val = (bbp_val & 0xffff00ff) | (val << 8);
-						RTMP_BBP_IO_WRITE32(pAd, bbp_reg, bbp_val);
-#ifdef DFS_SUPPORT
-        					pAd->CommonCfg.RadarDetect.bAdjustDfsAgc = TRUE;
-#endif
-					}
-				}
-				else if (pAd->RalinkCounters.OneSecFalseCCACnt < pAd->CommonCfg.MO_Cfg.nLowFalseCCATh)
-				{
-					if (val < pAd->CommonCfg.MO_Cfg.Stored_BBP_R66)
-					{
-						val += 2;
-						bbp_val = (bbp_val & 0xffff00ff) | (val << 8);
-						RTMP_BBP_IO_WRITE32(pAd, bbp_reg, bbp_val);
-#ifdef DFS_SUPPORT
-					        pAd->CommonCfg.RadarDetect.bAdjustDfsAgc = TRUE;
-#endif
-					}
-				}
-#ifdef ED_MONITOR
-				dynamic_ed_cca_threshold_adjust(pAd);
-#endif
-			}
 		}
 #endif /* CONFIG_AP_SUPPORT */
 #endif /* DYNAMIC_VGA_SUPPORT */
@@ -1000,6 +900,7 @@ VOID MlmePeriodicExec(
 #ifdef MT76x0_TSSI_CAL_COMPENSATION
 		if (IS_MT76x0(pAd) &&
 			(pAd->chipCap.bInternalTxALC) &&
+			(!pAd->CommonCfg.TxPowerPercentageWithBBP) && /* if use BBP 2710 to do PowerPercentage, don't do TSSI */
 			(RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_RADIO_OFF | fRTMP_ADAPTER_DISABLE_DEQUEUEPACKET) == FALSE))
 		{
 			if ((pAd->Mlme.OneSecPeriodicRound % 1) == 0)
@@ -1020,7 +921,7 @@ VOID MlmePeriodicExec(
 				{
 					INT32 temperature_diff = 0;
 					MT76x0_TempSensor(pAd);
-					DBGPRINT(RT_DEBUG_TRACE,("VGA_EXT: MT76x0_TempSensor --> %d\n", pAd->chipCap.NowTemperature));
+					DBGPRINT(RT_DEBUG_INFO,("VGA_EXT: MT76x0_TempSensor --> %d\n", pAd->chipCap.NowTemperature));
 
 					temperature_diff = (pAd->chipCap.NowTemperature - pAd->chipCap.LastTemperatureforVCO);
 					if ((temperature_diff > 20) || 
@@ -1029,7 +930,7 @@ VOID MlmePeriodicExec(
 						DBGPRINT(RT_DEBUG_OFF, ("%s - Do VCORecalibration again!(LastTemperatureforVCO=%d, NowTemperature = %d)\n", 
 							__FUNCTION__, pAd->chipCap.LastTemperatureforVCO, pAd->chipCap.NowTemperature));
 						pAd->chipCap.LastTemperatureforVCO = pAd->chipCap.NowTemperature;
-						MT76x0_VCO_CalibrationMode3(pAd);
+						MT76x0_VCO_CalibrationMode3(pAd, pAd->hw_cfg.cent_ch);
 					}
 
 					temperature_diff = (pAd->chipCap.NowTemperature - pAd->chipCap.LastTemperatureforCal);
@@ -1045,16 +946,22 @@ VOID MlmePeriodicExec(
 				else
 #endif /* MT76x0 */
 				{
+
+#ifdef ED_MONITOR   //Don't do VCORECAL while ed is holding tx
+					if(!pAd->ed_tx_stoped)
+#endif
+					{
 #ifdef VCORECAL_SUPPORT
 #ifdef MT76x0
 					if (IS_MT76x0(pAd))
-						MT76x0_VCO_CalibrationMode3(pAd);
+						MT76x0_VCO_CalibrationMode3(pAd, pAd->hw_cfg.cent_ch);
 					else
 #endif /* MT76x0 */
 					AsicVCORecalibration(pAd);
 #endif /* VCORECAL_SUPPORT */
 				}
 			}
+		}
 		}
 
 
@@ -1143,11 +1050,14 @@ VOID MlmePeriodicExec(
 
 
 #ifdef ED_MONITOR
-	if (pAd->ed_chk)
-	{
+	if(pAd->ed_chk != EDCCA_OFF)
 		ed_status_read(pAd);
-	}
+#ifdef ED_SMART
+	if(pAd->ed_chk == EDCCA_SMART)
+		ed_state_judge(pAd);
+#endif /* ED_SMART */
 #endif /* ED_MONITOR */
+
 
 	pAd->bUpdateBcnCntDone = FALSE;
 }
@@ -3152,6 +3062,12 @@ BOOLEAN MlmeEnqueue(
 
 	NdisAcquireSpinLock(&(Queue->Lock));
 	Tail = Queue->Tail;
+	/* Double check for safety multi-thread system. */
+	if (Queue->Entry[Tail].Occupied)
+	{
+		NdisReleaseSpinLock(&(Queue->Lock));
+		return FALSE;
+	}
 	Queue->Tail++;
 	Queue->Num++;
 	if (Queue->Tail == MAX_LEN_OF_MLME_QUEUE) 
@@ -3304,9 +3220,14 @@ BOOLEAN MlmeEnqueueForRecv(
 
 
 	/* OK, we got all the informations, it is time to put things into queue*/
-
 	NdisAcquireSpinLock(&(Queue->Lock));
 	Tail = Queue->Tail;
+	/* Double check for safety multi-thread system. */
+	if (Queue->Entry[Tail].Occupied)
+	{
+		NdisReleaseSpinLock(&(Queue->Lock));
+		return FALSE;
+	}
 	Queue->Tail++;
 	Queue->Num++;
 	if (Queue->Tail == MAX_LEN_OF_MLME_QUEUE) 
@@ -3404,6 +3325,12 @@ BOOLEAN MlmeEnqueueForWsc(
     /* OK, we got all the informations, it is time to put things into queue*/
 	NdisAcquireSpinLock(&(Queue->Lock));
     Tail = Queue->Tail;
+    /* Double check for safety multi-thread system. */
+    if (Queue->Entry[Tail].Occupied)
+    {
+        NdisReleaseSpinLock(&(Queue->Lock));
+        return FALSE;
+    }
     Queue->Tail++;
     Queue->Num++;
     if (Queue->Tail == MAX_LEN_OF_MLME_QUEUE) 
@@ -3554,7 +3481,7 @@ BOOLEAN MlmeQueueFull(
 	if (SendId == 0)
 		Ans = ((Queue->Num >= (MAX_LEN_OF_MLME_QUEUE / 2)) || Queue->Entry[Queue->Tail].Occupied);
 	else
-		Ans = (Queue->Num == MAX_LEN_OF_MLME_QUEUE);
+		Ans = (Queue->Num == MAX_LEN_OF_MLME_QUEUE)  || Queue->Entry[Queue->Tail].Occupied;
 	NdisReleaseSpinLock(&(Queue->Lock));
 
 	return Ans;
@@ -4195,6 +4122,14 @@ VOID RTMPSetPiggyBack(
 	RTMP_IO_WRITE32(pAd, TX_LINK_CFG, TxLinkCfg.word);
 }
 
+VOID AsicCtrlBcnMask(PRTMP_ADAPTER pAd, INT mask)
+{
+	BCN_BYPASS_MASK_STRUC bms;
+
+	RTMP_IO_READ32(pAd, TX_BCN_BYPASS_MASK, &bms.word);
+	bms.field.BeaconDropMask = mask;
+	RTMP_IO_WRITE32(pAd, TX_BCN_BYPASS_MASK, bms.word);
+}
 /*
     ========================================================================
     Routine Description:
@@ -4336,8 +4271,13 @@ VOID RTMPUpdateLegacyTxSetting(
 		PMAC_TABLE_ENTRY	pEntry)
 {
 	HTTRANSMIT_SETTING TransmitSetting;
-	
-	if (fixed_tx_mode == FIXED_TXMODE_HT)
+
+	if ((fixed_tx_mode != FIXED_TXMODE_CCK) &&
+		(fixed_tx_mode != FIXED_TXMODE_OFDM)
+#ifdef DOT11_VHT_AC
+		&& (fixed_tx_mode != FIXED_TXMODE_VHT)
+#endif /* DOT11_VHT_AC */
+	)
 		return;
 							 				
 	TransmitSetting.word = 0;
@@ -4345,6 +4285,17 @@ VOID RTMPUpdateLegacyTxSetting(
 	TransmitSetting.field.MODE = pEntry->HTPhyMode.field.MODE;
 	TransmitSetting.field.MCS = pEntry->HTPhyMode.field.MCS;
 						
+#ifdef DOT11_VHT_AC
+	if (fixed_tx_mode == FIXED_TXMODE_VHT)
+	{
+		TransmitSetting.field.MODE = MODE_VHT;
+		TransmitSetting.field.BW = pEntry->MaxHTPhyMode.field.BW;
+		/* CCK mode allow MCS 0~3*/
+		if (TransmitSetting.field.MCS > ((1 << 4) + MCS_7))
+			TransmitSetting.field.MCS = ((1 << 4) + MCS_7);
+	}
+	else
+#endif /* DOT11_VHT_AC */
 	if (fixed_tx_mode == FIXED_TXMODE_CCK)
 	{
 		TransmitSetting.field.MODE = MODE_CCK;

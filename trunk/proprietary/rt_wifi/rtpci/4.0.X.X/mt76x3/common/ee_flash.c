@@ -28,18 +28,18 @@
 
 #ifdef RTMP_FLASH_SUPPORT
 
-#include	"rt_config.h"
-
-
-static NDIS_STATUS rtmp_ee_flash_init(PRTMP_ADAPTER pAd, PUCHAR start);
+#include "rt_config.h"
 
 static USHORT EE_FLASH_ID_LIST[]={
 #ifdef MT7603
-    0x7603,
+	0x7603,
 #endif
 };
 
+#ifndef EE_FLASH_ID_NUM
 #define EE_FLASH_ID_NUM  (sizeof(EE_FLASH_ID_LIST) / sizeof(USHORT))
+#endif
+
 
 /*******************************************************************************
   *
@@ -89,10 +89,10 @@ int rtmp_ee_flash_write(PRTMP_ADAPTER pAd, USHORT Offset, USHORT Data)
 
 
 VOID rtmp_ee_flash_read_all(PRTMP_ADAPTER pAd, USHORT *Data)
-{
+{	
 	if (!pAd->chipCap.ee_inited)
 		return;
-
+		
 	memcpy(Data, pAd->eebuf, EEPROM_SIZE);
 }
 
@@ -311,10 +311,6 @@ static BOOLEAN  validFlashEepromID(RTMP_ADAPTER *pAd)
 
 static NDIS_STATUS rtmp_ee_flash_init(PRTMP_ADAPTER pAd, PUCHAR start)
 {
-#ifdef CAL_FREE_IC_SUPPORT
-	BOOLEAN bCalFree=0;
-#endif /* CAL_FREE_IC_SUPPORT */
-
 	pAd->chipCap.ee_inited = 1;
 
 	if (validFlashEepromID(pAd) == FALSE)

@@ -171,9 +171,8 @@ function done_validating(action){
     <input type="hidden" name="group_id" value="">
     <input type="hidden" name="action_mode" value="">
     <input type="hidden" name="action_script" value="">
-    <input type="hidden" name="wan_ipaddr" value="<% nvram_get_x("", "wan_ipaddr_t"); %>" readonly="1">
-    <input type="hidden" name="wan_netmask" value="<% nvram_get_x("", "wan_netmask_t"); %>" readonly="1">
-    <input type="hidden" name="wan_gateway" value="<% nvram_get_x("", "wan_gateway_t"); %>" readonly="1">
+    <input type="hidden" name="wan_ipaddr" value="<% nvram_get_x("", "wan0_ipaddr"); %>" readonly="1">
+    <input type="hidden" name="wan_netmask" value="<% nvram_get_x("", "wan0_netmask"); %>" readonly="1">
     <input type="hidden" name="dhcp_start" value="<% nvram_get_x("", "dhcp_start"); %>">
     <input type="hidden" name="dhcp_end" value="<% nvram_get_x("", "dhcp_end"); %>">
 
@@ -207,14 +206,14 @@ function done_validating(action){
                                         <tr>
                                             <th width="50%" style="border-top: 0 none;"><a class="help_tooltip" href="javascript: void(0)" onmouseover="openTooltip(this, 4, 1);"><#LANHostConfig_IPRouters_itemname#></a></th>
                                             <td style="border-top: 0 none;">
-                                                <input type="text" maxlength="15" class="input" size="15" id="lan_ipaddr" name="lan_ipaddr" value="<% nvram_get_x("LANHostConfig","lan_ipaddr"); %>" onKeyPress="return is_ipaddr(this);" onKeyUp="change_ipaddr(this);">
+                                                <input type="text" maxlength="15" class="input" size="15" id="lan_ipaddr" name="lan_ipaddr" value="<% nvram_get_x("LANHostConfig","lan_ipaddr"); %>" onKeyPress="return is_ipaddr(this,event);" />
                                                 &nbsp;<span style="color:#888;">192.168.1.1</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this, 4,2);"><#LANHostConfig_SubnetMask_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="lan_netmask" value="<% nvram_get_x("LANHostConfig","lan_netmask"); %>" onkeypress="return is_ipaddr(this);" onkeyup="change_ipaddr(this);" />
+                                                <input type="text" maxlength="15" class="input" size="15" name="lan_netmask" value="<% nvram_get_x("LANHostConfig","lan_netmask"); %>" onkeypress="return is_ipaddr(this,event);" />
                                                 &nbsp;<span style="color:#888;">255.255.255.0</span>
                                             </td>
                                         </tr>

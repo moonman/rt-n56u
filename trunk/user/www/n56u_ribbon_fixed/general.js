@@ -189,28 +189,6 @@ function markGroup(o, s, c, b) {
             else if (!validate_duplicate(document.form.rt_ACLList_s, document.form.rt_maclist_x_0.value, 12, 0))
                 return false;
         }
-        else if (s == 'LWFilterList') {
-            if (document.form.filter_lw_num_x_0.value >= c) cFlag = 1;
-            else if (!validate_iprange(document.form.filter_lw_srcip_x_0, "") ||
-                !validate_portrange(document.form.filter_lw_srcport_x_0, "") ||
-                !validate_iprange(document.form.filter_lw_dstip_x_0, "") ||
-                !validate_portrange(document.form.filter_lw_dstport_x_0, "")) return false;
-            else if (document.form.filter_lw_srcip_x_0.value == "" &&
-                document.form.filter_lw_srcport_x_0.value == "" &&
-                document.form.filter_lw_dstip_x_0.value == "" &&
-                document.form.filter_lw_dstport_x_0.value == "") bFlag = 1;
-
-            for (var i = 0; i < LWFilterList.length; i++) { //validate if the entry is duplicated in list.
-                if (document.form.filter_lw_srcip_x_0.value == LWFilterList[i][0] &&
-                    document.form.filter_lw_srcport_x_0.value == LWFilterList[i][1] &&
-                    document.form.filter_lw_dstip_x_0.value == LWFilterList[i][2] &&
-                    document.form.filter_lw_dstport_x_0.value == LWFilterList[i][3] &&
-                    document.form.filter_lw_proto_x_0.value == LWFilterList[i][4]) {
-                    alert("<#JS_duplicate#>");
-                    return false;
-                }
-            }
-        }
         else if (s == 'UrlList') {
             if (document.form.url_num_x_0.value >= c)
                 cFlag = 1;
@@ -226,13 +204,6 @@ function markGroup(o, s, c, b) {
     else if (cFlag == 1)
         alert("<#JS_itemlimit1#> " + c + " <#JS_itemlimit2#>");
     else {    // b == " Del "
-        if (s == 'LWFilterList') {
-            updateDateTime("Advanced_Firewall_Content.asp");
-        }
-        else if (s == 'UrlList') {
-            updateDateTime("Advanced_URLFilter_Content.asp");
-        }
-
         pageChanged = 0;
 
         document.form.action_mode.value = b;
@@ -266,9 +237,11 @@ function portrange_max(o, v) {
 }
 
 function isBlank(s) {
+    var i,c;
     for (i = 0; i < s.length; i++) {
         c = s.charAt(i);
-        if ((c != ' ') && (c != '\n') && (c != '\t'))return false;
+        if ((c != ' ') && (c != '\n') && (c != '\t'))
+            return false;
     }
     return true;
 }
@@ -288,9 +261,7 @@ function check_ptl() {
 }
 
 function entry_cmp(entry, match, len) {  //compare string length function
-
-    var j;
-
+    var j,c1,c2;
     if (entry.length < match.length)
         return (1);
 
@@ -316,7 +287,8 @@ function entry_cmp(entry, match, len) {  //compare string length function
 }
 
 function validate_duplicate_noalert(o, v, l, off) {
-    for (var i = 0; i < o.options.length; i++) {
+    var i;
+    for (i = 0; i < o.options.length; i++) {
         if (entry_cmp(o.options[i].text.substring(off).toLowerCase(), v.toLowerCase(), l) == 0)
             return false;
     }
@@ -324,7 +296,8 @@ function validate_duplicate_noalert(o, v, l, off) {
 }
 
 function validate_duplicate(o, v, l, off) {
-    for (var i = 0; i < o.options.length; i++) {
+    var i;
+    for (i = 0; i < o.options.length; i++) {
         if (entry_cmp(o.options[i].text.substring(off).toLowerCase(), v.toLowerCase(), l) == 0) {
             alert("<#JS_duplicate#>");
 
@@ -344,17 +317,41 @@ function validate_duplicate2(o, v, l, off) {
     return true;
 }
 
-function is_hwaddr() {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
-    if ((keyPressed > 47 && keyPressed < 58) || (keyPressed > 64 && keyPressed < 71) || (keyPressed > 96 && keyPressed < 103))
+function is_control_key(e){
+    if(e.which === 0){
+        if (e.keyCode == 35 //End
+         || e.keyCode == 36 //Home
+         || e.keyCode == 37 //<-
+         || e.keyCode == 39 //->
+         || e.keyCode == 45 //Insert
+         || e.keyCode == 46 //Del
+            )
+            return true;
+    }
+    if (e.keyCode == 8  //Backspace
+     || e.keyCode == 9  //Tab
+     || e.keyCode == 27 //Esc
+        )
         return true;
-    else if (keyPressed == 0)
+    return false;
+}
+
+function is_hwaddr(e) {
+    e = e || event;
+    if (is_control_key(e))
         return true;
-    else
-        return false;
+    keyPressed = e.keyCode ? e.keyCode : e.which;
+    if (keyPressed == 0)
+        return true;
+    if ((keyPressed > 47 && keyPressed < 58) ||
+        (keyPressed > 64 && keyPressed < 71) ||
+        (keyPressed > 96 && keyPressed < 103))
+        return true;
+    return false;
 }
 
 function validate_hwaddr(o) {
+    var i,c;
     if (o.value.length == 0) return true;
     if (o.value != "") {
         if (o.value.length == 12) {
@@ -378,25 +375,30 @@ function validate_hwaddr(o) {
     return false;
 }
 
-function is_string(o) {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
+function is_string(o,e) {
+    e = e || event;
+    if (is_control_key(e))
+        return true;
+    keyPressed = e.keyCode ? e.keyCode : e.which;
     if (keyPressed == 0)
         return true;
-    else if (keyPressed >= 0 && keyPressed <= 126)
+    if (keyPressed > 0 && keyPressed <= 126)
         return true;
     alert("<#JS_validchar#>");
     return false;
 }
 
-function is_string2(o) {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
+function is_string2(o,e) {
+    e = e || event;
+    if (is_control_key(e))
+        return true;
+    keyPressed = e.keyCode ? e.keyCode : e.which;
     if (keyPressed == 0)
         return true;
-    else if ((keyPressed >= 48 && keyPressed <= 57) ||
+    if ((keyPressed >= 48 && keyPressed <= 57) ||
         (keyPressed >= 97 && keyPressed <= 122) ||
         (keyPressed >= 65 && keyPressed <= 90) ||
-        (keyPressed == 45)
-        )
+        (keyPressed == 45))
         return true;
     alert("<#JS_validchar#>");
     return false;
@@ -405,16 +407,13 @@ function is_string2(o) {
 function validate_ssidchar(ch) {
     if (ch >= 32 && ch <= 126)
         return true;
-
     return false;
 }
 
 function validate_string_ssid(o) {
-    var c;
-
-    for (var i = 0; i < o.value.length; ++i) {
+    var i,c;
+    for (i = 0; i < o.value.length; ++i) {
         c = o.value.charCodeAt(i);
-
         if (!validate_ssidchar(c)) {
             alert("<#JS_validSSID1#> " + o.value.charAt(i) + " <#JS_validSSID2#>");
             o.value = "";
@@ -423,23 +422,26 @@ function validate_string_ssid(o) {
             return false;
         }
     }
-
     return true;
 }
 
-function is_number(o) {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
-    if (keyPressed == 0) return true;
+function is_number(o,e) {
+    e = e || event;
+    if (is_control_key(e))
+        return true;
+    keyPressed = e.keyCode ? e.keyCode : e.which;
+    if (keyPressed == 0)
+        return true;
     if (keyPressed > 47 && keyPressed < 58) {
-        if (keyPressed == 48 && o.length == 0) return false;
+        if (keyPressed == 48 && o.length == 0)
+            return false;
         return true;
     }
-    else {
-        return false;
-    }
+    return false;
 }
 
 function validate_range(o, min, max) {
+    var i;
     for (i = 0; i < o.value.length; i++) {
         if (o.value.charAt(i) < '0' || o.value.charAt(i) > '9') {
             alert('<#JS_validrange#> ' + min + ' <#JS_validrange_to#> ' + max);
@@ -500,57 +502,39 @@ function decimalToHex(d, padding) {
 function change_ipaddr(o) {
 }
 
-function is_ipaddr(o) {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
-
-    if (keyPressed == 0) {
+function is_ipaddr(o,e) {
+    var i,j;
+    e = e || event;
+    if (is_control_key(e))
         return true;
-    }
-
+    keyPressed = e.keyCode ? e.keyCode : e.which;
+    if (keyPressed == 0)
+        return true;
     if (o.value.length >= 16)
         return false;
-
-    if ((keyPressed > 47 && keyPressed < 58)) {
+    if(keyPressed > 47 && keyPressed < 58){
         j = 0;
-
-        for (i = 0; i < o.value.length; i++) {
-            if (o.value.charAt(i) == '.') {
+        for (i = 0; i < o.value.length; i++){
+            if (o.value.charAt(i) == '.')
                 j++;
-            }
         }
-
         if (j < 3 && i >= 3) {
-            if (o.value.charAt(i - 3) != '.' && o.value.charAt(i - 2) != '.' && o.value.charAt(i - 1) != '.') {
+            if (o.value.charAt(i - 3) != '.' && o.value.charAt(i - 2) != '.' && o.value.charAt(i - 1) != '.')
                 o.value = o.value + '.';
-            }
         }
-
         return true;
     }
-    else if (keyPressed == 46) {
+    else if(keyPressed == 46){
         j = 0;
-
-        for (i = 0; i < o.value.length; i++) {
-            if (o.value.charAt(i) == '.') {
+        for (i = 0; i < o.value.length; i++){
+            if (o.value.charAt(i) == '.')
                 j++;
-            }
         }
-
-        if (o.value.charAt(i - 1) == '.' || j == 3) {
+        if (o.value.charAt(i - 1) == '.' || j == 3)
             return false;
-        }
-
         return true;
     }
-    else {
-        return false;
-    }
-
     return false;
-}
-
-function get_ap_mode(){
-    return (wan_route_x == 'IP_Bridged' || sw_mode == '3') ? true : false;
 }
 
 function matchSubnet(ip1, ip2, sb1) {
@@ -680,18 +664,19 @@ function validate_ipaddr_final(o, v) {
 function change_ipaddrport(o) {
 }
 
-function is_ipaddrport(o) {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
-    if (keyPressed == 0) {
+function is_ipaddrport(o,e) {
+    e = e || event;
+    if (is_control_key(e))
         return true;
-    }
-    if ((keyPressed > 47 && keyPressed < 58) || keyPressed == 46 || keyPressed == 58) {
+    keyPressed = e.keyCode ? e.keyCode : e.which;
+    if (keyPressed == 0)
         return true;
-    }
+    if ((keyPressed > 47 && keyPressed < 58) || keyPressed == 46 || keyPressed == 58)
+        return true;
     return false;
 }
 
-function validate_ipaddrport(o, v) {
+function validate_ipaddrport(o,v) {
     num = -1;
     pos = 0;
     if (o.value.length == 0)
@@ -741,60 +726,20 @@ function validate_ipaddrport(o, v) {
         o.select();
         return false;
     }
-    if (v == 'ExternalIPAddress' && document.form.wan_netmask.value == '') {
-        document.form.wan_netmask.value = "255.255.255.0";
-    }
-    else if (v == 'IPRouters' && document.form.lan_netmask.value == '') {
-        document.form.lan_netmask.value = "255.255.255.0";
-    }
     return true;
 }
 
 function change_iprange(o) {
 }
 
-function is_iprange(o) {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
-    if (keyPressed == 0) {
+function is_iprange(o,e) {
+    var ret = is_ipaddr(o,e);
+    if (!ret && o.value.length < 16 && keyPressed == 42)
         return true;
-    }
-    if (o.value.length >= 15) return false;
-    if ((keyPressed > 47 && keyPressed < 58)) {
-        j = 0;
-        for (i = 0; i < o.value.length; i++) {
-            if (o.value.charAt(i) == '.') {
-                j++;
-            }
-        }
-        if (j < 3 && i >= 3) {
-            if (o.value.charAt(i - 3) != '.' && o.value.charAt(i - 2) != '.' && o.value.charAt(i - 1) != '.')
-                o.value = o.value + '.';
-        }
-        return true;
-    }
-    else if (keyPressed == 46) {
-        j = 0;
-        for (i = 0; i < o.value.length; i++) {
-            if (o.value.charAt(i) == '.') {
-                j++;
-            }
-        }
-        if (o.value.charAt(i - 1) == '.' || j == 3) {
-            return false;
-        }
-        return true;
-    }
-    else if (keyPressed == 42) /* '*' */
-    {
-        return true;
-    }
-    else {
-        return false;
-    }
-    return false;
+    return ret;
 }
 
-function validate_iprange(o, v) {
+function validate_iprange(o,v) {
     num = -1;
     pos = 0;
     if (o.value.length == 0)
@@ -831,20 +776,17 @@ function validate_iprange(o, v) {
         o.select();
         return false;
     }
-    if (v == 'ExternalIPAddress' && document.form.wan_netmask.value == '') {
-        document.form.wan_netmask.value = "255.255.255.0";
-    }
-    else if (v == 'IPRouters' && document.form.lan_netmask.value == '') {
-        document.form.lan_netmask.value = "255.255.255.0";
-    }
     return true;
 }
 
-function is_portrange(o) {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
-    if (keyPressed == 0) return true;
-
-    if ((keyPressed > 47 && keyPressed < 58)) {
+function is_portrange(o,e) {
+    e = e || event;
+    if (is_control_key(e))
+        return true;
+    keyPressed = e.keyCode ? e.keyCode : e.which;
+    if (keyPressed == 0)
+        return true;
+    if ((keyPressed > 47 && keyPressed < 58)){
         return true;
     }
     else if (keyPressed == 58 && o.value.length > 0) {
@@ -867,12 +809,10 @@ function is_portrange(o) {
         else
             return false;
     }
-    else {
-        return false;
-    }
+    return false;
 }
 
-function validate_portrange(o, v) {
+function validate_portrange(o,v) {
     if (o.value.length == 0)
         return true;
 
@@ -955,17 +895,21 @@ function validate_portrange(o, v) {
     return true;
 }
 
-function is_portlist(o) {
-    keyPressed = event.keyCode ? event.keyCode : event.which;
-    if (keyPressed == 0) return true;
-    if (o.value.length > 36) return false;
+function is_portlist(o,e) {
+    e = e || event;
+    if (is_control_key(e))
+        return true;
+    keyPressed = e.keyCode ? e.keyCode : e.which;
+    if (keyPressed == 0)
+        return true;
+    if (o.value.length > 36)
+        return false;
     if ((keyPressed > 47 && keyPressed < 58) || keyPressed == 32) {
         return true;
     }
-    else {
-        return false;
-    }
+    return false;
 }
+
 function validate_portlist(o, v) {
     if (o.value.length == 0)
         return true;
@@ -1112,63 +1056,6 @@ function setTimeRange(sh, sm, eh, em) {
 
 function load_body() {
     document.form.next_host.value = location.host;
-    if (document.form.current_page.value == "Advanced_Firewall_Content.asp") {
-        wItem = new Array(
-            new Array("WWW", "80", "TCP"),
-            new Array("TELNET", "23", "TCP"),
-            new Array("FTP", "20:21", "TCP")
-        );
-        free_options(document.form.LWKnownApps);
-        add_option(document.form.LWKnownApps, "User Defined", "User Defined", 1);
-        for (i = 0; i < wItem.length; i++) {
-            add_option(document.form.LWKnownApps, wItem[i][0], wItem[i][0], 0);
-        }
-        document.form.filter_lw_date_x_Sun.checked = getDateCheck(document.form.filter_lw_date_x.value, 0);
-        document.form.filter_lw_date_x_Mon.checked = getDateCheck(document.form.filter_lw_date_x.value, 1);
-        document.form.filter_lw_date_x_Tue.checked = getDateCheck(document.form.filter_lw_date_x.value, 2);
-        document.form.filter_lw_date_x_Wed.checked = getDateCheck(document.form.filter_lw_date_x.value, 3);
-        document.form.filter_lw_date_x_Thu.checked = getDateCheck(document.form.filter_lw_date_x.value, 4);
-        document.form.filter_lw_date_x_Fri.checked = getDateCheck(document.form.filter_lw_date_x.value, 5);
-        document.form.filter_lw_date_x_Sat.checked = getDateCheck(document.form.filter_lw_date_x.value, 6);
-        document.form.filter_lw_time_x_starthour.value = getTimeRange(document.form.filter_lw_time_x.value, 0);
-        document.form.filter_lw_time_x_startmin.value = getTimeRange(document.form.filter_lw_time_x.value, 1);
-        document.form.filter_lw_time_x_endhour.value = getTimeRange(document.form.filter_lw_time_x.value, 2);
-        document.form.filter_lw_time_x_endmin.value = getTimeRange(document.form.filter_lw_time_x.value, 3);
-        document.form.filter_lw_time_x_1_starthour.value = getTimeRange(document.form.filter_lw_time_x_1.value, 0);	//Viz add 2011.11
-        document.form.filter_lw_time_x_1_startmin.value = getTimeRange(document.form.filter_lw_time_x_1.value, 1);
-        document.form.filter_lw_time_x_1_endhour.value = getTimeRange(document.form.filter_lw_time_x_1.value, 2);
-        document.form.filter_lw_time_x_1_endmin.value = getTimeRange(document.form.filter_lw_time_x_1.value, 3);
-    }
-    else if (document.form.current_page.value == "Advanced_LFirewall_Content.asp") {
-        document.form.FirewallConfig_WanLocalActiveDate_Sun.checked = getDateCheck(document.form.FirewallConfig_WanLocalActiveDate.value, 0);
-        document.form.FirewallConfig_WanLocalActiveDate_Mon.checked = getDateCheck(document.form.FirewallConfig_WanLocalActiveDate.value, 1);
-        document.form.FirewallConfig_WanLocalActiveDate_Tue.checked = getDateCheck(document.form.FirewallConfig_WanLocalActiveDate.value, 2);
-        document.form.FirewallConfig_WanLocalActiveDate_Wed.checked = getDateCheck(document.form.FirewallConfig_WanLocalActiveDate.value, 3);
-        document.form.FirewallConfig_WanLocalActiveDate_Thu.checked = getDateCheck(document.form.FirewallConfig_WanLocalActiveDate.value, 4);
-        document.form.FirewallConfig_WanLocalActiveDate_Fri.checked = getDateCheck(document.form.FirewallConfig_WanLocalActiveDate.value, 5);
-        document.form.FirewallConfig_WanLocalActiveDate_Sat.checked = getDateCheck(document.form.FirewallConfig_WanLocalActiveDate.value, 6);
-        document.form.FirewallConfig_WanLocalActiveTime_starthour.value = getTimeRange(document.form.FirewallConfig_WanLocalActiveTime.value, 0);
-        document.form.FirewallConfig_WanLocalActiveTime_startmin.value = getTimeRange(document.form.FirewallConfig_WanLocalActiveTime.value, 1);
-        document.form.FirewallConfig_WanLocalActiveTime_endhour.value = getTimeRange(document.form.FirewallConfig_WanLocalActiveTime.value, 2);
-        document.form.FirewallConfig_WanLocalActiveTime_endmin.value = getTimeRange(document.form.FirewallConfig_WanLocalActiveTime.value, 3);
-    }
-    else if (document.form.current_page.value == "Advanced_URLFilter_Content.asp") {
-        document.form.url_date_x_Sun.checked = getDateCheck(document.form.url_date_x.value, 0);
-        document.form.url_date_x_Mon.checked = getDateCheck(document.form.url_date_x.value, 1);
-        document.form.url_date_x_Tue.checked = getDateCheck(document.form.url_date_x.value, 2);
-        document.form.url_date_x_Wed.checked = getDateCheck(document.form.url_date_x.value, 3);
-        document.form.url_date_x_Thu.checked = getDateCheck(document.form.url_date_x.value, 4);
-        document.form.url_date_x_Fri.checked = getDateCheck(document.form.url_date_x.value, 5);
-        document.form.url_date_x_Sat.checked = getDateCheck(document.form.url_date_x.value, 6);
-        document.form.url_time_x_starthour.value = getTimeRange(document.form.url_time_x.value, 0);
-        document.form.url_time_x_startmin.value = getTimeRange(document.form.url_time_x.value, 1);
-        document.form.url_time_x_endhour.value = getTimeRange(document.form.url_time_x.value, 2);
-        document.form.url_time_x_endmin.value = getTimeRange(document.form.url_time_x.value, 3);
-        document.form.url_time_x_starthour_1.value = getTimeRange(document.form.url_time_x_1.value, 0);
-        document.form.url_time_x_startmin_1.value = getTimeRange(document.form.url_time_x_1.value, 1);
-        document.form.url_time_x_endhour_1.value = getTimeRange(document.form.url_time_x_1.value, 2);
-        document.form.url_time_x_endmin_1.value = getTimeRange(document.form.url_time_x_1.value, 3);
-    }
     change = 0;
 }
 
@@ -1182,18 +1069,6 @@ function onSubmit() {
 function onSubmitCtrl(o, s) {
     document.form.action_mode.value = s;
     return (onSubmit());
-}
-
-function onSubmitCtrlOnly(o, s) {
-    if (s != 'Upload' && s != 'Upload1')
-        document.form.action_mode.value = s;
-
-    if (s == 'Upload1') {
-        disableCheckChangedStatus();
-        document.form.submit();
-    }
-    disableCheckChangedStatus();
-    return true;
 }
 
 function validate_ddns_hostname(o) {
@@ -1411,131 +1286,13 @@ function validate_timerange(o, p) {
 }
 
 function updateDateTime(s) {
-    if (s == "Advanced_Firewall_Content.asp") {
-        document.form.filter_lw_date_x.value = setDateCheck(
-            document.form.filter_lw_date_x_Sun,
-            document.form.filter_lw_date_x_Mon,
-            document.form.filter_lw_date_x_Tue,
-            document.form.filter_lw_date_x_Wed,
-            document.form.filter_lw_date_x_Thu,
-            document.form.filter_lw_date_x_Fri,
-            document.form.filter_lw_date_x_Sat);
-        document.form.filter_lw_time_x.value = setTimeRange(
-            document.form.filter_lw_time_x_starthour,
-            document.form.filter_lw_time_x_startmin,
-            document.form.filter_lw_time_x_endhour,
-            document.form.filter_lw_time_x_endmin);
-        document.form.filter_lw_time_x_1.value = setTimeRange(
-            document.form.filter_lw_time_x_1_starthour,
-            document.form.filter_lw_time_x_1_startmin,
-            document.form.filter_lw_time_x_1_endhour,
-            document.form.filter_lw_time_x_1_endmin);
-    }
-    else if (s == "Advanced_URLFilter_Content.asp") {
-        document.form.url_date_x.value = setDateCheck(
-            document.form.url_date_x_Sun,
-            document.form.url_date_x_Mon,
-            document.form.url_date_x_Tue,
-            document.form.url_date_x_Wed,
-            document.form.url_date_x_Thu,
-            document.form.url_date_x_Fri,
-            document.form.url_date_x_Sat);
-        document.form.url_time_x.value = setTimeRange(
-            document.form.url_time_x_starthour,
-            document.form.url_time_x_startmin,
-            document.form.url_time_x_endhour,
-            document.form.url_time_x_endmin);
-        document.form.url_time_x_1.value = setTimeRange(
-            document.form.url_time_x_starthour_1,
-            document.form.url_time_x_startmin_1,
-            document.form.url_time_x_endhour_1,
-            document.form.url_time_x_endmin_1);
-    }
-}
-
-function openLink(s) {
-    var tourl = "";
-    var link_params = "toolbar=yes,location=yes,directories=no,status=yes,menubar=yes,scrollbars=yes,resizable=yes,copyhistory=no,width=640,height=480";
-    if (s == 'x_DDNSServer' || s == 'x_DDNSServer2') {
-        var o1 = (s == 'x_DDNSServer2') ? document.form.ddns2_server : document.form.ddns_server_x;
-        if (o1.value == "WWW.DYNDNS.ORG")
-            tourl = "https://account.dyn.com/entrance/";
-        else if (o1.value == 'WWW.TZO.COM')
-            tourl = "http://signup.tzo.com";
-        else if (o1.value == 'WWW.ZONEEDIT.COM')
-            tourl = "http://www.zoneedit.com/signUp.html";
-        else if (o1.value == 'WWW.EASYDNS.COM')
-            tourl = "https://web.easydns.com/Open_Account/";
-        else if (o1.value == 'WWW.NO-IP.COM')
-            tourl = "http://www.noip.com/newUser.php";
-        else if (o1.value == 'WWW.TUNNELBROKER.NET')
-            tourl = "http://www.tunnelbroker.net/register.php";
-        else if (o1.value == 'DNS.HE.NET')
-            tourl = "http://ipv6.he.net/certification/register.php";
-        else if (o1.value == 'WWW.DNSEXIT.COM')
-            tourl = "https://www.dnsexit.com/Direct.sv?cmd=signup";
-        else if (o1.value == 'WWW.CHANGEIP.COM')
-            tourl = "https://www.changeip.com/accounts/register.php";
-        else if (o1.value == 'WWW.DNSOMATIC.COM')
-            tourl = "https://www.dnsomatic.com/create/";
-        else if (o1.value == 'WWW.SITELUTIONS.COM')
-            tourl = "https://sitelutions.com/signup";
-        else if (o1.value == 'WWW.NIC.RU')
-            tourl = "https://www.nic.ru/dns/service/dns_hosting/dns_master/dynamic_dns.html";
-        else if (o1.value == 'WWW.DUCKDNS.ORG')
-            tourl = "https://duckdns.org/";
-        else if (o1.value == 'WWW.DHIS.ORG')
-            tourl = "http://dhis.org/WebEngine.ipo?context=dhis.website.register";
-        else if (o1.value == 'TB.NETASSIST.UA')
-            tourl = "http://tb.netassist.ua/reg.php";
-        else if (o1.value == 'IPV4.NSUPDATE.INFO')
-            tourl = "https://nsupdate.info/account/register/";
-        else if (o1.value == 'FREEDNS.AFRAID.ORG')
-            tourl = "http://freedns.afraid.org/signup/";
-        else
-            return;
-        link = window.open(tourl, "DDNSLink", link_params);
-    }
-    else if (s == 'x_NTPServer1') {
-        tourl = "http://support.ntp.org/bin/view/Servers/WebHome"
-        link = window.open(tourl, "NTPLink", link_params);
-    }
-    else if (s == 'x_FIsAnonymous' || s == 'x_FIsSuperuser') {
-        urlstr = location.href;
-        url = urlstr.indexOf("http://");
-        port = document.form.usb_ftpport_x.value;
-        if (url == -1) urlpref = LANIP;
-        else {
-            urlstr = urlstr.substring(7, urlstr.length);
-            url = urlstr.indexOf(":");
-            if (url != -1) {
-                urlpref = urlstr.substring(0, url);
-            }
-            else {
-                url = urlstr.indexOf("/");
-                if (url != -1) urlpref = urlstr.substring(0, url);
-                else urlpref = urlstr;
-            }
-        }
-        if (s == 'x_FIsAnonymous') {
-            user = 'anonymous';
-            tourl = "ftp://" + urlpref;
-        }
-        else {
-            user = 'admin';
-            tourl = "ftp://" + user + "@" + urlpref;
-        }
-        if (port != 21) tourl = tourl + ":" + port;
-        link = window.open(tourl, "FTPServer", link_params);
-    }
-    if (!link.opener) link.opener = self;
 }
 
 function blur_body() {
     alert("<#JS_focus#>");
 }
 
-function showhide(element, sh) {
+function showhide(e, sh) {
     var status;
     if (sh == 0)
         status = "none"
@@ -1543,14 +1300,14 @@ function showhide(element, sh) {
         status = "block";
 
     if (document.getElementById)
-        document.getElementById(element).style.display = status;
+        document.getElementById(e).style.display = status;
     else if (document.all)
-        document.all[element].style.display = status;
+        document.all[e].style.display = status;
     else if (document.layers)
-        document.layers[element].display = status;
+        document.layers[e].display = status;
 }
 
-function showhide_div(element, sh) {
+function showhide_div(e, sh) {
     var status;
     if (sh == 0)
         status = "none"
@@ -1558,9 +1315,9 @@ function showhide_div(element, sh) {
         status = "";
 
     if (document.getElementById)
-        document.getElementById(element).style.display = status;
+        document.getElementById(e).style.display = status;
     else if (document.all)
-        document.all[element].style.display = status;
+        document.all[e].style.display = status;
     else if (document.layers)
-        document.layers[element].display = status;
+        document.layers[e].display = status;
 }

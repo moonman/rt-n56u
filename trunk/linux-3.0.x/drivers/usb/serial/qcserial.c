@@ -26,12 +26,15 @@ enum qcserial_layouts {
 	QCSERIAL_G2K = 0,	/* Gobi 2000 */
 	QCSERIAL_G1K = 1,	/* Gobi 1000 */
 	QCSERIAL_SWI = 2,	/* Sierra Wireless */
+	QCSERIAL_HWI = 3,	/* Huawei */
 };
 
 #define DEVICE_G1K(v, p) \
 	USB_DEVICE(v, p), .driver_info = QCSERIAL_G1K
 #define DEVICE_SWI(v, p) \
 	USB_DEVICE(v, p), .driver_info = QCSERIAL_SWI
+#define DEVICE_HWI(v, p) \
+	USB_DEVICE(v, p), .driver_info = QCSERIAL_HWI
 
 static const struct usb_device_id id_table[] = {
 	/* Gobi 1000 devices */
@@ -141,7 +144,6 @@ static const struct usb_device_id id_table[] = {
 	{DEVICE_SWI(0x1199, 0x901c)},	/* Sierra Wireless EM7700 */
 	{DEVICE_SWI(0x1199, 0x901f)},	/* Sierra Wireless EM7355 */
 	{DEVICE_SWI(0x1199, 0x9040)},	/* Sierra Wireless Modem */
-	{DEVICE_SWI(0x1199, 0x9041)},	/* Sierra Wireless MC7305/MC7355 */
 	{DEVICE_SWI(0x1199, 0x9051)},	/* Netgear AirCard 340U */
 	{DEVICE_SWI(0x1199, 0x9053)},	/* Sierra Wireless Modem */
 	{DEVICE_SWI(0x1199, 0x9054)},	/* Sierra Wireless Modem */
@@ -154,6 +156,10 @@ static const struct usb_device_id id_table[] = {
 	{DEVICE_SWI(0x413c, 0x81a4)},	/* Dell Wireless 5570e HSPA+ (42Mbps) Mobile Broadband Card */
 	{DEVICE_SWI(0x413c, 0x81a8)},	/* Dell Wireless 5808 Gobi(TM) 4G LTE Mobile Broadband Card */
 	{DEVICE_SWI(0x413c, 0x81a9)},	/* Dell Wireless 5808e Gobi(TM) 4G LTE Mobile Broadband Card */
+	{DEVICE_SWI(0x413c, 0x81b1)},	/* Dell Wireless 5809e Gobi(TM) 4G LTE Mobile Broadband Card */
+
+	/* Huawei devices */
+	{DEVICE_HWI(0x03f0, 0x581d)},	/* HP lt4112 LTE/HSPA+ Gobi 4G Modem (Huawei me906e) */
 
 	{ }				/* Terminating entry */
 };
@@ -298,6 +304,33 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 			break;
 		case 3:
 			dev_dbg(dev, "Modem port found\n");
+			break;
+		default:
+			/* don't claim any unsupported interface */
+			altsetting = -1;
+			break;
+		}
+		break;
+	case QCSERIAL_HWI:
+		/*
+		 * Huawei layout:
+		 * 0: AT-capable modem port
+		 * 1: DM/DIAG
+		 * 2: AT-capable modem port
+		 * 3: CCID-compatible PCSC interface
+		 * 4: QMI/net
+		 * 5: NMEA
+		 */
+		switch (ifnum) {
+		case 0:
+		case 2:
+			dev_dbg(dev, "Modem port found\n");
+			break;
+		case 1:
+			dev_dbg(dev, "DM/DIAG interface found\n");
+			break;
+		case 5:
+			dev_dbg(dev, "NMEA GPS interface found\n");
 			break;
 		default:
 			/* don't claim any unsupported interface */

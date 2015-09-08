@@ -763,6 +763,8 @@ static void ip_vs_proc_conn(struct net *net, struct ip_vs_conn_param *param,
 			IP_VS_DBG(2, "BACKUP, add new conn. failed\n");
 			return;
 		}
+		if (!(flags & IP_VS_CONN_F_TEMPLATE))
+			kfree(param->pe_data);
 	} else if (!cp->dest) {
 		dest = ip_vs_try_bind_dest(cp);
 		if (dest)
@@ -839,7 +841,7 @@ static void ip_vs_process_message_v0(struct net *net, const char *buffer,
 
 	p = (char *)buffer + sizeof(struct ip_vs_sync_mesg_v0);
 	for (i=0; i<m->nr_conns; i++) {
-		unsigned flags, state;
+		unsigned int flags, state;
 
 		if (p + SIMPLE_CONN_SIZE > buffer+buflen) {
 			IP_VS_ERR_RL("BACKUP v0, bogus conn\n");
@@ -1064,6 +1066,7 @@ static inline int ip_vs_proc_sync_conn(struct net *net, __u8 *p, __u8 *msg_end)
 				(opt_flags & IPVS_OPT_F_SEQ_DATA ? &opt : NULL)
 				);
 #endif
+	ip_vs_pe_put(param.pe);
 	return 0;
 	/* Error exit */
 out:
@@ -1109,7 +1112,7 @@ static void ip_vs_process_message(struct net *net, __u8 *buffer,
 
 		for (i=0; i<nr_conns; i++) {
 			union ip_vs_sync_conn *s;
-			unsigned size;
+			unsigned int size;
 			int retc;
 
 			p = msg_end;

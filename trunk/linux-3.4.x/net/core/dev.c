@@ -231,7 +231,8 @@ static inline void dev_base_seq_inc(struct net *net)
 
 static inline struct hlist_head *dev_name_hash(struct net *net, const char *name)
 {
-	unsigned hash = full_name_hash(name, strnlen(name, IFNAMSIZ));
+	unsigned int hash = full_name_hash(name, strnlen(name, IFNAMSIZ));
+
 	return &net->dev_name_head[hash_32(hash, NETDEV_HASHBITS)];
 }
 
@@ -320,10 +321,9 @@ static const unsigned short netdev_lock_type[] =
 	 ARPHRD_BIF, ARPHRD_SIT, ARPHRD_IPDDP, ARPHRD_IPGRE,
 	 ARPHRD_PIMREG, ARPHRD_HIPPI, ARPHRD_ASH, ARPHRD_ECONET,
 	 ARPHRD_IRDA, ARPHRD_FCPP, ARPHRD_FCAL, ARPHRD_FCPL,
-	 ARPHRD_FCFABRIC, ARPHRD_IEEE802_TR, ARPHRD_IEEE80211,
-	 ARPHRD_IEEE80211_PRISM, ARPHRD_IEEE80211_RADIOTAP, ARPHRD_PHONET,
-	 ARPHRD_PHONET_PIPE, ARPHRD_IEEE802154,
-	 ARPHRD_VOID, ARPHRD_NONE};
+	 ARPHRD_FCFABRIC, ARPHRD_IEEE80211, ARPHRD_IEEE80211_PRISM,
+	 ARPHRD_IEEE80211_RADIOTAP, ARPHRD_PHONET, ARPHRD_PHONET_PIPE,
+	 ARPHRD_IEEE802154, ARPHRD_VOID, ARPHRD_NONE};
 
 static const char *const netdev_lock_name[] =
 	{"_xmit_NETROM", "_xmit_ETHER", "_xmit_EETHER", "_xmit_AX25",
@@ -338,10 +338,9 @@ static const char *const netdev_lock_name[] =
 	 "_xmit_BIF", "_xmit_SIT", "_xmit_IPDDP", "_xmit_IPGRE",
 	 "_xmit_PIMREG", "_xmit_HIPPI", "_xmit_ASH", "_xmit_ECONET",
 	 "_xmit_IRDA", "_xmit_FCPP", "_xmit_FCAL", "_xmit_FCPL",
-	 "_xmit_FCFABRIC", "_xmit_IEEE802_TR", "_xmit_IEEE80211",
-	 "_xmit_IEEE80211_PRISM", "_xmit_IEEE80211_RADIOTAP", "_xmit_PHONET",
-	 "_xmit_PHONET_PIPE", "_xmit_IEEE802154",
-	 "_xmit_VOID", "_xmit_NONE"};
+	 "_xmit_FCFABRIC", "_xmit_IEEE80211", "_xmit_IEEE80211_PRISM",
+	 "_xmit_IEEE80211_RADIOTAP", "_xmit_PHONET", "_xmit_PHONET_PIPE",
+	 "_xmit_IEEE802154", "_xmit_VOID", "_xmit_NONE"};
 
 static struct lock_class_key netdev_xmit_lock_key[ARRAY_SIZE(netdev_lock_type)];
 static struct lock_class_key netdev_addr_lock_key[ARRAY_SIZE(netdev_lock_type)];
@@ -878,7 +877,7 @@ bool dev_valid_name(const char *name)
 		return false;
 
 	while (*name) {
-		if (*name == '/' || isspace(*name))
+		if (*name == '/' || *name == ':' || isspace(*name))
 			return false;
 		name++;
 	}
@@ -1257,7 +1256,7 @@ static int __dev_close_many(struct list_head *head)
 	ASSERT_RTNL();
 	might_sleep();
 
-	list_for_each_entry(dev, head, unreg_list) {
+	list_for_each_entry(dev, head, close_list) {
 		call_netdevice_notifiers(NETDEV_GOING_DOWN, dev);
 
 		clear_bit(__LINK_STATE_START, &dev->state);
@@ -1273,7 +1272,7 @@ static int __dev_close_many(struct list_head *head)
 
 	dev_deactivate_many(head);
 
-	list_for_each_entry(dev, head, unreg_list) {
+	list_for_each_entry(dev, head, close_list) {
 		const struct net_device_ops *ops = dev->netdev_ops;
 
 		/*
@@ -1297,32 +1296,33 @@ static int __dev_close(struct net_device *dev)
 	int retval;
 	LIST_HEAD(single);
 
-	list_add(&dev->unreg_list, &single);
+	list_add(&dev->close_list, &single);
 	retval = __dev_close_many(&single);
 	list_del(&single);
 	return retval;
 }
 
-static int dev_close_many(struct list_head *head)
+int dev_close_many(struct list_head *head, bool unlink)
 {
 	struct net_device *dev, *tmp;
-	LIST_HEAD(tmp_list);
 
-	list_for_each_entry_safe(dev, tmp, head, unreg_list)
+	/* Remove the devices that don't need to be closed */
+	list_for_each_entry_safe(dev, tmp, head, close_list)
 		if (!(dev->flags & IFF_UP))
-			list_move(&dev->unreg_list, &tmp_list);
+			list_del_init(&dev->close_list);
 
 	__dev_close_many(head);
 
-	list_for_each_entry(dev, head, unreg_list) {
+	list_for_each_entry_safe(dev, tmp, head, close_list) {
 		rtmsg_ifinfo(RTM_NEWLINK, dev, IFF_UP|IFF_RUNNING);
 		call_netdevice_notifiers(NETDEV_DOWN, dev);
+		if (unlink)
+			list_del_init(&dev->close_list);
 	}
 
-	/* rollback_registered_many needs the complete original list */
-	list_splice(&tmp_list, head);
 	return 0;
 }
+EXPORT_SYMBOL(dev_close_many);
 
 /**
  *	dev_close - shutdown an interface.
@@ -1338,8 +1338,8 @@ int dev_close(struct net_device *dev)
 	if (dev->flags & IFF_UP) {
 		LIST_HEAD(single);
 
-		list_add(&dev->unreg_list, &single);
-		dev_close_many(&single);
+		list_add(&dev->close_list, &single);
+		dev_close_many(&single, true);
 		list_del(&single);
 	}
 	return 0;
@@ -2680,7 +2680,7 @@ static inline
 bool skb_flow_dissect(const struct sk_buff *skb, struct flow_keys *flow)
 {
 	int poff, nhoff = skb_network_offset(skb);
-	u8 ip_proto;
+	u8 ip_proto = 0;
 	__be16 proto = skb->protocol;
 
 	memset(flow, 0, sizeof(*flow));
@@ -3078,6 +3078,8 @@ static int enqueue_to_backlog(struct sk_buff *skb, int cpu,
 	local_irq_save(flags);
 
 	rps_lock(sd);
+	if (!netif_running(skb->dev))
+		goto drop;
 	if (skb_queue_len(&sd->input_pkt_queue) <= netdev_max_backlog) {
 		if (skb_queue_len(&sd->input_pkt_queue)) {
 enqueue:
@@ -3098,6 +3100,7 @@ enqueue:
 		goto enqueue;
 	}
 
+drop:
 	sd->dropped++;
 	rps_unlock(sd);
 
@@ -3127,9 +3130,11 @@ int netif_rx(struct sk_buff *skb)
 {
 	int ret;
 
+#ifdef CONFIG_NETPOLL
 	/* if netpoll wants it, pretend we never saw it */
 	if (netpoll_rx(skb))
 		return NET_RX_DROP;
+#endif
 
 	net_timestamp_check(netdev_tstamp_prequeue, skb);
 
@@ -3371,12 +3376,12 @@ static int __netif_receive_skb(struct sk_buff *skb)
 
 	trace_netif_receive_skb(skb);
 
+#ifdef CONFIG_NETPOLL
 	/* if we've gotten here through NAPI, check netpoll */
 	if (netpoll_receive_skb(skb))
 		return NET_RX_DROP;
+#endif
 
-	if (!skb->skb_iif)
-		skb->skb_iif = skb->dev->ifindex;
 	orig_dev = skb->dev;
 
 	skb_reset_network_header(skb);
@@ -3385,9 +3390,8 @@ static int __netif_receive_skb(struct sk_buff *skb)
 
 	pt_prev = NULL;
 
-	rcu_read_lock();
-
 another_round:
+	skb->skb_iif = skb->dev->ifindex;
 
 	__this_cpu_inc(softnet_data.processed);
 
@@ -3489,7 +3493,6 @@ ncls:
 	}
 
 out:
-	rcu_read_unlock();
 	return ret;
 }
 
@@ -3510,29 +3513,32 @@ out:
  */
 int netif_receive_skb(struct sk_buff *skb)
 {
+	int ret;
+
 	net_timestamp_check(netdev_tstamp_prequeue, skb);
 
+#ifdef CONFIG_NETWORK_PHY_TIMESTAMPING
 	if (skb_defer_rx_timestamp(skb))
 		return NET_RX_SUCCESS;
+#endif
+
+	rcu_read_lock();
 
 #ifdef CONFIG_RPS
 	if (static_key_false(&rps_needed)) {
 		struct rps_dev_flow voidflow, *rflow = &voidflow;
-		int cpu, ret;
-
-		rcu_read_lock();
-
-		cpu = get_rps_cpu(skb->dev, skb, &rflow);
+		int cpu = get_rps_cpu(skb->dev, skb, &rflow);
 
 		if (cpu >= 0) {
 			ret = enqueue_to_backlog(skb, cpu, &rflow->last_qtail);
 			rcu_read_unlock();
 			return ret;
 		}
-		rcu_read_unlock();
 	}
 #endif
-	return __netif_receive_skb(skb);
+	ret = __netif_receive_skb(skb);
+	rcu_read_unlock();
+	return ret;
 }
 EXPORT_SYMBOL(netif_receive_skb);
 
@@ -3642,6 +3648,9 @@ static enum gro_result dev_gro_receive(struct napi_struct *napi, struct sk_buff 
 	int same_flow;
 	int mac_len;
 	enum gro_result ret;
+
+	if (skb->pkt_type == PACKET_OTHERHOST)
+		goto normal;
 
 	if (!(skb->dev->features & NETIF_F_GRO) || netpoll_rx_on(skb))
 		goto normal;
@@ -3795,8 +3804,7 @@ struct sk_buff *napi_get_frags(struct napi_struct *napi)
 
 	if (!skb) {
 		skb = netdev_alloc_skb_ip_align(napi->dev, GRO_MAX_HEAD);
-		if (skb)
-			napi->skb = skb;
+		napi->skb = skb;
 	}
 	return skb;
 }
@@ -3876,7 +3884,7 @@ gro_result_t napi_gro_frags(struct napi_struct *napi)
 EXPORT_SYMBOL(napi_gro_frags);
 
 /*
- * net_rps_action sends any pending IPI's for rps.
+ * net_rps_action_and_irq_enable sends any pending IPI's for rps.
  * Note: called with local irq disabled, but exits with local irq enabled.
  */
 static void net_rps_action_and_irq_enable(struct softnet_data *sd)
@@ -3903,28 +3911,38 @@ static void net_rps_action_and_irq_enable(struct softnet_data *sd)
 		local_irq_enable();
 }
 
+static inline bool sd_has_rps_ipi_waiting(struct softnet_data *sd)
+{
+#ifdef CONFIG_RPS
+	return sd->rps_ipi_list != NULL;
+#else
+	return false;
+#endif
+}
+
 static int process_backlog(struct napi_struct *napi, int quota)
 {
 	int work = 0;
 	struct softnet_data *sd = container_of(napi, struct softnet_data, backlog);
 
-#ifdef CONFIG_RPS
 	/* Check if we have pending ipi, its better to send them now,
 	 * not waiting net_rx_action() end.
 	 */
-	if (sd->rps_ipi_list) {
+	if (sd_has_rps_ipi_waiting(sd)) {
 		local_irq_disable();
 		net_rps_action_and_irq_enable(sd);
 	}
-#endif
+
 	napi->weight = weight_p;
 	local_irq_disable();
 	while (1) {
 		struct sk_buff *skb;
 
 		while ((skb = __skb_dequeue(&sd->process_queue))) {
+			rcu_read_lock();
 			local_irq_enable();
 			__netif_receive_skb(skb);
+			rcu_read_unlock();
 			local_irq_disable();
 			input_queue_head_incr(sd);
 			if (++work >= quota) {
@@ -3943,7 +3961,6 @@ static int process_backlog(struct napi_struct *napi, int quota)
 			 * We can use a plain write instead of clear_bit(),
 			 * and we dont need an smp_mb() memory barrier.
 			 */
-			list_del(&napi->poll_list);
 			napi->state = 0;
 			rps_unlock(sd);
 
@@ -3980,7 +3997,7 @@ void __napi_complete(struct napi_struct *n)
 	BUG_ON(!test_bit(NAPI_STATE_SCHED, &n->state));
 	BUG_ON(n->gro_list);
 
-	list_del(&n->poll_list);
+	list_del_init(&n->poll_list);
 	smp_mb__before_clear_bit();
 	clear_bit(NAPI_STATE_SCHED, &n->state);
 }
@@ -3998,9 +4015,15 @@ void napi_complete(struct napi_struct *n)
 		return;
 
 	napi_gro_flush(n);
-	local_irq_save(flags);
-	__napi_complete(n);
-	local_irq_restore(flags);
+
+	if (likely(list_empty(&n->poll_list))) {
+		WARN_ON_ONCE(!test_and_clear_bit(NAPI_STATE_SCHED, &n->state));
+	} else {
+		/* If n->poll_list is not empty, we need to mask irqs */
+		local_irq_save(flags);
+		__napi_complete(n);
+		local_irq_restore(flags);
+	}
 }
 EXPORT_SYMBOL(napi_complete);
 
@@ -4041,82 +4064,102 @@ void netif_napi_del(struct napi_struct *napi)
 }
 EXPORT_SYMBOL(netif_napi_del);
 
+static int napi_poll(struct napi_struct *n, struct list_head *repoll)
+{
+#ifdef CONFIG_NETPOLL
+	void *have;
+#endif
+	int work, weight;
+
+	list_del_init(&n->poll_list);
+
+#ifdef CONFIG_NETPOLL
+	have = netpoll_poll_lock(n);
+#endif
+
+	weight = n->weight;
+
+	/* This NAPI_STATE_SCHED test is for avoiding a race
+	 * with netpoll's poll_napi().  Only the entity which
+	 * obtains the lock and sees NAPI_STATE_SCHED set will
+	 * actually make the ->poll() call.  Therefore we avoid
+	 * accidentally calling ->poll() when NAPI is not scheduled.
+	 */
+	work = 0;
+	if (test_bit(NAPI_STATE_SCHED, &n->state)) {
+		work = n->poll(n, weight);
+		trace_napi_poll(n);
+	}
+
+	WARN_ON_ONCE(work > weight);
+
+	if (likely(work < weight))
+		goto out_unlock;
+
+	/* Drivers must not modify the NAPI state if they
+	 * consume the entire weight.  In such cases this code
+	 * still "owns" the NAPI instance and therefore can
+	 * move the instance around on the list at-will.
+	 */
+	if (unlikely(napi_disable_pending(n))) {
+		napi_complete(n);
+		goto out_unlock;
+	}
+
+	list_add_tail(&n->poll_list, repoll);
+
+out_unlock:
+#ifdef CONFIG_NETPOLL
+	netpoll_poll_unlock(have);
+#endif
+
+	return work;
+}
+
 static void net_rx_action(struct softirq_action *h)
 {
 	struct softnet_data *sd = &__get_cpu_var(softnet_data);
 	unsigned long time_limit = jiffies + 2;
 	int budget = netdev_budget;
-	void *have;
+	LIST_HEAD(list);
+	LIST_HEAD(repoll);
 
 	local_irq_disable();
+	list_splice_init(&sd->poll_list, &list);
+	local_irq_enable();
 
-	while (!list_empty(&sd->poll_list)) {
+	for (;;) {
 		struct napi_struct *n;
-		int work, weight;
 
-		/* If softirq window is exhuasted then punt.
+		if (list_empty(&list)) {
+			if (!sd_has_rps_ipi_waiting(sd) && list_empty(&repoll))
+				return;
+			break;
+		}
+
+		n = list_first_entry(&list, struct napi_struct, poll_list);
+		budget -= napi_poll(n, &repoll);
+
+		/* If softirq window is exhausted then punt.
 		 * Allow this to run for 2 jiffies since which will allow
 		 * an average latency of 1.5/HZ.
 		 */
-		if (unlikely(budget <= 0 || time_after_eq(jiffies, time_limit)))
-			goto softnet_break;
-
-		local_irq_enable();
-
-		/* Even though interrupts have been re-enabled, this
-		 * access is safe because interrupts can only add new
-		 * entries to the tail of this list, and only ->poll()
-		 * calls can remove this head entry from the list.
-		 */
-		n = list_first_entry(&sd->poll_list, struct napi_struct, poll_list);
-
-		have = netpoll_poll_lock(n);
-
-		weight = n->weight;
-
-		/* This NAPI_STATE_SCHED test is for avoiding a race
-		 * with netpoll's poll_napi().  Only the entity which
-		 * obtains the lock and sees NAPI_STATE_SCHED set will
-		 * actually make the ->poll() call.  Therefore we avoid
-		 * accidentally calling ->poll() when NAPI is not scheduled.
-		 */
-		work = 0;
-		if (test_bit(NAPI_STATE_SCHED, &n->state)) {
-			work = n->poll(n, weight);
-			trace_napi_poll(n);
+		if (unlikely(budget <= 0 ||
+			     time_after_eq(jiffies, time_limit))) {
+			sd->time_squeeze++;
+			break;
 		}
-
-		WARN_ON_ONCE(work > weight);
-
-		budget -= work;
-
-		local_irq_disable();
-
-		/* Drivers must not modify the NAPI state if they
-		 * consume the entire weight.  In such cases this code
-		 * still "owns" the NAPI instance and therefore can
-		 * move the instance around on the list at-will.
-		 */
-		if (unlikely(work == weight)) {
-			if (unlikely(napi_disable_pending(n))) {
-				local_irq_enable();
-				napi_complete(n);
-				local_irq_disable();
-			} else
-				list_move_tail(&n->poll_list, &sd->poll_list);
-		}
-
-		netpoll_poll_unlock(have);
 	}
-out:
+
+	local_irq_disable();
+
+	list_splice_tail_init(&sd->poll_list, &list);
+	list_splice_tail(&repoll, &list);
+	list_splice(&list, &sd->poll_list);
+	if (!list_empty(&sd->poll_list))
+		__raise_softirq_irqoff(NET_RX_SOFTIRQ);
+
 	net_rps_action_and_irq_enable(sd);
-
-	return;
-
-softnet_break:
-	sd->time_squeeze++;
-	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
-	goto out;
 }
 
 static gifconf_func_t *gifconf_list[NPROTO];
@@ -4832,9 +4875,9 @@ void dev_set_rx_mode(struct net_device *dev)
  *
  *	Get the combination of flag bits exported through APIs to userspace.
  */
-unsigned dev_get_flags(const struct net_device *dev)
+unsigned int dev_get_flags(const struct net_device *dev)
 {
-	unsigned flags;
+	unsigned int flags;
 
 	flags = (dev->flags & ~(IFF_PROMISC |
 				IFF_ALLMULTI |
@@ -5435,6 +5478,7 @@ static void net_set_todo(struct net_device *dev)
 static void rollback_registered_many(struct list_head *head)
 {
 	struct net_device *dev, *tmp;
+	LIST_HEAD(close_head);
 
 	BUG_ON(dev_boot_phase);
 	ASSERT_RTNL();
@@ -5457,13 +5501,16 @@ static void rollback_registered_many(struct list_head *head)
 	}
 
 	/* If device is running, close it first. */
-	dev_close_many(head);
+	list_for_each_entry(dev, head, unreg_list)
+		list_add_tail(&dev->close_list, &close_head);
+	dev_close_many(&close_head, true);
 
 	list_for_each_entry(dev, head, unreg_list) {
 		/* And unlink it from device chain. */
 		unlist_netdevice(dev);
 
 		dev->reg_state = NETREG_UNREGISTERING;
+		on_each_cpu(flush_backlog, dev, 1);
 	}
 
 	synchronize_net();
@@ -6025,8 +6072,6 @@ void netdev_run_todo(void)
 
 		dev->reg_state = NETREG_UNREGISTERED;
 
-		on_each_cpu(flush_backlog, dev, 1);
-
 		netdev_wait_allrefs(dev);
 
 		/* paranoia */
@@ -6174,6 +6219,7 @@ struct net_device *alloc_netdev_mqs(int sizeof_priv, const char *name,
 
 	INIT_LIST_HEAD(&dev->napi_list);
 	INIT_LIST_HEAD(&dev->unreg_list);
+	INIT_LIST_HEAD(&dev->close_list);
 	INIT_LIST_HEAD(&dev->link_watch_list);
 	dev->priv_flags = IFF_XMIT_DST_RELEASE;
 	setup(dev);
@@ -6301,6 +6347,9 @@ EXPORT_SYMBOL(unregister_netdevice_queue);
 /**
  *	unregister_netdevice_many - unregister many devices
  *	@head: list of devices
+ *
+ *  Note: As most callers use a stack allocated list_head,
+ *  we force a list_del() to make sure stack wont be corrupted later.
  */
 void unregister_netdevice_many(struct list_head *head)
 {
@@ -6310,6 +6359,7 @@ void unregister_netdevice_many(struct list_head *head)
 		rollback_registered_many(head);
 		list_for_each_entry(dev, head, unreg_list)
 			net_set_todo(dev);
+		list_del(head);
 	}
 }
 EXPORT_SYMBOL(unregister_netdevice_many);
@@ -6714,7 +6764,6 @@ static void __net_exit default_device_exit_batch(struct list_head *net_list)
 		}
 	}
 	unregister_netdevice_many(&dev_kill_list);
-	list_del(&dev_kill_list);
 	rtnl_unlock();
 }
 

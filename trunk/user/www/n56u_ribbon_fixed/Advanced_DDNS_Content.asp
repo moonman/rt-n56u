@@ -232,6 +232,52 @@ function show_asus_alert(hname)
 		alert("<#LANHostConfig_x_DDNS_alarm_12#>");
 }
 
+function openLink(s) {
+	var tourl = "";
+	var link_params = "toolbar=yes,location=yes,directories=no,status=yes,menubar=yes,scrollbars=yes,resizable=yes,copyhistory=no,width=640,height=480";
+	var o1 = (s == 'x_DDNSServer2') ? document.form.ddns2_server : document.form.ddns_server_x;
+	if (o1.value == "WWW.DYNDNS.ORG")
+		tourl = "https://account.dyn.com/entrance/";
+	else if (o1.value == 'WWW.TZO.COM')
+		tourl = "http://signup.tzo.com";
+	else if (o1.value == 'WWW.ZONEEDIT.COM')
+		tourl = "http://www.zoneedit.com/signUp.html";
+	else if (o1.value == 'WWW.EASYDNS.COM')
+		tourl = "https://web.easydns.com/Open_Account/";
+	else if (o1.value == 'WWW.NO-IP.COM')
+		tourl = "http://www.noip.com/newUser.php";
+	else if (o1.value == 'WWW.TUNNELBROKER.NET')
+		tourl = "http://www.tunnelbroker.net/register.php";
+	else if (o1.value == 'DNS.HE.NET')
+		tourl = "http://ipv6.he.net/certification/register.php";
+	else if (o1.value == 'WWW.DNSEXIT.COM')
+		tourl = "https://www.dnsexit.com/Direct.sv?cmd=signup";
+	else if (o1.value == 'WWW.CHANGEIP.COM')
+		tourl = "https://www.changeip.com/accounts/register.php";
+	else if (o1.value == 'WWW.DNSOMATIC.COM')
+		tourl = "https://www.dnsomatic.com/create/";
+	else if (o1.value == 'WWW.SITELUTIONS.COM')
+		tourl = "https://sitelutions.com/signup";
+	else if (o1.value == 'WWW.NIC.RU')
+		tourl = "https://www.nic.ru/dns/service/dns_hosting/dns_master/dynamic_dns.html";
+	else if (o1.value == 'WWW.DUCKDNS.ORG')
+		tourl = "https://duckdns.org/";
+	else if (o1.value == 'WWW.DTDNS.COM')
+		tourl = "https://www.dtdns.com/dtsite/register";
+	else if (o1.value == 'WWW.DHIS.ORG')
+		tourl = "http://dhis.org/WebEngine.ipo?context=dhis.website.register";
+	else if (o1.value == 'TB.NETASSIST.UA')
+		tourl = "http://tb.netassist.ua/reg.php";
+	else if (o1.value == 'IPV4.NSUPDATE.INFO')
+		tourl = "https://nsupdate.info/account/register/";
+	else if (o1.value == 'FREEDNS.AFRAID.ORG')
+		tourl = "http://freedns.afraid.org/signup/";
+	else
+		return;
+	link = window.open(tourl, "DDNSLink", link_params);
+	if (!link.opener) link.opener = self;
+}
+
 function validForm(){
 	if(document.form.ddns_enable_x[0].checked){
 		if(document.form.ddns_server_x.selectedIndex == 0){
@@ -379,6 +425,9 @@ function checkDDNSReturnCode(){
                                                     <option value="WWW.DHIS.ORG"         <% nvram_match_x("","ddns_server_x", "WWW.DHIS.ORG","selected"); %>>www.dhis.org</option>
                                                     <option value="WWW.NIC.RU"           <% nvram_match_x("","ddns_server_x", "WWW.NIC.RU","selected"); %>>www.nic.ru (RU-CENTER)</option>
                                                     <option value="WWW.DUCKDNS.ORG"      <% nvram_match_x("","ddns_server_x", "WWW.DUCKDNS.ORG","selected"); %>>www.duckdns.org</option>
+                                                    <option value="WWW.DTDNS.COM"        <% nvram_match_x("","ddns_server_x", "WWW.DTDNS.COM","selected"); %>>www.dtdns.com</option>
+                                                    <option value="WWW.OVH.COM"          <% nvram_match_x("","ddns_server_x", "WWW.OVH.COM","selected"); %>>www.ovh.com</option>
+                                                    <option value="WWW.LOOPIA.COM"       <% nvram_match_x("","ddns_server_x", "WWW.LOOPIA.COM","selected"); %>>www.loopia.com</option>
                                                     <option value="WWW.TUNNELBROKER.NET" <% nvram_match_x("","ddns_server_x", "WWW.TUNNELBROKER.NET","selected"); %>>www.tunnelbroker.net (HE)</option>
                                                     <option value="DNS.HE.NET"           <% nvram_match_x("","ddns_server_x", "DNS.HE.NET","selected"); %>>dns.he.net (HE)</option>
                                                     <option value="TB.NETASSIST.UA"      <% nvram_match_x("","ddns_server_x", "TB.NETASSIST.UA","selected"); %>>tb.netassist.ua</option>
@@ -392,7 +441,7 @@ function checkDDNSReturnCode(){
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,24,3);"><#LANHostConfig_x_DDNSHostNames_itemname#></a></th>
                                             <td>
                                                 <div id="ddnsname_input" style="display:none;">
-                                                    <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" id="ddns_hostname_x" name="ddns_hostname_x" value="<% nvram_get_x("","ddns_hostname_x"); %>" onKeyPress="return is_string(this)">
+                                                    <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" id="ddns_hostname_x" name="ddns_hostname_x" value="<% nvram_get_x("","ddns_hostname_x"); %>" onKeyPress="return is_string(this,event);" />
                                                 </div>
                                                 <div id="asusddnsname_input" style="display:none;">
                                                     <input type="text" name="DDNSName" id="DDNSName" style="width: 110px;" placeholder="<#asusddns_inputhint#>">.asuscomm.com&nbsp;&nbsp;
@@ -403,26 +452,26 @@ function checkDDNSReturnCode(){
                                         <tr id="row_ddns_hname2">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,24,3);"><#LANHostConfig_x_DDNSHostNames_itemname#></a></th>
                                             <td>
-                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns_hostname2_x" value="<% nvram_get_x("","ddns_hostname2_x"); %>" onKeyPress="return is_string(this)">
+                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns_hostname2_x" value="<% nvram_get_x("","ddns_hostname2_x"); %>" onKeyPress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr id="row_ddns_hname3">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,24,3);"><#LANHostConfig_x_DDNSHostNames_itemname#></a></th>
                                             <td>
-                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns_hostname3_x" value="<% nvram_get_x("","ddns_hostname3_x"); %>" onKeyPress="return is_string(this)">
+                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns_hostname3_x" value="<% nvram_get_x("","ddns_hostname3_x"); %>" onKeyPress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr id="row_ddns_user">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,24,1);"><#LANHostConfig_x_DDNSUserName_itemname#></a></th>
                                             <td>
-                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns_username_x" value="<% nvram_get_x("","ddns_username_x"); %>" onKeyPress="return is_string(this)">
+                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns_username_x" value="<% nvram_get_x("","ddns_username_x"); %>" onKeyPress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr id="row_ddns_pass">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,24,2);"><#LANHostConfig_x_DDNSPassword_itemname#></a></th>
                                             <td>
                                                 <div class="input-append">
-                                                    <input type="password" maxlength="64" class="input" size="32" name="ddns_passwd_x" id="ddns_passwd_x" style="width: 175px;" value="<% nvram_get_x("","ddns_passwd_x"); %>">
+                                                    <input type="password" maxlength="64" class="input" size="32" name="ddns_passwd_x" id="ddns_passwd_x" style="width: 175px;" value="<% nvram_get_x("","ddns_passwd_x"); %>" />
                                                     <button style="margin-left: -5px;" class="btn" type="button" onclick="passwordShowHide('ddns_passwd_x')"><i class="icon-eye-close"></i></button>
                                                 </div>
                                             </td>
@@ -467,6 +516,9 @@ function checkDDNSReturnCode(){
                                                     <option value="WWW.ZERIGO.COM"       <% nvram_match_x("","ddns2_server", "WWW.ZERIGO.COM","selected"); %>>www.zerigo.com</option>
                                                     <option value="WWW.DHIS.ORG"         <% nvram_match_x("","ddns2_server", "WWW.DHIS.ORG","selected"); %>>www.dhis.org</option>
                                                     <option value="WWW.DUCKDNS.ORG"      <% nvram_match_x("","ddns2_server", "WWW.DUCKDNS.ORG","selected"); %>>www.duckdns.org</option>
+                                                    <option value="WWW.DTDNS.COM"        <% nvram_match_x("","ddns2_server", "WWW.DTDNS.COM","selected"); %>>www.dtdns.com</option>
+                                                    <option value="WWW.OVH.COM"          <% nvram_match_x("","ddns2_server", "WWW.OVH.COM","selected"); %>>www.ovh.com</option>
+                                                    <option value="WWW.LOOPIA.COM"       <% nvram_match_x("","ddns2_server", "WWW.LOOPIA.COM","selected"); %>>www.loopia.com</option>
                                                     <option value="WWW.TUNNELBROKER.NET" <% nvram_match_x("","ddns2_server", "WWW.TUNNELBROKER.NET","selected"); %>>www.tunnelbroker.net (HE)</option>
                                                     <option value="DNS.HE.NET"           <% nvram_match_x("","ddns2_server", "DNS.HE.NET","selected"); %>>dns.he.net (HE)</option>
                                                     <option value="TB.NETASSIST.UA"      <% nvram_match_x("","ddns2_server", "TB.NETASSIST.UA","selected"); %>>tb.netassist.ua</option>
@@ -479,13 +531,13 @@ function checkDDNSReturnCode(){
                                         <tr id="row_ddns2_hname">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,24,3);"><#LANHostConfig_x_DDNSHostNames_itemname#></a></th>
                                             <td>
-                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns2_hname" value="<% nvram_get_x("","ddns2_hname"); %>" onKeyPress="return is_string(this)">
+                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns2_hname" value="<% nvram_get_x("","ddns2_hname"); %>" onKeyPress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr id="row_ddns2_user">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,24,1);"><#LANHostConfig_x_DDNSUserName_itemname#></a></th>
                                             <td>
-                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns2_user" value="<% nvram_get_x("","ddns2_user"); %>" onKeyPress="return is_string(this)">
+                                                <input type="text" class="input" maxlength="64" size="48" style="width: 286px;" name="ddns2_user" value="<% nvram_get_x("","ddns2_user"); %>" onKeyPress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr id="row_ddns2_pass">
@@ -539,6 +591,7 @@ function checkDDNSReturnCode(){
                                                     <option value="10" <% nvram_match_x("", "ddns_checkip", "10","selected"); %>>checkip.two-dns.de</option>
                                                     <option value="11" <% nvram_match_x("", "ddns_checkip", "11","selected"); %>>ipv4.wtfismyip.com/text</option>
                                                     <option value="12" <% nvram_match_x("", "ddns_checkip", "12","selected"); %>>ipv4.nsupdate.info/myip</option>
+                                                    <option value="13" <% nvram_match_x("", "ddns_checkip", "13","selected"); %>>myip.dtdns.com</option>
                                                 </select>
                                             </td>
                                         </tr>

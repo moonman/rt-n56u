@@ -51,9 +51,9 @@ PACKAGE_STRING "\n"
 
 // Local function Prototypes
 static void signalHandler(int);
-int     igmpProxyInit();
-void    igmpProxyCleanUp();
-void    igmpProxyRun();
+static int  igmpProxyInit();
+static void igmpProxyCleanUp();
+static void igmpProxyRun();
 
 // Global vars...
 static int sighandled = 0;
@@ -125,16 +125,9 @@ int main( int ArgCn, char *ArgVc[] ) {
         }
 
 	if ( !Log2Stderr ) {
-
-	    // Only daemon goes past this line...
-	    if (fork()) exit(0);
-
-	    // Detach daemon from terminal
-	    if ( close( 0 ) < 0 || close( 1 ) < 0 || close( 2 ) < 0
-		 || open( "/dev/null", 0 ) != 0 || dup2( 0, 1 ) < 0 || dup2( 0, 2 ) < 0
-		 || setpgrp() < 0
-	       ) {
+	    if ( daemon(1, 0) < 0 ) {
 		my_log( LOG_ERR, errno, "failed to detach daemon" );
+		exit(errno);
 	    }
 	}
 
@@ -157,7 +150,7 @@ int main( int ArgCn, char *ArgVc[] ) {
 /**
 *   Handles the initial startup of the daemon.
 */
-int igmpProxyInit() {
+static int igmpProxyInit() {
     struct sigaction sa;
     int Err;
 
@@ -225,7 +218,7 @@ int igmpProxyInit() {
 /**
 *   Clean up all on exit...
 */
-void igmpProxyCleanUp() {
+static void igmpProxyCleanUp() {
 
     my_log( LOG_DEBUG, 0, "clean handler called" );
     
@@ -248,7 +241,7 @@ static void getuptime(struct timeval *tv)
 /**
 *   Main daemon loop.
 */
-void igmpProxyRun() {
+static void igmpProxyRun() {
     // Get the config.
     //struct Config *config = getCommonConfig();
     // Set some needed values.
@@ -300,7 +293,7 @@ void igmpProxyRun() {
 
         // log and ignore failures
         if( Rt < 0 ) {
-            my_log( LOG_WARNING, errno, "select() failure" );
+            if (errno != EINTR) my_log( LOG_WARNING, errno, "select() failure" );
             continue;
         }
         else if( Rt > 0 ) {

@@ -44,6 +44,10 @@ function initial(){
 		o1.remove(0);
 		o1.options[0].text = "a/n Mixed (*)";
 		insert_vht_bw(0);
+		o1 = document.form.wl_mcs_mode;
+		o1.remove(1);
+		o1.remove(1);
+		o1.remove(1);
 	}
 
 	document.form.wl_radio_date_x_Sun.checked = getDateCheck(document.form.wl_radio_date_x.value, 0);
@@ -73,7 +77,7 @@ function initial(){
 	if(document.form.wl_wpa_psk.value.length < 1)
 		document.form.wl_wpa_psk.value = "Please type Password";
 
-	wl_nband_select(1);
+	insertChannelOption();
 	wl_auth_mode_change(1);
 
 	document.form.wl_channel.value = document.form.wl_channel_orig.value;
@@ -82,6 +86,7 @@ function initial(){
 
 	automode_hint();
 	enableExtChRows(document.form.wl_gmode);
+	insertExtChannelOption();
 }
 
 function applyRule(){
@@ -243,18 +248,6 @@ function validate_wlphrase(s, v, obj){
 	return true;
 }
 
-function wl_nband_select(ch){
-	if(ch == "1"){
-		document.form.wl_nband.value = 1;
-		insertExtChannelOption();
-		return change_common_radio(this, 'WLANConfig11a', 'wl_nband', '1');
-	}
-	else{
-		document.form.wl_nband.value = 2;
-		insertExtChannelOption();
-		return change_common_radio(this, 'WLANConfig11a', 'wl_nband', '2');
-	}
-}
 </script>
 </head>
 
@@ -296,7 +289,6 @@ function wl_nband_select(ch){
     <input type="hidden" name="wl_phrase_x_org" value="<% nvram_char_to_ascii("", "wl_phrase_x"); %>">
     <input type="hidden" name="wl_mode_x" value="<% nvram_get_x("","wl_mode_x"); %>">
     <input type="hidden" name="wl_nmode" value="<% nvram_get_x("","wl_nmode"); %>">
-    <input type="hidden" name="wl_nband" value="1">
     <input type="hidden" name="wl_key_type" value='<% nvram_get_x("","wl_key_type"); %>'>
     <input type="hidden" name="wl_channel_orig" value='<% nvram_get_x("","wl_channel"); %>'>
 
@@ -355,10 +347,10 @@ function wl_nband_select(ch){
                                         <tr>
                                             <th style="border-top: 0 none;"><a class="help_tooltip"  href="javascript:void(0);" onmouseover="openTooltip(this, 0, 24);"><#WLANConfig11b_x_RadioEnableTime_itemname#></a></th>
                                             <td style="border-top: 0 none;">
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time_x_starthour" onKeyPress="return is_number(this)" />:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time_x_startmin" onKeyPress="return is_number(this)" />&nbsp;-&nbsp;
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time_x_endhour" onKeyPress="return is_number(this)" />:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time_x_endmin" onKeyPress="return is_number(this)" />
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time_x_starthour" onKeyPress="return is_number(this,event);" />:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time_x_startmin" onKeyPress="return is_number(this,event);" />&nbsp;-&nbsp;
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time_x_endhour" onKeyPress="return is_number(this,event);" />:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time_x_endmin" onKeyPress="return is_number(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
@@ -373,15 +365,15 @@ function wl_nband_select(ch){
                                         <tr>
                                             <th style="border-top: 0 none;"><#WLANConfig11b_x_RadioEnableTime_itemname2#></th>
                                             <td style="border-top: 0 none;">
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time2_x_starthour" onKeyPress="return is_number(this)" />:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time2_x_startmin" onKeyPress="return is_number(this)" />&nbsp;-&nbsp;
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time2_x_endhour" onKeyPress="return is_number(this)" />:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time2_x_endmin" onKeyPress="return is_number(this)" />
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time2_x_starthour" onKeyPress="return is_number(this,event);" />:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time2_x_startmin" onKeyPress="return is_number(this,event);" />&nbsp;-&nbsp;
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time2_x_endhour" onKeyPress="return is_number(this,event);" />:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="wl_radio_time2_x_endmin" onKeyPress="return is_number(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript: void(0)" onmouseover="openTooltip(this, 0, 1);"><#WLANConfig11b_SSID_itemname#></a></th>
-                                            <td><input type="text" maxlength="32" class="input" size="32" name="wl_ssid" value="" onkeypress="return is_string(this)"></td>
+                                            <td><input type="text" maxlength="32" class="input" size="32" name="wl_ssid" value="" onkeypress="return is_string(this,event);"></td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 2);"><#WLANConfig11b_x_BlockBCSSID_itemname#></a></th>
@@ -421,10 +413,9 @@ function wl_nband_select(ch){
                                             </td>
                                         </tr>
                                         <tr>
-                                            <th><a id="wl_channel_select" class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 3);"><#WLANConfig11b_Channel_itemname#></a></th>
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 3);"><#WLANConfig11b_Channel_itemname#></a></th>
                                             <td>
                                                 <select name="wl_channel" class="input" onChange="return change_common_wl(this, 'WLANConfig11a', 'wl_channel')">
-                                                    <!-- % select_channel("WLANConfig11a"); % -->
                                                 </select>
                                             </td>
                                         </tr>
@@ -433,6 +424,23 @@ function wl_nband_select(ch){
                                             <td>
                                                 <select name="wl_HT_EXTCHA" class="input">
                                                     <option value="1" selected>Auto</option>
+                                                </select>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th><#WIFIGuestMCS#></th>
+                                            <td>
+                                                <select name="wl_mcs_mode" class="input">
+                                                    <option value="0" <% nvram_match_x("", "wl_mcs_mode", "0", "selected"); %>><#checkbox_No#> (*)</option>
+                                                    <option value="7" <% nvram_match_x("", "wl_mcs_mode", "7", "selected"); %>>VHT (1S) 88 Mbps</option>
+                                                    <option value="8" <% nvram_match_x("", "wl_mcs_mode", "8", "selected"); %>>VHT (1S) 58 Mbps</option>
+                                                    <option value="9" <% nvram_match_x("", "wl_mcs_mode", "9", "selected"); %>>VHT (1S) 29 Mbps</option>
+                                                    <option value="1" <% nvram_match_x("", "wl_mcs_mode", "1", "selected"); %>>HTMIX (1S) 45 Mbps</option>
+                                                    <option value="2" <% nvram_match_x("", "wl_mcs_mode", "2", "selected"); %>>HTMIX (1S) 30 Mbps</option>
+                                                    <option value="3" <% nvram_match_x("", "wl_mcs_mode", "3", "selected"); %>>HTMIX (1S) 15 Mbps</option>
+                                                    <option value="4" <% nvram_match_x("", "wl_mcs_mode", "4", "selected"); %>>OFDM 12 Mbps</option>
+                                                    <option value="5" <% nvram_match_x("", "wl_mcs_mode", "5", "selected"); %>>OFDM 9 Mbps</option>
+                                                    <option value="6" <% nvram_match_x("", "wl_mcs_mode", "6", "selected"); %>>OFDM 6 Mbps</option>
                                                 </select>
                                             </td>
                                         </tr>
@@ -494,45 +502,45 @@ function wl_nband_select(ch){
                                             </td>
                                         </tr>
                                         <tr id="row_wep3">
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 18);"><#WLANConfig11b_WEPKey1_itemname#></th>
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 18);"><#WLANConfig11b_WEPKey1_itemname#></a></th>
                                             <td><input type="text" name="wl_key1" id="wl_key1" maxlength="32" class="input" size="34" value="" onKeyUp="return change_wlkey(this, 'WLANConfig11a');"></td>
                                         </tr>
                                         <tr id="row_wep4">
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 18);"><#WLANConfig11b_WEPKey2_itemname#></th>
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 18);"><#WLANConfig11b_WEPKey2_itemname#></a></th>
                                             <td><input type="text" name="wl_key2" id="wl_key2" maxlength="32" class="input" size="34" value="" onKeyUp="return change_wlkey(this, 'WLANConfig11a');"></td>
                                         </tr>
                                         <tr id="row_wep5">
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 18);"><#WLANConfig11b_WEPKey3_itemname#></th>
-                                            <td><input type="text" name="wl_key3" id="wl_key3" maxlength="32" class="input" size="34" value="" onKeyUp="return change_wlkey(this, 'WLANConfig11a');"></td>
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 18);"><#WLANConfig11b_WEPKey3_itemname#></a></th>
+                                            <td><input type="text" name="wl_key3" id="wl_key3" maxlength="32" class="input" size="34" value="" onKeyUp="return change_wlkey(this, 'WLANConfig11a');"/></td>
                                         </tr>
                                         <tr id="row_wep6">
-                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 18);"><#WLANConfig11b_WEPKey4_itemname#></th>
-                                            <td><input type="text" name="wl_key4" id="wl_key4" maxlength="32" class="input" size="34" value="" onKeyUp="return change_wlkey(this, 'WLANConfig11a');"></td>
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 18);"><#WLANConfig11b_WEPKey4_itemname#></a></th>
+                                            <td><input type="text" name="wl_key4" id="wl_key4" maxlength="32" class="input" size="34" value="" onKeyUp="return change_wlkey(this, 'WLANConfig11a');"/></td>
                                         </tr>
                                         <tr id="row_wep7">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 8);"><#WLANConfig11b_x_Phrase_itemname#></a></th>
                                             <td>
-                                                <input type="text" name="wl_phrase_x" maxlength="64" class="input" size="32" value="" onKeyUp="return is_wlphrase('WLANConfig11a', 'wl_phrase_x', this);">
+                                                <input type="text" name="wl_phrase_x" maxlength="64" class="input" size="32" value="" onKeyUp="return is_wlphrase('WLANConfig11a', 'wl_phrase_x', this);" />
                                             </td>
                                         </tr>
                                         <tr id="row_wpa3">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 11);"><#WLANConfig11b_x_Rekey_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="7" size="7" name="wl_wpa_gtk_rekey" class="input" value="<% nvram_get_x("", "wl_wpa_gtk_rekey"); %>" onKeyPress="return is_number(this)">
+                                                <input type="text" maxlength="7" size="7" name="wl_wpa_gtk_rekey" class="input" value="<% nvram_get_x("", "wl_wpa_gtk_rekey"); %>" onKeyPress="return is_number(this,event);" />
                                                 &nbsp;<span style="color:#888;">[0..2592000]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 17);"><#WLANConfig11b_TxPower_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="3" size="3" name="wl_TxPower" class="input" value="<% nvram_get_x("", "wl_TxPower"); %>" onblur="return validate_range(this, 0, 100)" onKeyPress="return is_number(this)">
+                                                <input type="text" maxlength="3" size="3" name="wl_TxPower" class="input" value="<% nvram_get_x("", "wl_TxPower"); %>" onKeyPress="return is_number(this,event);" onblur="return validate_range(this, 0, 100);" />
                                                 &nbsp;<span style="color:#888;">[0..100]</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><#WIFIRegionCode#></th>
                                             <td>
-                                                <select name="wl_country_code" class="input">
+                                                <select name="wl_country_code" class="input" onChange="return change_common_wl(this, 'WLANConfig11a', 'wl_country_code')">
                                                     <option value="US" <% nvram_match_x("", "wl_country_code", "US","selected"); %>>USA (channels 36,40,44,48,149,153,157,161,165)</option>
                                                     <option value="NO" <% nvram_match_x("", "wl_country_code", "NO","selected"); %>>Norway (channels 36,40,44,48,149,153,157,161,165)</option>
                                                     <option value="FR" <% nvram_match_x("", "wl_country_code", "FR","selected"); %>>France (channels 36,40,44,48)</option>

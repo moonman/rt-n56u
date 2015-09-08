@@ -4246,14 +4246,21 @@ VOID APHandleRxDataFrame(
 
 		if (pEntry && IS_ENTRY_APCLI(pEntry))
 		{
-			if (!(pEntry && APCLI_IF_UP_CHECK(pAd, pEntry->MatchAPCLITabIdx)))
+			PAPCLI_STRUCT pApCliEntry;
+
+			if (!(APCLI_IF_UP_CHECK(pAd, pEntry->MatchAPCLITabIdx)))
 			{
 				goto err;
 			}
 
+			pApCliEntry = &pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx];
+
+			/* ApCli reconnect workaround - update ApCliRcvBeaconTime on RX activity too */
+			pApCliEntry->ApCliRcvBeaconTime = pAd->Mlme.Now32;
+
 #ifdef STATS_COUNT_SUPPORT
-			pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx].ApCliCounter.ReceivedByteCount.QuadPart += pRxWI->MPDUtotalByteCount;
-			pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx].ApCliCounter.ReceivedFragmentCount++;
+			pApCliEntry->ApCliCounter.ReceivedByteCount.QuadPart += pRxWI->MPDUtotalByteCount;
+			pApCliEntry->ApCliCounter.ReceivedFragmentCount++;
 #endif /* STATS_COUNT_SUPPORT */
 
 			FromWhichBSSID = pEntry->MatchAPCLITabIdx + MIN_NET_DEVICE_FOR_APCLI;
@@ -4263,7 +4270,7 @@ VOID APHandleRxDataFrame(
 			if (pRxD->Mcast || pRxD->Bcast)
 			{
 #ifdef STATS_COUNT_SUPPORT
-				pAd->ApCfg.ApCliTab[pEntry->MatchAPCLITabIdx].ApCliCounter.MulticastReceivedFrameCount++;
+				pApCliEntry->ApCliCounter.MulticastReceivedFrameCount++;
 #endif /* STATS_COUNT_SUPPORT */
 
 				/* Process the received broadcast frame for AP-Client. */
@@ -5137,7 +5144,7 @@ BOOLEAN APFowardWirelessStaToWirelessSta(
 			(FromWhichBSSID < HW_BEACON_MAX_NUM) &&
 			(pAd->ApCfg.MBSSID[FromWhichBSSID].StaCount > 1)))
 		{
-			if (pAd->ApCfg.MBSSID[FromWhichBSSID].IsolateInterStaMBCast == 0)
+			if (pAd->ApCfg.MBSSID[FromWhichBSSID].IsolateInterStaMBCast == FALSE)
 			{
 				bDirectForward = TRUE;
 			}
@@ -5145,7 +5152,7 @@ BOOLEAN APFowardWirelessStaToWirelessSta(
 
 		/* tell caller to deliver the packet to upper layer */
 		bAnnounce = TRUE;
-	}		
+	}
 	else
 	{
 		/* if destinated STA is a associated wireless STA */
@@ -5158,7 +5165,7 @@ BOOLEAN APFowardWirelessStaToWirelessSta(
 
 			if (FromWhichBSSID == pEntry->apidx)
 			{/* STAs in same SSID */
-				if ((pAd->ApCfg.MBSSID[pEntry->apidx].IsolateInterStaTraffic == 1))
+				if ((pAd->ApCfg.MBSSID[pEntry->apidx].IsolateInterStaTraffic == TRUE))
 				{
 					/* release the packet */
 					bDirectForward = FALSE;
@@ -5167,7 +5174,7 @@ BOOLEAN APFowardWirelessStaToWirelessSta(
 			}
 			else
 			{/* STAs in different SSID */
-				if (pAd->ApCfg.IsolateInterStaTrafficBTNBSSID == 1 ||
+				if (pAd->ApCfg.IsolateInterStaTrafficBTNBSSID == TRUE ||
 					((FromWhichBSSID < MAX_MBSSID_NUM(pAd)) &&
 					(FromWhichBSSID < HW_BEACON_MAX_NUM) &&
 					(pAd->ApCfg.MBSSID[pEntry->apidx].VLAN_VID != pAd->ApCfg.MBSSID[FromWhichBSSID].VLAN_VID)))

@@ -492,7 +492,7 @@ static void tcp_sack(const struct sk_buff *skb, unsigned int dataoff,
 }
 
 #ifdef CONFIG_NF_NAT_NEEDED
-static inline s16 nat_offset(const struct nf_conn *ct,
+static inline s32 nat_offset(const struct nf_conn *ct,
 			     enum ip_conntrack_dir dir,
 			     u32 seq)
 {
@@ -519,7 +519,7 @@ static bool tcp_in_window(const struct nf_conn *ct,
 	struct ip_ct_tcp_state *receiver = &state->seen[!dir];
 	const struct nf_conntrack_tuple *tuple = &ct->tuplehash[dir].tuple;
 	__u32 seq, ack, sack, end, win, swin;
-	s16 receiver_offset;
+	s32 receiver_offset;
 	bool res;
 #if defined (CONFIG_RA_NAT_NONE)
 	struct net *net = nf_ct_net(ct);
@@ -1156,21 +1156,22 @@ static int tcp_to_nlattr(struct sk_buff *skb, struct nlattr *nla,
 	if (!nest_parms)
 		goto nla_put_failure;
 
-	NLA_PUT_U8(skb, CTA_PROTOINFO_TCP_STATE, ct->proto.tcp.state);
-
-	NLA_PUT_U8(skb, CTA_PROTOINFO_TCP_WSCALE_ORIGINAL,
-		   ct->proto.tcp.seen[0].td_scale);
-
-	NLA_PUT_U8(skb, CTA_PROTOINFO_TCP_WSCALE_REPLY,
-		   ct->proto.tcp.seen[1].td_scale);
+	if (nla_put_u8(skb, CTA_PROTOINFO_TCP_STATE, ct->proto.tcp.state) ||
+	    nla_put_u8(skb, CTA_PROTOINFO_TCP_WSCALE_ORIGINAL,
+		       ct->proto.tcp.seen[0].td_scale) ||
+	    nla_put_u8(skb, CTA_PROTOINFO_TCP_WSCALE_REPLY,
+		       ct->proto.tcp.seen[1].td_scale))
+		goto nla_put_failure;
 
 	tmp.flags = ct->proto.tcp.seen[0].flags;
-	NLA_PUT(skb, CTA_PROTOINFO_TCP_FLAGS_ORIGINAL,
-		sizeof(struct nf_ct_tcp_flags), &tmp);
+	if (nla_put(skb, CTA_PROTOINFO_TCP_FLAGS_ORIGINAL,
+		    sizeof(struct nf_ct_tcp_flags), &tmp))
+		goto nla_put_failure;
 
 	tmp.flags = ct->proto.tcp.seen[1].flags;
-	NLA_PUT(skb, CTA_PROTOINFO_TCP_FLAGS_REPLY,
-		sizeof(struct nf_ct_tcp_flags), &tmp);
+	if (nla_put(skb, CTA_PROTOINFO_TCP_FLAGS_REPLY,
+		    sizeof(struct nf_ct_tcp_flags), &tmp))
+		goto nla_put_failure;
 	spin_unlock_bh(&ct->lock);
 
 	nla_nest_end(skb, nest_parms);
@@ -1319,28 +1320,29 @@ tcp_timeout_obj_to_nlattr(struct sk_buff *skb, const void *data)
 {
 	const unsigned int *timeouts = data;
 
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_SYN_SENT,
-			htonl(timeouts[TCP_CONNTRACK_SYN_SENT] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_SYN_RECV,
-			htonl(timeouts[TCP_CONNTRACK_SYN_RECV] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_ESTABLISHED,
-			htonl(timeouts[TCP_CONNTRACK_ESTABLISHED] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_FIN_WAIT,
-			htonl(timeouts[TCP_CONNTRACK_FIN_WAIT] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_CLOSE_WAIT,
-			htonl(timeouts[TCP_CONNTRACK_CLOSE_WAIT] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_LAST_ACK,
-			htonl(timeouts[TCP_CONNTRACK_LAST_ACK] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_TIME_WAIT,
-			htonl(timeouts[TCP_CONNTRACK_TIME_WAIT] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_CLOSE,
-			htonl(timeouts[TCP_CONNTRACK_CLOSE] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_SYN_SENT2,
-			htonl(timeouts[TCP_CONNTRACK_SYN_SENT2] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_RETRANS,
-			htonl(timeouts[TCP_CONNTRACK_RETRANS] / HZ));
-	NLA_PUT_BE32(skb, CTA_TIMEOUT_TCP_UNACK,
-			htonl(timeouts[TCP_CONNTRACK_UNACK] / HZ));
+	if (nla_put_be32(skb, CTA_TIMEOUT_TCP_SYN_SENT,
+			htonl(timeouts[TCP_CONNTRACK_SYN_SENT] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_SYN_RECV,
+			 htonl(timeouts[TCP_CONNTRACK_SYN_RECV] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_ESTABLISHED,
+			 htonl(timeouts[TCP_CONNTRACK_ESTABLISHED] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_FIN_WAIT,
+			 htonl(timeouts[TCP_CONNTRACK_FIN_WAIT] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_CLOSE_WAIT,
+			 htonl(timeouts[TCP_CONNTRACK_CLOSE_WAIT] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_LAST_ACK,
+			 htonl(timeouts[TCP_CONNTRACK_LAST_ACK] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_TIME_WAIT,
+			 htonl(timeouts[TCP_CONNTRACK_TIME_WAIT] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_CLOSE,
+			 htonl(timeouts[TCP_CONNTRACK_CLOSE] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_SYN_SENT2,
+			 htonl(timeouts[TCP_CONNTRACK_SYN_SENT2] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_RETRANS,
+			 htonl(timeouts[TCP_CONNTRACK_RETRANS] / HZ)) ||
+	    nla_put_be32(skb, CTA_TIMEOUT_TCP_UNACK,
+			 htonl(timeouts[TCP_CONNTRACK_UNACK] / HZ)))
+		goto nla_put_failure;
 	return 0;
 
 nla_put_failure:

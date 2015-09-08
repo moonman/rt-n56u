@@ -372,7 +372,8 @@ DBGPRINT(RT_DEBUG_FPGA, ("-->%s():\n", __FUNCTION__));
 
 	/* Do nothing if the driver is starting halt state. */
 	/* This might happen when timer already been fired before cancel timer with mlmehalt */
-	if (RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_HALT_IN_PROGRESS | fRTMP_ADAPTER_NIC_NOT_EXIST))
+	/* Fix Rx Ring FULL lead DMA Busy, when DUT is in reset stage */
+	if (RTMP_TEST_FLAG(pAd,  fRTMP_ADAPTER_NIC_NOT_EXIST))
 	{
 		RTMP_INT_LOCK(&pAd->LockInterrupt, flags);
 		pAd->int_disable_mask &= ~(INT_RX);
@@ -1058,7 +1059,7 @@ void mt_mac_int_3_tasklet(unsigned long data)
 		RTMP_INT_LOCK(&pAd->LockInterrupt, flags);
 		pAd->int_disable_mask &= ~(WF_MAC_INT_3);
 		RTMP_INT_UNLOCK(&pAd->LockInterrupt, flags);
-		DBGPRINT(RT_DEBUG_FPGA, ("<--%s():HALT in progress(Flags=0x%lx)!\n", __FUNCTION__, pAd->Flags));
+DBGPRINT(RT_DEBUG_FPGA, ("<--%s():HALT in progress(Flags=0x%lx)!\n", __FUNCTION__, pAd->Flags));
 		return;
 	}
 
@@ -1291,13 +1292,28 @@ VOID RTMPHandleInterrupt(VOID *pAdSrc)
 	RTMP_ADAPTER *pAd = (RTMP_ADAPTER *)pAdSrc;
 	UINT32 IntSource;
 //+++Add by Carter
-	UINT32 StatusRegister, EnableRegister, stat_reg = 0, en_reg = 0;
+	UINT32 StatusRegister, EnableRegister;
+#ifdef MT_MAC
+	UINT32 en_reg = 0, stat_reg = 0;
+#endif
 //---Add by Carter
 	POS_COOKIE pObj;
 	unsigned long flags=0;
 	UINT32 INT_RX_DATA = 0, INT_RX_CMD=0, TxCoherent = 0, RxCoherent = 0, FifoStaFullInt = 0;
 	UINT32 INT_MGMT_DLY = 0, INT_HCCA_DLY = 0, INT_AC3_DLY = 0, INT_AC2_DLY = 0, INT_AC1_DLY = 0, INT_AC0_DLY = 0, INT_BMC_DLY = 0;
-	UINT32 PreTBTTInt = 0, TBTTInt = 0, GPTimeOutInt = 0, RadarInt = 0, AutoWakeupInt = 0;
+#if defined(CONFIG_AP_SUPPORT) && defined(CARRIER_DETECTION_SUPPORT)
+	UINT32 RadarInt = 0;
+#endif /* defined(CONFIG_AP_SUPPORT) && defined(CARRIER_DETECTION_SUPPORT) */
+#if defined(RTMP_MAC) || defined(RLT_MAC) 
+	UINT32 PreTBTTInt = 0, TBTTInt = 0;
+#endif /* defined(RTMP_MAC) || defined(RLT_MAC)  */
+#if defined(RTMP_MAC) || defined(RLT_MAC) || defined(CONFIG_STA_SUPPORT)
+	UINT32 AutoWakeupInt = 0;
+#endif /* defined(RTMP_MAC) || defined(RLT_MAC) || defined(CONFIG_STA_SUPPORT) */
+#if (defined(CONFIG_AP_SUPPORT) && defined(DFS_SUPPORT)) || defined(RTMP_MAC) || defined(RLT_MAC)
+	UINT32 GPTimeOutInt = 0;
+#endif /* (defined(CONFIG_AP_SUPPORT) && defined(DFS_SUPPORT)) || defined(RTMP_MAC) || defined(RLT_MAC) */
+
 
 	pObj = (POS_COOKIE) pAd->OS_Cookie;
 
@@ -1372,9 +1388,13 @@ VOID RTMPHandleInterrupt(VOID *pAdSrc)
 	if (RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_HALT_IN_PROGRESS)) {
 #ifdef MT_MAC
 		if (pAd->chipCap.hif_type == HIF_MT)
-        IntSource = IntSource & (MT_INT_CMD | MT_INT_RX_CMD | WF_MAC_INT_3);
-        if (!IntSource)
-            return;
+		{
+			/* Fix Rx Ring FULL lead DMA Busy, when DUT is in reset stage */
+        		IntSource = IntSource & (MT_INT_CMD | MT_INT_RX | WF_MAC_INT_3);
+		}
+
+		if (!IntSource)
+		    return;
 #endif /* MT_MAC */ 
     }
 
@@ -1404,7 +1424,9 @@ VOID RTMPHandleInterrupt(VOID *pAdSrc)
 //		TBTTInt = MT_TBTTInt;
 //		FifoStaFullInt = MT_FifoStaFullInt;
 //		GPTimeOutInt = MT_GPTimeOutInt;
+#if defined(CONFIG_AP_SUPPORT) && defined(CARRIER_DETECTION_SUPPORT)
 		RadarInt = 0;
+#endif /* defined(CONFIG_AP_SUPPORT) && defined(CARRIER_DETECTION_SUPPORT) */
 //		AutoWakeupInt = MT_AutoWakeupInt;
 		//McuCommand = MT_McuCommand;
 	}
@@ -1425,7 +1447,9 @@ VOID RTMPHandleInterrupt(VOID *pAdSrc)
 		PreTBTTInt = RLT_PreTBTTInt;
 		TBTTInt = RLT_TBTTInt;
 		GPTimeOutInt = RLT_GPTimeOutInt;
+#if defined(CONFIG_AP_SUPPORT) && defined(CARRIER_DETECTION_SUPPORT)
 		RadarInt = RLT_RadarInt;
+#endif /* defined(CONFIG_AP_SUPPORT) && defined(CARRIER_DETECTION_SUPPORT) */
 		AutoWakeupInt = RLT_AutoWakeupInt;
 		//McuCommand = RLT_McuCommand;
 	}
@@ -1445,7 +1469,9 @@ VOID RTMPHandleInterrupt(VOID *pAdSrc)
 		PreTBTTInt = RTMP_PreTBTTInt;
 		TBTTInt = RTMP_TBTTInt;
 		GPTimeOutInt = RTMP_GPTimeOutInt;
+#if defined(CONFIG_AP_SUPPORT) && defined(CARRIER_DETECTION_SUPPORT)
 		RadarInt = RTMP_RadarInt;
+#endif /* defined(CONFIG_AP_SUPPORT) && defined(CARRIER_DETECTION_SUPPORT) */
 		AutoWakeupInt = RTMP_AutoWakeupInt;
 		//McuCommand = RTMP_McuCommand;
 	}
@@ -1510,8 +1536,8 @@ redo:
 			RTMP_INT_LOCK(&pAd->LockInterrupt, flags);
 			if ((pAd->int_disable_mask & WF_MAC_INT_3) == 0)
 			{
-                rt2860_int_disable(pAd, WF_MAC_INT_3);
                 UINT32   Lowpart, Highpart;
+                rt2860_int_disable(pAd, WF_MAC_INT_3);
                 RTMP_IO_WRITE32(pAd, HWIER3, en_reg);
                 if (stat_reg & BIT31) {
 #ifdef DBG
@@ -1878,9 +1904,9 @@ VOID RTMPInitPCIeDevice(RT_CMD_PCIE_INIT *pConfig, VOID *pAdSrc)
 
 	pObj = (POS_COOKIE) pAd->OS_Cookie;
 	pci_read_config_word(pci_dev, pConfig->ConfigDeviceID, &device_id);
-#ifndef BB_SOC
+#ifndef RT_BIG_ENDIAN
 	device_id = le2cpu16(device_id);
-#endif /* BB_SOC */
+#endif /* RT_BIG_ENDIAN */
 	pObj->DeviceID = device_id;
 	DBGPRINT(RT_DEBUG_OFF, ("device_id =0x%x\n", device_id));
 

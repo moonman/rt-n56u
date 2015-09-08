@@ -312,7 +312,7 @@ int br_fdb_fillbuf(struct net_bridge *br, void *buf,
 
 			fe->is_local = f->is_local;
 			if (!f->is_static)
-				fe->ageing_timer_value = jiffies_to_clock_t(jiffies - f->updated);
+				fe->ageing_timer_value = jiffies_delta_to_clock_t(jiffies - f->updated);
 			++fe;
 			++num;
 		}
@@ -505,14 +505,14 @@ static int fdb_fill_info(struct sk_buff *skb, const struct net_bridge *br,
 	ndm->ndm_ifindex = fdb->dst ? fdb->dst->dev->ifindex : br->dev->ifindex;
 	ndm->ndm_state   = fdb_to_nud(fdb);
 
-	NLA_PUT(skb, NDA_LLADDR, ETH_ALEN, &fdb->addr);
-
+	if (nla_put(skb, NDA_LLADDR, ETH_ALEN, &fdb->addr))
+		goto nla_put_failure;
 	ci.ndm_used	 = jiffies_to_clock_t(now - fdb->used);
 	ci.ndm_confirmed = 0;
 	ci.ndm_updated	 = jiffies_to_clock_t(now - fdb->updated);
 	ci.ndm_refcnt	 = 0;
-	NLA_PUT(skb, NDA_CACHEINFO, sizeof(ci), &ci);
-
+	if (nla_put(skb, NDA_CACHEINFO, sizeof(ci), &ci))
+		goto nla_put_failure;
 	return nlmsg_end(skb, nlh);
 
 nla_put_failure:
@@ -548,8 +548,7 @@ static void fdb_notify(struct net_bridge *br,
 	rtnl_notify(skb, net, 0, RTNLGRP_NEIGH, NULL, GFP_ATOMIC);
 	return;
 errout:
-	if (err < 0)
-		rtnl_set_sk_err(net, RTNLGRP_NEIGH, err);
+	rtnl_set_sk_err(net, RTNLGRP_NEIGH, err);
 }
 
 /* Dump information about entries, in response to GETNEIGH */
@@ -683,9 +682,11 @@ int br_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh, void *arg)
 	}
 
 	if (ndm->ndm_flags & NTF_USE) {
+		local_bh_disable();
 		rcu_read_lock();
 		br_fdb_update(p->br, p, addr);
 		rcu_read_unlock();
+		local_bh_enable();
 	} else {
 		spin_lock_bh(&p->br->hash_lock);
 		err = fdb_add_entry(p, addr, ndm->ndm_state, nlh->nlmsg_flags);

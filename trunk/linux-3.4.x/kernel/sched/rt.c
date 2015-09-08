@@ -166,7 +166,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		goto err;
 	tg->rt_se = kzalloc(sizeof(rt_se) * nr_cpu_ids, GFP_KERNEL);
 	if (!tg->rt_se)
-		goto err;
+		goto err_free_rt_rq;
 
 	init_rt_bandwidth(&tg->rt_bandwidth,
 			ktime_to_ns(def_rt_bandwidth.rt_period), 0);
@@ -175,7 +175,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		rt_rq = kzalloc_node(sizeof(struct rt_rq),
 				     GFP_KERNEL, cpu_to_node(i));
 		if (!rt_rq)
-			goto err;
+			goto err_free_rt_se;
 
 		rt_se = kzalloc_node(sizeof(struct sched_rt_entity),
 				     GFP_KERNEL, cpu_to_node(i));
@@ -191,6 +191,10 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 
 err_free_rq:
 	kfree(rt_rq);
+err_free_rt_se:
+	kfree(tg->rt_se);
+err_free_rt_rq:
+	kfree(tg->rt_rq);
 err:
 	return 0;
 }
@@ -1287,7 +1291,12 @@ select_task_rq_rt(struct task_struct *p, int sd_flag, int flags)
 	    (p->rt.nr_cpus_allowed > 1)) {
 		int target = find_lowest_rq(p);
 
-		if (target != -1)
+		/*
+		 * Don't bother moving it if the destination CPU is
+		 * not running a lower priority task.
+		 */
+		if (target != -1 &&
+		    p->prio < cpu_rq(target)->rt.highest_prio.curr)
 			cpu = target;
 	}
 	rcu_read_unlock();
@@ -1563,6 +1572,16 @@ static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq)
 			break;
 
 		lowest_rq = cpu_rq(cpu);
+
+		if (lowest_rq->rt.highest_prio.curr <= task->prio) {
+			/*
+			 * Target rq has tasks of equal or higher priority,
+			 * retrying does not release any lock and is unlikely
+			 * to yield a different result.
+			 */
+			lowest_rq = NULL;
+			break;
+		}
 
 		/* if the prio of this runqueue changed, try again */
 		if (double_lock_balance(rq, lowest_rq)) {

@@ -514,25 +514,22 @@ static void ipgre_err(struct sk_buff *skb, u32 info)
 		break;
 	}
 
-	rcu_read_lock();
 	t = ipgre_tunnel_lookup(skb->dev, iph->daddr, iph->saddr,
 				flags & GRE_KEY ?
 				*(((__be32 *)p) + (grehlen / 4) - 1) : 0,
 				p[1]);
 	if (t == NULL || t->parms.iph.daddr == 0 ||
 	    ipv4_is_multicast(t->parms.iph.daddr))
-		goto out;
+		return;
 
 	if (t->parms.iph.ttl == 0 && type == ICMP_TIME_EXCEEDED)
-		goto out;
+		return;
 
 	if (time_before(jiffies, t->err_time + IPTUNNEL_ERR_TIMEO))
 		t->err_count++;
 	else
 		t->err_count = 1;
 	t->err_time = jiffies;
-out:
-	rcu_read_unlock();
 }
 
 static inline void ipgre_ecn_decapsulate(const struct iphdr *iph, struct sk_buff *skb)
@@ -570,7 +567,7 @@ static int ipgre_rcv(struct sk_buff *skb)
 	__be16 gre_proto;
 
 	if (!pskb_may_pull(skb, 16))
-		goto drop_nolock;
+		goto drop;
 
 	iph = ip_hdr(skb);
 	h = skb->data;
@@ -581,7 +578,7 @@ static int ipgre_rcv(struct sk_buff *skb)
 		   - We do not support routing headers.
 		 */
 		if (flags&(GRE_VERSION|GRE_ROUTING))
-			goto drop_nolock;
+			goto drop;
 
 		if (flags&GRE_CSUM) {
 			switch (skb->ip_summed) {
@@ -609,7 +606,6 @@ static int ipgre_rcv(struct sk_buff *skb)
 
 	gre_proto = *(__be16 *)(h + 2);
 
-	rcu_read_lock();
 	if ((tunnel = ipgre_tunnel_lookup(skb->dev,
 					  iph->saddr, iph->daddr, key,
 					  gre_proto))) {
@@ -682,14 +678,11 @@ static int ipgre_rcv(struct sk_buff *skb)
 
 		netif_rx(skb);
 
-		rcu_read_unlock();
 		return 0;
 	}
 	icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, 0);
 
 drop:
-	rcu_read_unlock();
-drop_nolock:
 	kfree_skb(skb);
 	return 0;
 }
@@ -710,6 +703,7 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 	int    gre_hlen;
 	__be32 dst;
 	int    mtu;
+	u8     ttl;
 
 	if (dev->type == ARPHRD_ETHER)
 		IPCB(skb)->flags = 0;
@@ -769,6 +763,7 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 			goto tx_error;
 	}
 
+	ttl = tiph->ttl;
 	tos = tiph->tos;
 	if (tos == 1) {
 		tos = 0;
@@ -861,6 +856,7 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 		dev_kfree_skb(skb);
 		skb = new_skb;
 		old_iph = ip_hdr(skb);
+		/* Warning : tiph value might point to freed memory */
 	}
 
 	skb_reset_transport_header(skb);
@@ -883,8 +879,9 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 	iph->tos		=	ipgre_ecn_encapsulate(tos, old_iph, skb);
 	iph->daddr		=	fl4.daddr;
 	iph->saddr		=	fl4.saddr;
+	iph->ttl		=	ttl;
 
-	if ((iph->ttl = tiph->ttl) == 0) {
+	if (ttl == 0) {
 		if (skb->protocol == htons(ETH_P_IP))
 			iph->ttl = old_iph->ttl;
 #if IS_ENABLED(CONFIG_IPV6)
@@ -1654,17 +1651,18 @@ static int ipgre_fill_info(struct sk_buff *skb, const struct net_device *dev)
 	struct ip_tunnel *t = netdev_priv(dev);
 	struct ip_tunnel_parm *p = &t->parms;
 
-	NLA_PUT_U32(skb, IFLA_GRE_LINK, p->link);
-	NLA_PUT_BE16(skb, IFLA_GRE_IFLAGS, p->i_flags);
-	NLA_PUT_BE16(skb, IFLA_GRE_OFLAGS, p->o_flags);
-	NLA_PUT_BE32(skb, IFLA_GRE_IKEY, p->i_key);
-	NLA_PUT_BE32(skb, IFLA_GRE_OKEY, p->o_key);
-	NLA_PUT_BE32(skb, IFLA_GRE_LOCAL, p->iph.saddr);
-	NLA_PUT_BE32(skb, IFLA_GRE_REMOTE, p->iph.daddr);
-	NLA_PUT_U8(skb, IFLA_GRE_TTL, p->iph.ttl);
-	NLA_PUT_U8(skb, IFLA_GRE_TOS, p->iph.tos);
-	NLA_PUT_U8(skb, IFLA_GRE_PMTUDISC, !!(p->iph.frag_off & htons(IP_DF)));
-
+	if (nla_put_u32(skb, IFLA_GRE_LINK, p->link) ||
+	    nla_put_be16(skb, IFLA_GRE_IFLAGS, p->i_flags) ||
+	    nla_put_be16(skb, IFLA_GRE_OFLAGS, p->o_flags) ||
+	    nla_put_be32(skb, IFLA_GRE_IKEY, p->i_key) ||
+	    nla_put_be32(skb, IFLA_GRE_OKEY, p->o_key) ||
+	    nla_put_be32(skb, IFLA_GRE_LOCAL, p->iph.saddr) ||
+	    nla_put_be32(skb, IFLA_GRE_REMOTE, p->iph.daddr) ||
+	    nla_put_u8(skb, IFLA_GRE_TTL, p->iph.ttl) ||
+	    nla_put_u8(skb, IFLA_GRE_TOS, p->iph.tos) ||
+	    nla_put_u8(skb, IFLA_GRE_PMTUDISC,
+		       !!(p->iph.frag_off & htons(IP_DF))))
+		goto nla_put_failure;
 	return 0;
 
 nla_put_failure:

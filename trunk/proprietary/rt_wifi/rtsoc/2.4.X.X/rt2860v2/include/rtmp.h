@@ -2045,7 +2045,9 @@ typedef struct _COMMON_CONFIG {
     BOOLEAN                 bMIMOPSEnable;
     BOOLEAN					bBADecline;
 	BOOLEAN					bDisableReordering;
+#ifdef DOT11N_DRAFT3
 	BOOLEAN					bForty_Mhz_Intolerant;
+#endif // DOT11N_DRAFT3 //
 	BOOLEAN					bExtChannelSwitchAnnouncement;
 	BOOLEAN					bRcvBSSWidthTriggerEvents;
 	ULONG					LastRcvBSSWidthTriggerEventsTime;
@@ -3031,7 +3033,7 @@ typedef struct _MAC_TABLE_ENTRY {
 
 	UCHAR       RateLen;
 	struct _MAC_TABLE_ENTRY *pNext;
-    USHORT      TxSeq[NUM_OF_TID];
+	USHORT      TxSeq[NUM_OF_TID];
 	USHORT		NonQosDataSeq;
 
 	RSSI_SAMPLE	RssiSample;
@@ -8592,8 +8594,10 @@ VOID dynamic_tune_be_tx_op(
 
 
 #ifdef DOT11_N_SUPPORT
+#ifdef DOT11N_DRAFT3
 VOID Handle_BSS_Width_Trigger_Events(
 	IN PRTMP_ADAPTER pAd);
+#endif // DOT11N_DRAFT3 //
 
 void build_ext_channel_switch_ie(
 	IN PRTMP_ADAPTER pAd,

@@ -89,7 +89,6 @@
 #include <linux/etherdevice.h>
 #include <linux/fddidevice.h>
 #include <linux/if_arp.h>
-#include <linux/trdevice.h>
 #include <linux/skbuff.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -148,14 +147,6 @@ static const struct neigh_ops arp_direct_ops = {
 	.connected_output =	neigh_direct_output,
 };
 
-static const struct neigh_ops arp_broken_ops = {
-	.family =		AF_INET,
-	.solicit =		arp_solicit,
-	.error_report =		arp_error_report,
-	.output =		neigh_compat_output,
-	.connected_output =	neigh_compat_output,
-};
-
 struct neigh_table arp_tbl = {
 	.family		= AF_INET,
 	.key_len	= 4,
@@ -192,9 +183,6 @@ int arp_mc_map(__be32 addr, u8 *haddr, struct net_device *dev, int dir)
 	case ARPHRD_FDDI:
 	case ARPHRD_IEEE802:
 		ip_eth_mc_map(addr, haddr);
-		return 0;
-	case ARPHRD_IEEE802_TR:
-		ip_tr_mc_map(addr, haddr);
 		return 0;
 	case ARPHRD_INFINIBAND:
 		ip_ib_mc_map(addr, dev->broadcast, haddr);
@@ -260,35 +248,6 @@ static int arp_constructor(struct neighbour *neigh)
 		   in old paradigm.
 		 */
 
-#if 1
-		/* So... these "amateur" devices are hopeless.
-		   The only thing, that I can say now:
-		   It is very sad that we need to keep ugly obsolete
-		   code to make them happy.
-
-		   They should be moved to more reasonable state, now
-		   they use rebuild_header INSTEAD OF hard_start_xmit!!!
-		   Besides that, they are sort of out of date
-		   (a lot of redundant clones/copies, useless in 2.1),
-		   I wonder why people believe that they work.
-		 */
-		switch (dev->type) {
-		default:
-			break;
-		case ARPHRD_ROSE:
-#if IS_ENABLED(CONFIG_AX25)
-		case ARPHRD_AX25:
-#if IS_ENABLED(CONFIG_NETROM)
-		case ARPHRD_NETROM:
-#endif
-			neigh->ops = &arp_broken_ops;
-			neigh->output = neigh->ops->output;
-			return 0;
-#else
-			break;
-#endif
-		}
-#endif
 		if (neigh->type == RTN_MULTICAST) {
 			neigh->nud_state = NUD_NOARP;
 			arp_mc_map(addr, neigh->ha, dev, 1);
@@ -323,7 +282,7 @@ static void arp_error_report(struct neighbour *neigh, struct sk_buff *skb)
 static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 {
 	__be32 saddr = 0;
-	u8  *dst_ha = NULL;
+	u8 dst_ha[MAX_ADDR_LEN], *dst_hw = NULL;
 	struct net_device *dev = neigh->dev;
 	__be32 target = *(__be32 *)neigh->primary_key;
 	int probes = atomic_read(&neigh->probes);
@@ -366,8 +325,8 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 		if (!(neigh->nud_state & NUD_VALID))
 			printk(KERN_DEBUG
 			       "trying to ucast probe in NUD_INVALID\n");
-		dst_ha = neigh->ha;
-		read_lock_bh(&neigh->lock);
+		neigh_ha_snapshot(dst_ha, neigh, dev);
+		dst_hw = dst_ha;
 	} else {
 		probes -= neigh->parms->app_probes;
 		if (probes < 0) {
@@ -379,9 +338,7 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 	}
 
 	arp_send(ARPOP_REQUEST, ETH_P_ARP, target, dev, saddr,
-		 dst_ha, dev->dev_addr, NULL);
-	if (dst_ha)
-		read_unlock_bh(&neigh->lock);
+		 dst_hw, dev->dev_addr, NULL);
 }
 
 static int arp_ignore(struct in_device *in_dev, __be32 sip, __be32 tip)
@@ -648,12 +605,6 @@ struct sk_buff *arp_create(int type, int ptype, __be32 dest_ip,
 		arp->ar_pro = htons(ETH_P_IP);
 		break;
 #endif
-#if IS_ENABLED(CONFIG_TR)
-	case ARPHRD_IEEE802_TR:
-		arp->ar_hrd = htons(ARPHRD_IEEE802);
-		arp->ar_pro = htons(ETH_P_IP);
-		break;
-#endif
 	}
 
 	arp->ar_hln = dev->addr_len;
@@ -752,11 +703,10 @@ static int arp_process(struct sk_buff *skb)
 			goto out;
 		break;
 	case ARPHRD_ETHER:
-	case ARPHRD_IEEE802_TR:
 	case ARPHRD_FDDI:
 	case ARPHRD_IEEE802:
 		/*
-		 * ETHERNET, Token Ring and Fibre Channel (which are IEEE 802
+		 * ETHERNET, and Fibre Channel (which are IEEE 802
 		 * devices, according to RFC 2625) devices will accept ARP
 		 * hardware types of either 1 (Ethernet) or 6 (IEEE 802.2).
 		 * This is the case also of FDDI, where the RFC 1390 says that
@@ -1067,7 +1017,7 @@ static int arp_req_set(struct net *net, struct arpreq *r,
 	neigh = __neigh_lookup_errno(&arp_tbl, &ip, dev);
 	err = PTR_ERR(neigh);
 	if (!IS_ERR(neigh)) {
-		unsigned state = NUD_STALE;
+		unsigned int state = NUD_STALE;
 		if (r->arp_flags & ATF_PERM)
 			state = NUD_PERMANENT;
 		err = neigh_update(neigh, (r->arp_flags & ATF_COM) ?
@@ -1079,7 +1029,7 @@ static int arp_req_set(struct net *net, struct arpreq *r,
 	return err;
 }
 
-static unsigned arp_state_to_flags(struct neighbour *neigh)
+static unsigned int arp_state_to_flags(struct neighbour *neigh)
 {
 	if (neigh->nud_state&NUD_PERMANENT)
 		return ATF_PERM | ATF_COM;
@@ -1101,14 +1051,16 @@ static int arp_req_get(struct arpreq *r, struct net_device *dev)
 
 	neigh = neigh_lookup(&arp_tbl, &ip, dev);
 	if (neigh) {
-		read_lock_bh(&neigh->lock);
-		memcpy(r->arp_ha.sa_data, neigh->ha, dev->addr_len);
-		r->arp_flags = arp_state_to_flags(neigh);
-		read_unlock_bh(&neigh->lock);
-		r->arp_ha.sa_family = dev->type;
-		strlcpy(r->arp_dev, dev->name, sizeof(r->arp_dev));
+		if (!(neigh->nud_state & NUD_NOARP)) {
+			read_lock_bh(&neigh->lock);
+			memcpy(r->arp_ha.sa_data, neigh->ha, dev->addr_len);
+			r->arp_flags = arp_state_to_flags(neigh);
+			read_unlock_bh(&neigh->lock);
+			r->arp_ha.sa_family = dev->type;
+			strlcpy(r->arp_dev, dev->name, sizeof(r->arp_dev));
+			err = 0;
+		}
 		neigh_release(neigh);
-		err = 0;
 	}
 	return err;
 }

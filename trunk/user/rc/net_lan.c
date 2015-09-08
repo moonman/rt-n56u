@@ -221,6 +221,15 @@ init_bridge(int is_ap_mode)
 	start_wifi_apcli_rt(rt_radio_on);
 #endif
 
+#if defined (BOARD_GPIO_LED_SW2G)
+	if (rt_radio_on)
+		LED_CONTROL(BOARD_GPIO_LED_SW2G, LED_ON);
+#endif
+#if defined (BOARD_GPIO_LED_SW5G) && BOARD_HAS_5G_RADIO
+	if (wl_radio_on)
+		LED_CONTROL(BOARD_GPIO_LED_SW5G, LED_ON);
+#endif
+
 	sleep(1);
 
 	ifconfig(IFNAME_BR, IFUP, NULL, NULL);
@@ -303,35 +312,35 @@ switch_config_link(void)
 
 	// WAN
 	i_link_mode = nvram_safe_get_int("ether_link_wan", SWAPI_LINK_SPEED_MODE_AUTO,
-			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_10_HD);
+			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_POWER_OFF);
 	i_flow_mode = nvram_safe_get_int("ether_flow_wan", SWAPI_LINK_FLOW_CONTROL_TX_RX,
 			SWAPI_LINK_FLOW_CONTROL_TX_RX, SWAPI_LINK_FLOW_CONTROL_DISABLE);
 	phy_link_port_wan(i_link_mode, i_flow_mode);
 
 	// LAN1
 	i_link_mode = nvram_safe_get_int("ether_link_lan1", SWAPI_LINK_SPEED_MODE_AUTO,
-			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_10_HD);
+			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_POWER_OFF);
 	i_flow_mode = nvram_safe_get_int("ether_flow_lan1", SWAPI_LINK_FLOW_CONTROL_TX_RX,
 			SWAPI_LINK_FLOW_CONTROL_TX_RX, SWAPI_LINK_FLOW_CONTROL_DISABLE);
 	phy_link_port_lan1(i_link_mode, i_flow_mode);
 
 	// LAN2
 	i_link_mode = nvram_safe_get_int("ether_link_lan2", SWAPI_LINK_SPEED_MODE_AUTO,
-			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_10_HD);
+			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_POWER_OFF);
 	i_flow_mode = nvram_safe_get_int("ether_flow_lan2", SWAPI_LINK_FLOW_CONTROL_TX_RX,
 			SWAPI_LINK_FLOW_CONTROL_TX_RX, SWAPI_LINK_FLOW_CONTROL_DISABLE);
 	phy_link_port_lan2(i_link_mode, i_flow_mode);
 
 	// LAN3
 	i_link_mode = nvram_safe_get_int("ether_link_lan3", SWAPI_LINK_SPEED_MODE_AUTO,
-			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_10_HD);
+			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_POWER_OFF);
 	i_flow_mode = nvram_safe_get_int("ether_flow_lan3", SWAPI_LINK_FLOW_CONTROL_TX_RX,
 			SWAPI_LINK_FLOW_CONTROL_TX_RX, SWAPI_LINK_FLOW_CONTROL_DISABLE);
 	phy_link_port_lan3(i_link_mode, i_flow_mode);
 
 	// LAN4
 	i_link_mode = nvram_safe_get_int("ether_link_lan4", SWAPI_LINK_SPEED_MODE_AUTO,
-			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_10_HD);
+			SWAPI_LINK_SPEED_MODE_AUTO, SWAPI_LINK_SPEED_MODE_FORCE_POWER_OFF);
 	i_flow_mode = nvram_safe_get_int("ether_flow_lan4", SWAPI_LINK_FLOW_CONTROL_TX_RX,
 			SWAPI_LINK_FLOW_CONTROL_TX_RX, SWAPI_LINK_FLOW_CONTROL_DISABLE);
 	phy_link_port_lan4(i_link_mode, i_flow_mode);
@@ -397,9 +406,9 @@ void
 switch_config_vlan(int first_call)
 {
 	int bridge_mode, bwan_isolation, is_vlan_filter;
-	int vlan_vid[6];
-	int vlan_pri[6];
-	int vlan_tag[6];
+	int vlan_vid[SWAPI_VLAN_RULE_NUM];
+	int vlan_pri[SWAPI_VLAN_RULE_NUM];
+	int vlan_tag[SWAPI_VLAN_RULE_NUM];
 	unsigned int vrule;
 
 	if (get_ap_mode())
@@ -408,11 +417,11 @@ switch_config_vlan(int first_call)
 	bridge_mode = nvram_get_int("wan_stb_x");
 	if (bridge_mode < 0 || bridge_mode > 7)
 		bridge_mode = SWAPI_WAN_BRIDGE_DISABLE;
-	
+
 	bwan_isolation = nvram_get_int("wan_stb_iso");
 	if (bwan_isolation < 0 || bwan_isolation > 2)
 		bwan_isolation = SWAPI_WAN_BWAN_ISOLATION_NONE;
-	
+
 	is_vlan_filter = (nvram_match("vlan_filter", "1")) ? 1 : 0;
 	if (is_vlan_filter) {
 		bwan_isolation = SWAPI_WAN_BWAN_ISOLATION_FROM_CPU;
@@ -452,13 +461,13 @@ switch_config_vlan(int first_call)
 		memset(vlan_pri, 0, sizeof(vlan_pri));
 		memset(vlan_tag, 0, sizeof(vlan_tag));
 	}
-	
+
 	/* set vlan rule before change bridge mode! */
-	for (vrule = 0; vrule <= SWAPI_VLAN_RULE_WAN_LAN4; vrule++)
+	for (vrule = 0; vrule < SWAPI_VLAN_RULE_NUM; vrule++)
 		phy_vlan_rule_set(vrule, vlan_vid[vrule], vlan_pri[vrule], vlan_tag[vrule]);
-	
+
 	phy_bridge_mode(bridge_mode, bwan_isolation);
-	
+
 #if defined(USE_RT3352_MII)
 	if (!first_call) {
 		// clear isolation iNIC port from all LAN ports
@@ -471,6 +480,8 @@ switch_config_vlan(int first_call)
 int
 is_vlan_vid_valid(int vlan_vid)
 {
+	if (vlan_vid == 2)
+		return 1;
 	return (vlan_vid >= MIN_EXT_VLAN_VID && vlan_vid < 4095) ? 1 : 0;
 }
 
@@ -624,14 +635,21 @@ stop_lan(int is_ap_mode)
 void 
 full_restart_lan(void)
 {
+	int is_wan_err = 0, is_lan_stp = 0;
 	int is_ap_mode = get_ap_mode();
-	int lan_stp = nvram_match("lan_stp", "0") ? 0 : 1;
 	int log_remote = nvram_invmatch("log_ipaddr", "");
+
+	if (!is_ap_mode) {
+		is_wan_err = get_wan_unit_value_int(0, "err");
+		is_lan_stp = nvram_get_int("lan_stp");
+	}
 
 	// Stop logger if remote
 	if (log_remote)
 		stop_logger();
 
+	stop_lltd();
+	stop_infosvr();
 	stop_networkmap();
 	stop_upnp();
 	stop_vpn_server();
@@ -660,27 +678,35 @@ full_restart_lan(void)
 	start_dns_dhcpd(is_ap_mode);
 
 	if (!is_ap_mode) {
-		if (lan_stp) {
+		if (is_lan_stp) {
 			doSystem("brctl stp %s %d", IFNAME_BR, 1);
 			doSystem("brctl setfd %s %d", IFNAME_BR, 15);
 		}
 		
-		/* restart vpn server, firewall and miniupnpd */
-		restart_vpn_server();
+		if (is_wan_err) {
+			full_restart_wan();
+			start_vpn_server();
+		} else {
+			/* restart vpn server, firewall and miniupnpd */
+			restart_vpn_server();
+		}
 	}
 
 	/* restart igmpproxy, udpxy, xupnpd */
-	restart_iptv(is_ap_mode);
+	if (!is_wan_err)
+		restart_iptv(is_ap_mode);
 
 #if defined(APP_NFSD)
 	// reload NFS server exports
-	if (pids("nfsd"))
-		run_nfsd();
+	reload_nfsd();
 #endif
 
 #if defined(APP_SMBD) || defined(APP_NMBD)
 	reload_nmbd();
 #endif
+
+	start_infosvr();
+	start_lltd();
 
 	/* start ARP network scanner */
 	start_networkmap(1);
@@ -706,7 +732,7 @@ lan_up_manual(char *lan_ifname, char *lan_dname)
 	lock = file_lock("resolv");
 
 	/* Open resolv.conf */
-	fp = fopen("/etc/resolv.conf", "w+");
+	fp = fopen(DNS_RESOLV_CONF, "w+");
 	if (fp) {
 		if (strlen(lan_dname) > 0)
 			fprintf(fp, "domain %s\n", lan_dname);
@@ -750,7 +776,7 @@ lan_up_auto(char *lan_ifname, char *lan_gateway, char *lan_dname)
 		route_add(lan_ifname, 0, "0.0.0.0", lan_gateway, "0.0.0.0");
 
 	/* Open resolv.conf */
-	fp = fopen("/etc/resolv.conf", "w+");
+	fp = fopen(DNS_RESOLV_CONF, "w+");
 	if (fp) {
 		if (strlen(lan_dname) > 0)
 			fprintf(fp, "domain %s\n", lan_dname);
@@ -805,7 +831,7 @@ lan_down_auto(char *lan_ifname)
 		route_del(lan_ifname, 0, "0.0.0.0", lan_gateway, "0.0.0.0");
 
 	/* Clear resolv.conf */
-	fp = fopen("/etc/resolv.conf", "w+");
+	fp = fopen(DNS_RESOLV_CONF, "w+");
 	if (fp)
 		fclose(fp);
 

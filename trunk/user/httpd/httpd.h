@@ -19,9 +19,11 @@
 #define _httpd_h_
 
 #include <ralink_boards.h>
+#include <ralink_priv.h>
 #include <netutils.h>
+#include <rtutils.h>
 #include <shutils.h>
-#include <nvram/bcmnvram.h>
+#include <nvram_linux.h>
 
 #define SYSLOG_ID_HTTPD		"httpd"
 
@@ -30,6 +32,10 @@
 #define STORAGE_OVPNCLI_DIR	"/etc/storage/openvpn/client"
 #define STORAGE_DNSMASQ_DIR	"/etc/storage/dnsmasq"
 #define STORAGE_SCRIPTS_DIR	"/etc/storage"
+
+#define PROFILE_FIFO_UPLOAD	"/tmp/settings_u.prf"
+#define PROFILE_FIFO_DOWNLOAD	"/tmp/settings_d.prf"
+#define STORAGE_FIFO_FILENAME	"/tmp/storage.tar.bz2"
 
 /* Generic MIME type handler */
 struct mime_handler {
@@ -64,22 +70,21 @@ typedef struct kw_s     {
 extern kw_t kw_EN;
 extern kw_t kw_XX;
 
-#define INC_ITEM        128
-#define REALLOC_VECTOR(p, len, size, item_size) {                      \
-        assert ((len) >= 0 && (len) <= (size));                        \
-        if (len == size)        {                                      \
-                int new_size;                                          \
-                void *np;                                              \
-                /* out of vector, reallocate */                        \
-                new_size = size + INC_ITEM;                            \
-                np = malloc (new_size * (item_size));                  \
-                assert (np != NULL);                                   \
-                bzero (np, new_size * (item_size));                    \
-                memcpy (np, p, len * (item_size));                     \
-                free (p);                                              \
-                p = np;                                                \
-                size = new_size;                                       \
-        }    \
+#define INC_ITEM	256
+#define REALLOC_VECTOR(p, len, size, item_size) {		\
+	assert ((len) >= 0 && (len) <= (size));			\
+	if (len == size) {					\
+		int new_size = size + INC_ITEM;			\
+		void *np = malloc(new_size * (item_size));	\
+		assert(np != NULL);				\
+		bzero(np, new_size * (item_size));		\
+		if (p) {					\
+			memcpy(np, p, len * (item_size));	\
+			free(p);				\
+		}						\
+		p = np;						\
+		size = new_size;				\
+	}							\
 }
 
 typedef FILE * webs_t;
@@ -132,7 +137,7 @@ extern int ej_set_share_mode(int eid, webs_t wp, int argc, char **argv);
 // aspbw.c
 extern int f_exists(const char *path);
 extern int f_wait_exists(const char *name, int max);
-extern void do_f(char *path, webs_t wp);
+extern int do_f(const char *path, webs_t wp);
 extern void char_to_ascii(char *output, char *input);
 
 // cgi.c
@@ -167,6 +172,7 @@ extern char *initial_available_disk_names_and_sizes(void);
 struct ifreq;
 struct iwreq;
 extern int get_apcli_peer_connected(const char *ifname, struct iwreq *p_wrq);
+extern int get_apcli_wds_entry(const char *ifname, RT_802_11_MAC_ENTRY *pme);
 extern int is_mac_in_sta_list(const unsigned char* p_mac);
 extern int ej_lan_leases(int eid, webs_t wp, int argc, char **argv);
 extern int ej_vpns_leases(int eid, webs_t wp, int argc, char **argv);
@@ -174,25 +180,34 @@ extern int ej_nat_table(int eid, webs_t wp, int argc, char **argv);
 extern int ej_route_table(int eid, webs_t wp, int argc, char **argv);
 extern int ej_conntrack_table(int eid, webs_t wp, int argc, char **argv);
 extern int wl_ioctl(const char *ifname, int cmd, struct iwreq *pwrq);
-extern int ej_wl_status_5g(int eid, webs_t wp, int argc, char **argv);
-extern int ej_wl_status_2g(int eid, webs_t wp, int argc, char **argv);
 extern int ej_wl_auth_list(int eid, webs_t wp, int argc, char **argv);
+#if BOARD_HAS_5G_RADIO
+extern int ej_wl_status_5g(int eid, webs_t wp, int argc, char **argv);
 extern int ej_wl_scan_5g(int eid, webs_t wp, int argc, char **argv);
-extern int ej_wl_scan_2g(int eid, webs_t wp, int argc, char **argv);
 extern int ej_wl_bssid_5g(int eid, webs_t wp, int argc, char **argv);
+#endif
+extern int ej_wl_status_2g(int eid, webs_t wp, int argc, char **argv);
+extern int ej_wl_scan_2g(int eid, webs_t wp, int argc, char **argv);
 extern int ej_wl_bssid_2g(int eid, webs_t wp, int argc, char **argv);
 
 // rtl8367.c or mtk_esw.c
-extern int fill_eth_port_status(int port_id, char linkstate[32]);
+extern int get_eth_port_bytes(int port_id, uint64_t *rx, uint64_t *tx);
+extern int fill_eth_port_status(int port_id, char linkstate[40]);
 extern int ej_eth_status_wan(int eid, webs_t wp, int argc, char **argv);
 extern int ej_eth_status_lan1(int eid, webs_t wp, int argc, char **argv);
 extern int ej_eth_status_lan2(int eid, webs_t wp, int argc, char **argv);
 extern int ej_eth_status_lan3(int eid, webs_t wp, int argc, char **argv);
 extern int ej_eth_status_lan4(int eid, webs_t wp, int argc, char **argv);
 
+// upload.c
+extern void do_upgrade_fw_post(const char *url, FILE *stream, int clen, char *boundary);
+extern void do_restore_nv_post(const char *url, FILE *stream, int clen, char *boundary);
+extern void do_restore_st_post(const char *url, FILE *stream, int clen, char *boundary);
+
 // web_ex.c
 extern void nvram_commit_safe(void);
 extern void do_uncgi_query(const char *query);
+extern void do_cgi_clear(void);
 
 #if defined (SUPPORT_HTTPS)
 extern int ssl_server_init(char* ca_file, char *crt_file, char *key_file, char *dhp_file, char *ssl_cipher_list);

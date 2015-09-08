@@ -62,6 +62,7 @@ static int get_password_handler(cmd_data_t *cmd, int num, void *context);
 static int get_alias_handler(cmd_data_t *cmd, int num, void *context);
 static int get_dns_server_name_handler(cmd_data_t *cmd, int num, void *context);
 static int get_dns_server_url_handler(cmd_data_t *cmd, int num, void *context);
+static int append_myip(cmd_data_t *cmd, int num, void *context);
 static int get_checkip_name_handler(cmd_data_t *cmd, int num, void *context);
 static int get_dyndns_system_handler(cmd_data_t *cmd, int num, void *context);
 static int get_update_period_handler(cmd_data_t *cmd, int num, void *context);
@@ -156,8 +157,17 @@ static cmd_desc_t cmd_options_table[] = {
 
 	{"-U", 1, {get_dns_server_url_handler, NULL}, ""},
 	{"--server-url", 1, {get_dns_server_url_handler, NULL}, "<URL>\n"
-	 "\t\t\tFull URL relative to DynDNS server root.\n" "\t\t\tEx: /some_script.php?hostname=\n"},
+	 "\t\t\tFull URL relative to DynDNS server root.\n"
+	 "\t\t\tE.g. '/some_script.php?hostname='"},
 	{"--dyndns_server_url", 1, {get_dns_server_url_handler, NULL}, NULL},
+
+	{"-A",            0, {append_myip, NULL}, ""},
+	{"--append-myip", 0, {append_myip, NULL},
+	 "For custom@ setups, append current IP to server update URL.\n"
+	 "\t\t\tE.g., if custom server URL looks something like this (dyn.com):\n\n"
+	 "\t\t\t\t/nic/update?hostname=youralias.dyndns.org&myip=\n\n"
+	 "\t\t\tthis setting appends your current IP address to the end of the\n"
+	"\t\t\tURL.  Without this flag your hostname alias is added instead."},
 
 	{"-S", 1, {get_dyndns_system_handler, NULL}, ""},
 	{"--system", 1, {get_dyndns_system_handler, NULL}, "<PROVIDER>\n"
@@ -170,8 +180,8 @@ static cmd_desc_t cmd_options_table[] = {
 	 "\t\t\t     default@tzo.com\n"
 	 "\t\t\t     dyndns@3322.org\n"
 	 "\t\t\t     default@dnsomatic.com\n"
-	 "\t\t\t     ipv6tb@he.net\n"
 	 "\t\t\t     dyndns@he.net\n"
+	 "\t\t\t     default@tunnelbroker.net\n"
 	 "\t\t\t     default@dynsip.org\n"
 	 "\t\t\t     default@sitelutions.com\n"
 	 "\t\t\t     default@dnsexit.com\n"
@@ -181,9 +191,14 @@ static cmd_desc_t cmd_options_table[] = {
 	 "\t\t\t     default@nic.ru\n"
 	 "\t\t\t     default@duckdns.org\n"
 	 "\t\t\t     default@loopia.com\n"
+	 "\t\t\t     default@domains.google.com\n"
+	 "\t\t\t     default@ovh.com\n"
+	 "\t\t\t     default@dtdns.com\n"
+	 "\t\t\t     default@gira.de\n"
+	 "\t\t\t     default@duiadns.net\n"
+	 "\t\t\t     ipv4@nsupdate.info\n"
 	 "\t\t\t     update@asus.com, register@asus.com\n"
 	 "\t\t\t     ipv6tb@netassist.ua\n"
-	 "\t\t\t     ipv4@nsupdate.info\n"
 	 "\t\t\t     custom@http_srv_basic_auth"},
 	{"--dyndns_system", 1, {get_dyndns_system_handler, NULL}, NULL},
 
@@ -539,7 +554,7 @@ static int get_logfile_name(cmd_data_t *cmd, int num, void *context)
 	if (ctx == NULL)
 		return RC_INVALID_POINTER;
 
-	if (sizeof(ctx->dbg.p_logfilename) < strlen(cmd->argv[num]))
+	if (sizeof(ctx->dbg.p_logfilename) <= strlen(cmd->argv[num]))
 		return RC_DYNDNS_BUFFER_TOO_SMALL;
 
 	strcpy(ctx->dbg.p_logfilename, cmd->argv[num]);
@@ -550,14 +565,17 @@ static int get_logfile_name(cmd_data_t *cmd, int num, void *context)
 static int get_username_handler(cmd_data_t *cmd, int num, void *context)
 {
 	ddns_t *ctx = (ddns_t *)context;
+	ddns_info_t *info;
 
 	if (ctx == NULL)
 		return RC_INVALID_POINTER;
 
-	if (sizeof(ctx->info[infid].creds.username) < strlen(cmd->argv[num]))
+	info = &ctx->info[infid];
+
+	if (sizeof(info->creds.username) <= strlen(cmd->argv[num]))
 		return RC_DYNDNS_BUFFER_TOO_SMALL;
 
-	strcpy(ctx->info[infid].creds.username, cmd->argv[num]);
+	strcpy(info->creds.username, cmd->argv[num]);
 
 	return 0;
 }
@@ -565,14 +583,17 @@ static int get_username_handler(cmd_data_t *cmd, int num, void *context)
 static int get_password_handler(cmd_data_t *cmd, int num, void *context)
 {
 	ddns_t *ctx = (ddns_t *)context;
+	ddns_info_t *info;
 
 	if (ctx == NULL)
 		return RC_INVALID_POINTER;
 
-	if (sizeof(ctx->info[infid].creds.password) < strlen(cmd->argv[num]))
+	info = &ctx->info[infid];
+
+	if (sizeof(info->creds.password) <= strlen(cmd->argv[num]))
 		return RC_DYNDNS_BUFFER_TOO_SMALL;
 
-	strcpy(ctx->info[infid].creds.password, (cmd->argv[num]));
+	strcpy(info->creds.password, cmd->argv[num]);
 
 	return 0;
 }
@@ -580,23 +601,26 @@ static int get_password_handler(cmd_data_t *cmd, int num, void *context)
 static int get_alias_handler(cmd_data_t *cmd, int num, void *context)
 {
 	ddns_t *ctx = (ddns_t *)context;
+	ddns_info_t *info;
 
 	if (ctx == NULL)
 		return RC_INVALID_POINTER;
 
-	if (ctx->info[infid].alias_count >= DYNDNS_MAX_ALIAS_NUMBER)
+	info = &ctx->info[infid];
+
+	if (info->alias_count >= DYNDNS_MAX_ALIAS_NUMBER)
 		return RC_DYNDNS_TOO_MANY_ALIASES;
 
-	if (sizeof(ctx->info[infid].alias[ctx->info[infid].alias_count].name) < strlen(cmd->argv[num]))
+	if (sizeof(info->alias[info->alias_count].name) <= strlen(cmd->argv[num]))
 		return RC_DYNDNS_BUFFER_TOO_SMALL;
 
-	strcpy(ctx->info[infid].alias[ctx->info[infid].alias_count].name, (cmd->argv[num]));
-	ctx->info[infid].alias_count++;
+	strcpy(info->alias[info->alias_count].name, cmd->argv[num]);
+	info->alias_count++;
 
 	return 0;
 }
 
-static int get_name_and_port(const char *p_src, char *p_dest_name, int *p_dest_port)
+static int get_name_and_port(const char *p_src, char *p_dest_name, size_t dest_size, int *p_dest_port)
 {
 	const char *p_port = strstr(p_src, ":");
 
@@ -606,13 +630,17 @@ static int get_name_and_port(const char *p_src, char *p_dest_name, int *p_dest_p
 
 		if (port_ok != 1)
 			return RC_DYNDNS_INVALID_OPTION;
-
-		*p_dest_port = port_nr;
 		len = p_port - p_src;
+		if (dest_size <= (size_t)len)
+			return RC_DYNDNS_BUFFER_TOO_SMALL;
 		memcpy(p_dest_name, p_src, len);
 		p_dest_name[len] = 0;
+		*p_dest_port = port_nr;
 	} else {
+		if (dest_size <= strlen(p_src))
+			return RC_DYNDNS_BUFFER_TOO_SMALL;
 		strcpy(p_dest_name, p_src);
+		*p_dest_port = -1;
 	}
 
 	return 0;
@@ -627,25 +655,24 @@ static int get_name_and_port(const char *p_src, char *p_dest_name, int *p_dest_p
 static int get_checkip_name_handler(cmd_data_t *cmd, int num, void *context)
 {
 	ddns_t *ctx = (ddns_t *)context;
+	ddns_info_t *info;
 	int rc;
 	int port = -1;
 
 	if (ctx == NULL)
 		return RC_INVALID_POINTER;
 
-	/*checkip_name */
-	if (sizeof(ctx->info[infid].checkip_name) < strlen(cmd->argv[num]) + 1)
-		return RC_DYNDNS_BUFFER_TOO_SMALL;
+	info = &ctx->info[infid];
 
-	ctx->info[infid].checkip_name.port = HTTP_DEFAULT_PORT;
-	rc = get_name_and_port(cmd->argv[num], ctx->info[infid].checkip_name.name, &port);
+	info->checkip_name.port = HTTP_DEFAULT_PORT;
+	rc = get_name_and_port(cmd->argv[num], info->checkip_name.name, sizeof(info->checkip_name.name), &port);
 	if (rc == 0 && port != -1)
-		ctx->info[infid].checkip_name.port = port;
+		info->checkip_name.port = port;
 
-	if (sizeof(ctx->info[infid].checkip_url) < strlen(cmd->argv[num + 1]) + 1)
+	if (sizeof(info->checkip_url) <= strlen(cmd->argv[num + 1]))
 		return RC_DYNDNS_BUFFER_TOO_SMALL;
 
-	strcpy(ctx->info[infid].checkip_url, cmd->argv[num + 1]);
+	strcpy(info->checkip_url, cmd->argv[num + 1]);
 
 	return rc;
 }
@@ -653,19 +680,19 @@ static int get_checkip_name_handler(cmd_data_t *cmd, int num, void *context)
 static int get_dns_server_name_handler(cmd_data_t *cmd, int num, void *context)
 {
 	ddns_t *ctx = (ddns_t *)context;
+	ddns_info_t *info;
 	int rc;
 	int port = -1;
 
 	if (ctx == NULL)
 		return RC_INVALID_POINTER;
 
-	if (sizeof(ctx->info[infid].server_name) < strlen(cmd->argv[num]))
-		return RC_DYNDNS_BUFFER_TOO_SMALL;
+	info = &ctx->info[infid];
 
-	ctx->info[infid].server_name.port = HTTP_DEFAULT_PORT;
-	rc = get_name_and_port(cmd->argv[num], ctx->info[infid].server_name.name, &port);
+	info->server_name.port = HTTP_DEFAULT_PORT;
+	rc = get_name_and_port(cmd->argv[num], info->server_name.name, sizeof(info->server_name.name), &port);
 	if (rc == 0 && port != -1)
-		ctx->info[infid].server_name.port = port;
+		info->server_name.port = port;
 
 	return rc;
 }
@@ -673,14 +700,32 @@ static int get_dns_server_name_handler(cmd_data_t *cmd, int num, void *context)
 int get_dns_server_url_handler(cmd_data_t *cmd, int num, void *context)
 {
 	ddns_t *ctx = (ddns_t *)context;
+	ddns_info_t *info;
 
 	if (ctx == NULL)
 		return RC_INVALID_POINTER;
 
-	if (sizeof(ctx->info[infid].server_url) < strlen(cmd->argv[num]))
+	info = &ctx->info[infid];
+
+	if (sizeof(info->server_url) <= strlen(cmd->argv[num]))
 		return RC_DYNDNS_BUFFER_TOO_SMALL;
 
-	strcpy(ctx->info[infid].server_url, cmd->argv[num]);
+	strcpy(info->server_url, cmd->argv[num]);
+
+	return 0;
+}
+
+static int append_myip(cmd_data_t *cmd, int num, void *context)
+{
+	ddns_t *ctx = (ddns_t *)context;
+
+	(void)cmd;
+	(void)num;
+
+	if (ctx == NULL)
+		return RC_INVALID_POINTER;
+
+	ctx->info[infid].append_myip = 1;
 
 	return 0;
 }
@@ -690,19 +735,19 @@ int get_dns_server_url_handler(cmd_data_t *cmd, int num, void *context)
 static int get_proxy_server_handler(cmd_data_t *cmd, int num, void *context)
 {
 	ddns_t *ctx = (ddns_t *)context;
+	ddns_info_t *info;
 	int rc;
 	int port = -1;
 
 	if (ctx == NULL)
 		return RC_INVALID_POINTER;
 
-	if (sizeof(ctx->info[infid].proxy_server_name) < strlen(cmd->argv[num]))
-		return RC_DYNDNS_BUFFER_TOO_SMALL;
+	info = &ctx->info[infid];
 
-	ctx->info[infid].proxy_server_name.port = HTTP_DEFAULT_PORT;
-	rc = get_name_and_port(cmd->argv[num], ctx->info[infid].proxy_server_name.name, &port);
+	info->proxy_server_name.port = HTTP_DEFAULT_PORT;
+	rc = get_name_and_port(cmd->argv[num], info->proxy_server_name.name, sizeof(info->proxy_server_name.name), &port);
 	if (rc == 0 && port != -1)
-		ctx->info[infid].proxy_server_name.port = port;
+		info->proxy_server_name.port = port;
 
 	return rc;
 }
@@ -1290,8 +1335,11 @@ static int validate_configuration(ddns_t *ctx)
 		int ok = 1;
 		ddns_info_t *account = &ctx->info[i];
 
-		check_setting(strlen(account->creds.username), i, "Missing username", &ok);
-//		check_setting(strlen(account->creds.password), i, "Missing password", &ok);
+		/* username, password not required for custom setups */
+		if (strncmp(account->system->name, "custom@", 7)) {
+			check_setting(strlen(account->creds.username), i, "Missing username", &ok);
+//			check_setting(strlen(account->creds.password), i, "Missing password", &ok);
+		}
 		check_setting(account->alias_count, i, "Missing your alias/hostname", &ok);
 		check_setting(strlen(account->server_name.name), i,
 			      "Missing DDNS server address, check DDNS provider", &ok);
@@ -1398,46 +1446,36 @@ int get_config_data(ddns_t *ctx, int argc, char *argv[])
 		/* settings that may change due to cmd line options */
 		i = 0;
 		do {
+			int port;
+			size_t src_len;
 			ddns_info_t *info = &ctx->info[i];
 
 			if (strlen(info->checkip_name.name) == 0) {
-				if (sizeof(info->checkip_name.name) < strlen(info->system->checkip_name)) {
-					rc = RC_DYNDNS_BUFFER_TOO_SMALL;
-					break;
-				}
 				if (strlen(info->system->checkip_name) > 0) {
-					int port = -1;
+					port = -1;
 					info->checkip_name.port = HTTP_DEFAULT_PORT;
-					if (get_name_and_port(info->system->checkip_name, info->checkip_name.name, &port) == 0) {
+					if (get_name_and_port(info->system->checkip_name, info->checkip_name.name, sizeof(info->checkip_name.name), &port) == 0) {
 						if (port > 0 && port < 65535)
 							info->checkip_name.port = port;
 					}
 				}
-				if (sizeof(info->checkip_url) < strlen(info->system->checkip_url)) {
-					rc = RC_DYNDNS_BUFFER_TOO_SMALL;
-					break;
-				}
-				strcpy(info->checkip_url, info->system->checkip_url);
+				src_len = strlen(info->system->checkip_url);
+				if (src_len > 0 && src_len < sizeof(info->checkip_url))
+					strcpy(info->checkip_url, info->system->checkip_url);
 			}
 
 			if (strlen(info->server_name.name) == 0) {
-				if (sizeof(info->server_name.name) < strlen(info->system->server_name)) {
-					rc = RC_DYNDNS_BUFFER_TOO_SMALL;
-					break;
-				}
 				if (strlen(info->system->server_name) > 0) {
-					int port = -1;
+					port = -1;
 					info->server_name.port = HTTP_DEFAULT_PORT;
-					if (get_name_and_port(info->system->server_name, info->server_name.name, &port) == 0) {
+					if (get_name_and_port(info->system->server_name, info->server_name.name, sizeof(info->server_name.name), &port) == 0) {
 						if (port > 0 && port < 65535)
 							info->server_name.port = port;
 					}
 				}
-				if (sizeof(info->server_url) < strlen(info->system->server_url)) {
-					rc = RC_DYNDNS_BUFFER_TOO_SMALL;
-					break;
-				}
-				strcpy(info->server_url, info->system->server_url);
+				src_len = strlen(info->system->server_url);
+				if (src_len > 0 && src_len < sizeof(info->server_url))
+					strcpy(info->server_url, info->system->server_url);
 			}
 		}
 		while (++i < ctx->info_count);

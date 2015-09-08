@@ -16,7 +16,7 @@
  */
 
 #include <ralink_boards.h>
-#include "nvram/bcmnvram.h"
+#include "nvram_linux.h"
 #include "netutils.h"
 #include "defaults.h"
 
@@ -27,6 +27,10 @@ struct nvram_pair router_defaults[] = {
 	/* Restore defaults */
 	{ "restore_defaults", "0" },		/* Set to 0 to not restore defaults on boot */
 	{ "nvram_manual", "0" },		/* Manual commit mode: 1: manual, 0: auto */
+
+#if defined (USE_NAND_FLASH)
+	{ "mtd_rwfs_mount", "0" },		/* Allow mount MTD RWFS partition on boot */
+#endif
 
 	/* Miscellaneous parameters */
 	{ "time_zone", DEF_TIMEZONE },
@@ -70,6 +74,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wan_dns3_x", "" },
 	{ "wan_hostname", "" },			/* WAN hostname */
 	{ "wan_vci", "" },			/* WAN vendor class identifier (OPT-60) */
+	{ "wan_ttl_fix", "0" },
 	{ "wan_hwaddr_x", "" },
 	{ "wan_nat_x", "1" },
 	{ "wan_mtu", "1500" },
@@ -142,7 +147,7 @@ struct nvram_pair router_defaults[] = {
 	{ "fw_dos_x", "0" },			// oleg patch
 	{ "dr_enable_x", "1" },			// oleg patch
 	{ "mr_enable_x", "0" },			// oleg patch
-	{ "mr_ttl_fix", "0" },
+	{ "mr_qleave_x", "1" },
 
 #if BOARD_HAS_5G_RADIO
 	/* 5G Wireless parameters */
@@ -153,13 +158,13 @@ struct nvram_pair router_defaults[] = {
 #else
 	{ "wl_gmode", "2" },			/* A/N Mixed */
 #endif
+	{ "wl_mcs_mode", "0" },
 	{ "wl_channel", "0" },			/* Channel number */
 	{ "wl_bcn", "100" },			/* Beacon interval */
 	{ "wl_dtim", "1" },			/* DTIM period */
 	{ "wl_rts", "2347" },			/* RTS threshold */
 	{ "wl_frag", "2346" },			/* Fragmentation threshold */
 	{ "wl_ap_isolate", "0" },		/* AP isolate mode */
-	{ "wl_mbssid_isolate", "1" },		/* Isolate between AP and Guests AP */
 	{ "wl_closed", "0" },			/* Closed (hidden) network */
 	{ "wl_macmode", "disabled" },		/* "allow" only, "deny" only, or "disabled"(allow all) */
 	{ "wl_maclist", "" },			/* xx:xx:xx:xx:xx:xx ... */
@@ -179,7 +184,6 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_radius_ipaddr", ""},		/* RADIUS server IP address */
 	{ "wl_radius_port", "1812" },		/* RADIUS server UDP port */
 	{ "wl_radius_key", "" },		/* RADIUS shared secret */
-	{ "wl_lazywds", "0" },			/* Enable "lazy" WDS mode (0|1) */
 	{ "wl_radio_x", "1" },			/* Enable (1) or disable (0) radio */
 	{ "wl_IgmpSnEnable", "1" },
 	{ "wl_TxPower", "100" },
@@ -192,7 +196,6 @@ struct nvram_pair router_defaults[] = {
 #else
 	{ "wl_HT_BW", "1" },
 #endif
-	{ "wl_VHT_Only", "0" },
 	{ "wl_txbf", "0" },
 	{ "wl_ssid2",  DEF_WLAN_5G_SSID },
 	{ "wl_mode_x", "0" },
@@ -211,6 +214,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_stream_rx", STR(BOARD_NUM_ANT_5G_RX) },
 	{ "wl_preamble", "1" },
 	{ "wl_greenap", "0" },
+	{ "wl_ldpc", "2" },
 	{ "wl_HT_RDG", "0" },
 	{ "wl_HT_AMSDU", "0" },
 	{ "wl_HT_MpduDensity", "5" },
@@ -240,12 +244,14 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_sta_crypto", "aes" },
 	{ "wl_sta_wpa_psk", "" },
 	{ "wl_sta_wisp", "0" },
+	{ "wl_sta_auto", "0" },
 #endif
 
 	/* 2G Wireless parameters */
 	{ "rt_country_code", DEF_WLAN_2G_CC },
 	{ "rt_ssid", DEF_WLAN_2G_SSID },
 	{ "rt_gmode", "5" },			/* g/n mixed */
+	{ "rt_mcs_mode", "0" },
 	{ "rt_channel", "0" },
 	{ "rt_bcn", "100" },
 	{ "rt_dtim", "1" },
@@ -253,7 +259,6 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_rts", "2347" },
 	{ "rt_frag", "2346" },
 	{ "rt_ap_isolate", "0" },
-	{ "rt_mbssid_isolate", "1" },		/* Isolate between AP and Guests AP */
 	{ "rt_closed", "0" },
 	{ "rt_macmode", "disabled" },
 	{ "rt_mrate", "2" },
@@ -280,7 +285,6 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_key2", "" },
 	{ "rt_key3", "" },
 	{ "rt_key4", "" },
-	{ "rt_lazywds", "0" },
 	{ "rt_radius_ipaddr", "" },
 	{ "rt_radius_port", "1812" },
 	{ "rt_radius_key", "" },
@@ -300,8 +304,9 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_wpa_mode", "2" },
 	{ "rt_stream_tx", STR(BOARD_NUM_ANT_2G_TX) },
 	{ "rt_stream_rx", STR(BOARD_NUM_ANT_2G_RX) },
-	{ "rt_preamble", "0" },
+	{ "rt_preamble", "1" },
 	{ "rt_greenap", "0" },
+	{ "rt_ldpc", "0" },
 	{ "rt_HT_RDG", "0" },
 	{ "rt_HT_AMSDU", "0" },
 	{ "rt_HT_MpduDensity", "5" },
@@ -331,6 +336,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_sta_crypto", "aes" },
 	{ "rt_sta_wpa_psk", "" },
 	{ "rt_sta_wisp", "0" },
+	{ "rt_sta_auto", "0" },
 
 	// USB related
 	{ "acc_num", "0" },
@@ -345,7 +351,6 @@ struct nvram_pair router_defaults[] = {
 	{ "apps_dms", "0" },
 	{ "apps_itunes", "0"},
 	{ "sh_num", "0" },
-	{ "machine_name", BOARD_NAME },
 	{ "computer_name", BOARD_NAME },
 #if BOARD_RAM_SIZE < 128
 	{ "pcache_reclaim", "2" },
@@ -362,9 +367,9 @@ struct nvram_pair router_defaults[] = {
 	{ "dlna_disc", "895" },
 	{ "dlna_root", "0" },
 	{ "dlna_sort", "0" },
-	{ "dlna_src1", "A,/media/AiDisk_a1/Audio" },
-	{ "dlna_src2", "V,/media/AiDisk_a1/Video" },
-	{ "dlna_src3", "P,/media/AiDisk_a1/Photo" },
+	{ "dlna_src1", "/media/AiDisk_a1" },
+	{ "dlna_src2", "" },
+	{ "dlna_src3", "" },
 	{ "dlna_rescan", "0"},
 	{ "trmd_enable", "0" },
 	{ "trmd_pport", "51413" },
@@ -436,18 +441,16 @@ struct nvram_pair router_defaults[] = {
 	{ "misc_lpr_x", "0" },
 	{ "misc_ping_x", "0" },
 	{ "fw_lw_enable_x", "0" },
-	{ "fw_lw_enable_x_1", "0" },
 	{ "filter_lw_date_x", "1111111" },
 	{ "filter_lw_time_x", "00002359" },
-	{ "filter_lw_time_x_1", "00002359" },
 	{ "filter_lw_default_x", "ACCEPT" },
 	{ "filter_lw_icmp_x", "" },
 	{ "filter_lw_num_x", "0" },
 	{ "url_enable_x", "0" },
-	{ "url_enable_x_1", "0" },
 	{ "url_date_x", "1111111" },
 	{ "url_time_x", "00002359" },
-	{ "url_time_x_1", "00002359" },
+	{ "url_mac_x", "" },
+	{ "url_inv_x", "0" },
 	{ "url_num_x", "0" },
 	{ "macfilter_enable_x", "0" },
 	{ "macfilter_num_x", "0" },
@@ -526,11 +529,11 @@ struct nvram_pair router_defaults[] = {
 	{ "force_igmp", "0" },
 	{ "force_mld", "0" },
 	{ "udpxy_enable_x", "0" },
+	{ "udpxy_clients", "10" },
 	{ "xupnpd_enable_x", "0" },
 	{ "xupnpd_udpxy", "0" },
 
 	{ "rstats_enable", "1" },
-	{ "rstats_colors", "" },
 	{ "rstats_stored", "1" },
 	{ "stime_stored", "1" },
 
@@ -560,9 +563,6 @@ struct nvram_pair router_defaults[] = {
 	{ "di_port4", "53" },
 	{ "di_port5", "53" },
 
-	{ "fw_pt_pptp", "1" },
-	{ "fw_pt_l2tp", "1" },
-	{ "fw_pt_ipsec", "1" },
 	{ "fw_pt_pppoe", "0" },
 
 	{ "sw_mode", "1" },
@@ -585,6 +585,12 @@ struct nvram_pair router_defaults[] = {
 #else
 	{ "ez_action_long", "0" },
 #endif
+	{ "wlt_action_short", "1" },
+#if BOARD_HAS_5G_RADIO
+	{ "wlt_action_long", "3" },
+#else
+	{ "wlt_action_long", "1" },
+#endif
 	{ "watchdog_cpu", "0" },
 	{ "front_led_all", "1" },
 	{ "front_led_wan", "2" },
@@ -596,13 +602,16 @@ struct nvram_pair router_defaults[] = {
 	{ "ether_igmp", "1" },
 	{ "ether_uport", "5" },		/* WAN port in AP mode is static upstream by default */
 	{ "ether_m2u", "2" },
+#if defined(USE_RTL8367_API_8367B)
+	{ "ether_green", "1" },
+#else
+	{ "ether_green", "0" },
+#endif
 #if defined(USE_RTL8367)
 	{ "ether_jumbo", "1" },
-	{ "ether_green", "0" },
 	{ "ether_led0", "3" },
 #else
 	{ "ether_jumbo", "0" },
-	{ "ether_green", "1" },
 	{ "ether_led0", "7" },
 #endif
 	{ "ether_led1", "0" },
@@ -702,6 +711,7 @@ struct nvram_pair tables_defaults[] = {
 	{ "vts_lport_x", "" },
 	{ "vts_proto_x", "" },
 	{ "vts_protono_x", "" },
+	{ "vts_srcip_x", "" },
 	{ "vts_desc_x", "" },
 
 	{ "filter_lw_srcip_x", "" },
@@ -709,7 +719,7 @@ struct nvram_pair tables_defaults[] = {
 	{ "filter_lw_dstip_x", "" },
 	{ "filter_lw_dstport_x", "" },
 	{ "filter_lw_proto_x", "" },
-	{ "filter_lw_desc_x", "" },
+	{ "filter_lw_protono_x", "" },
 
 	{ "macfilter_list_x", "" },
 	{ "macfilter_date_x", "" },

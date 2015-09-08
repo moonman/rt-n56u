@@ -148,9 +148,9 @@ ifeq ($(CONFIG_RT2880_FLASH_32M),y)
 	# can't bigger than 32964544 !!!
 else
 ifeq ($(CONFIG_RT2880_FLASH_16M),y)
-	# can't bigger than 16187328 !!!
+	# can't bigger than 16187136 !!!
 else
-	# can't bigger than 7995328 !!!
+	# can't bigger than 7995136 !!!
 endif
 endif
 else
@@ -163,14 +163,14 @@ endif
 	# Pack final image and write headers
 ifeq ($(CONFIG_ROOTFS_IN_FLASH_NO_PADDING),)
 	@cd $(IMAGEDIR) ; \
-	ENTRY=`LANG=C readelf -h $(ROOTDIR)/$(LINUXDIR)/vmlinux | grep "Entry" | awk '{print $$4}'` ; \
+	ENTRY=`LANG=C LC_ALL=C readelf -h $(ROOTDIR)/$(LINUXDIR)/vmlinux | grep "Entry" | awk '{print $$4}'` ; \
 	$(MKIMAGE_DIR)/mkimage -A mips -O linux -T kernel -C $(COMP) -a 80001000 -e $$ENTRY \
 	-n $(CONFIG_FIRMWARE_PRODUCT_ID) -V $(FIRMWARE_KERNEL_VER) $(FIRMWARE_ROOTFS_VER) -d $(KERNELZ).$(COMP) $(IMAGE)
 else
 	# For No padded, need write kernel size in image header 
 	# to correct mount partition in mtd drivers address
 	@cd $(IMAGEDIR) ; \
-	ENTRY=`LANG=C readelf -h $(ROOTDIR)/$(LINUXDIR)/vmlinux | grep "Entry" | awk '{print $$4}'` ; \
+	ENTRY=`LANG=C LC_ALL=C readelf -h $(ROOTDIR)/$(LINUXDIR)/vmlinux | grep "Entry" | awk '{print $$4}'` ; \
 	ISIZE=`wc -c $(KERNELZ).$(COMP) | awk '{print $$1}'` ; \
 	RSIZE=`wc -c $(RAMDISK) | awk '{print $$1}'` ; \
 	KRN_SIZE=`expr $$ISIZE - $$RSIZE + 64` ; \

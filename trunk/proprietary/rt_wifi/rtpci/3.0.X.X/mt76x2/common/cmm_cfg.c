@@ -221,7 +221,7 @@ UCHAR *wmode_2_str(UCHAR wmode)
 
 RT_802_11_PHY_MODE wmode_2_cfgmode(UCHAR wmode)
 {
-	INT i, mode_cnt = sizeof(CFG_WMODE_MAP) / (sizeof(UCHAR) * 2);
+	INT i, mode_cnt = sizeof(CFG_WMODE_MAP) / sizeof(UCHAR);
 
 	for (i = 1; i < mode_cnt; i+=2)
 	{	
@@ -636,6 +636,7 @@ INT	RT_CfgSetFixedTxPhyMode(PSTRING arg)
 			case FIXED_TXMODE_HT:
 			case FIXED_TXMODE_VHT:
 				fix_tx_mode = value;
+				break;
 			default:
 				fix_tx_mode = FIXED_TXMODE_HT;
 		}
@@ -1392,10 +1393,16 @@ INT Set_SiteSurvey_Proc(
         	Ssid.SsidLength = strlen(arg);
 		}
 
+#ifndef APCLI_CONNECTION_TRIAL
 		if (Ssid.SsidLength == 0)
 			ApSiteSurvey(pAd, &Ssid, SCAN_PASSIVE, FALSE);
 		else
 			ApSiteSurvey(pAd, &Ssid, SCAN_ACTIVE, FALSE);
+#else
+		/*for shorter scan time. use active scan and send probe req.*/
+		DBGPRINT(RT_DEBUG_TRACE, ("!!! Fast Scan for connection trial !!!\n"));
+		ApSiteSurvey(pAd, &Ssid, FAST_SCAN_ACTIVE, FALSE);
+#endif /* APCLI_CONNECTION_TRIAL */
 
 		return TRUE;
 	}
@@ -1448,37 +1455,30 @@ INT	Set_Antenna_Proc(
 
 
 
-
-#ifdef HW_TX_RATE_LOOKUP_SUPPORT
-INT Set_HwTxRateLookUp_Proc(
-	IN RTMP_ADAPTER	*pAd,
+#ifdef RT6352
+INT Set_RfBankSel_Proc(
+    IN  PRTMP_ADAPTER pAd, 
 	IN PSTRING arg)
 {
-	UCHAR Enable;
-	UINT32 MacReg;
+	LONG RfBank;
 
-	Enable = simple_strtol(arg, 0, 10);
+	RfBank = simple_strtol(arg, 0, 10);
 
-	RTMP_IO_READ32(pAd, TX_FBK_LIMIT, &MacReg);
-	if (Enable)
-	{
-		MacReg |= 0x00040000;
-		pAd->bUseHwTxLURate = TRUE;
-		DBGPRINT(RT_DEBUG_TRACE, ("==>UseHwTxLURate (ON)\n"));
-	}
-	else
-	{
-		MacReg &= (~0x00040000);
-		pAd->bUseHwTxLURate = FALSE;
-		DBGPRINT(RT_DEBUG_TRACE, ("==>UseHwTxLURate (OFF)\n"));
-	}
-	RTMP_IO_WRITE32(pAd, TX_FBK_LIMIT, MacReg);
-
-	DBGPRINT(RT_DEBUG_WARN, ("UseHwTxLURate = %d \n", pAd->bUseHwTxLURate));
+	pAd->RfBank = RfBank;
 
 	return TRUE;
 }
-#endif /* HW_TX_RATE_LOOKUP_SUPPORT */
+
+#ifdef RTMP_TEMPERATURE_CALIBRATION
+INT Set_TemperatureCAL_Proc(
+	IN	PRTMP_ADAPTER pAd, 
+	IN	PSTRING arg)
+{
+	RT6352_Temperature_Init(pAd);
+	return TRUE;
+}
+#endif /* RTMP_TEMPERATURE_CALIBRATION */
+#endif /* RT6352 */
 
 #ifdef MAC_REPEATER_SUPPORT
 #ifdef MULTI_MAC_ADDR_EXT_SUPPORT
@@ -1640,6 +1640,7 @@ INT set_pbf_rx_drop(RTMP_ADAPTER *pAd, PSTRING arg)
 }
 #endif
 
+#ifdef CONFIG_ANDES_SUPPORT
 INT set_fw_debug(RTMP_ADAPTER *ad, PSTRING arg)
 {
 	UINT8 fw_debug_param;
@@ -1650,3 +1651,4 @@ INT set_fw_debug(RTMP_ADAPTER *ad, PSTRING arg)
 
 	return TRUE;
 }
+#endif /* CONFIG_ANDES_SUPPORT */

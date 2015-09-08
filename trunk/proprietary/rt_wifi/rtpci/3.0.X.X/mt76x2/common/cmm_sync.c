@@ -340,6 +340,44 @@ UCHAR NextChannel(RTMP_ADAPTER *pAd, UCHAR channel)
 	return next_channel;
 }
 
+
+/* 
+	==========================================================================
+	Description:
+
+	Return:
+		scan_channel - channel to scan.
+	Note:
+		return 0 if no more next channel
+	==========================================================================
+ */
+UCHAR RTMPFindScanChannel(
+	IN PRTMP_ADAPTER pAd, 
+	UINT8			  LastScanChannel)
+{
+	UCHAR scan_channel = 0;
+#ifdef CONFIG_AP_SUPPORT
+#ifdef AP_PARTIAL_SCAN_SUPPORT
+	IF_DEV_CONFIG_OPMODE_ON_AP(pAd)
+	{
+		if (pAd->ApCfg.bPartialScanning == TRUE)
+		{
+			scan_channel = FindPartialScanChannel(pAd);
+			return scan_channel;
+		}
+	}
+#endif /* AP_PARTIAL_SCAN_SUPPORT */
+#endif /* CONFIG_AP_SUPPORT */
+
+	if (LastScanChannel == 0)
+		scan_channel = FirstChannel(pAd);
+	else
+		scan_channel = NextChannel(pAd, LastScanChannel);
+
+	return scan_channel;
+}
+
+
 /* 
 	==========================================================================
 	Description:
@@ -404,25 +442,35 @@ CHAR ConvertToRssi(RTMP_ADAPTER *pAd, CHAR Rssi, UCHAR rssi_idx)
 		RssiOffset = pAd->BGRssiOffset[rssi_idx];
 
 	BaseVal = -12;
+#ifdef RT6352
+	if (IS_RT6352(pAd))
+		BaseVal = -2;
+#endif /* RT6352 */
 
 #ifdef RT65xx
 	/*
 		Recommended by CSD team about MT76x0:
 		SW/QA owners should read the "external-LNA gain" and "RSSI OFFSET" content in EEPROM as "SIGNED".
 		2.4G : RSSI_report = RSSI_bpp + EEPROM_0x46[15:8 or 7:0] - EEPROM_0x44[7:0]
-		5G : RSSI_report = RSSI_bbp + EEPROM_0x4A[15:8 or 7:0] - EEPROM_0x44 or 0x48 or 0x4c[15:8]
+		5G   : RSSI_report = RSSI_bbp + EEPROM_0x4A[15:8 or 7:0] - EEPROM_0x44 or 0x48 or 0x4c[15:8]
 	*/
 	if (IS_MT76x0(pAd))
 		return (Rssi + (CHAR)RssiOffset - (CHAR)LNAGain);
 
 	if (IS_MT76x2(pAd)) {
+		CHAR sLNAGain = (CHAR)(LNAGain & 0x7f);
+		
+		/* bit7 on MT7612 mean sign (1: [+], 0: [-]) */
+		if (!(LNAGain & 0x80))
+			sLNAGain = -sLNAGain;
+		
 		if (is_external_lna_mode(pAd, pAd->CommonCfg.Channel) == TRUE)
-			LNAGain = 0;
+			sLNAGain = 0;
 		
 		if (pAd->LatchRfRegs.Channel > 14)
-			return (Rssi + pAd->ARssiOffset[rssi_idx] - (CHAR)LNAGain);
+			return (Rssi + pAd->ARssiOffset[rssi_idx] - sLNAGain);
 		else
-			return (Rssi + pAd->BGRssiOffset[rssi_idx] - (CHAR)LNAGain);
+			return (Rssi + pAd->BGRssiOffset[rssi_idx] - sLNAGain);
 	}
 
 	if (IS_RT8592(pAd))
@@ -448,12 +496,16 @@ CHAR ConvertToSnr(RTMP_ADAPTER *pAd, UCHAR Snr)
 
 #ifdef CONFIG_AP_SUPPORT
 #ifdef DOT11_N_SUPPORT
+#ifdef DOT11N_DRAFT3
 extern int DetectOverlappingPeriodicRound;
 
 VOID Handle_BSS_Width_Trigger_Events(RTMP_ADAPTER *pAd) 
 {
 	ULONG Now32;
-	
+#ifdef DOT11N_DRAFT3
+	if (pAd->CommonCfg.bBssCoexEnable == FALSE)
+		return;
+#endif
 	if ((pAd->CommonCfg.HtCapability.HtCapInfo.ChannelWidth == BW_40) &&
 		(pAd->CommonCfg.Channel <=14))
 	{	
@@ -466,6 +518,7 @@ VOID Handle_BSS_Width_Trigger_Events(RTMP_ADAPTER *pAd)
         DetectOverlappingPeriodicRound = 31;
 	}
 }
+#endif /* DOT11N_DRAFT3 */
 #endif /* DOT11_N_SUPPORT */
 #endif /* CONFIG_AP_SUPPORT */
 

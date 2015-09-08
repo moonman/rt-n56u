@@ -49,9 +49,11 @@ struct dev_type_name_map{
 #define def_to_str(s)			#s
 
 #define FIRST_AP_PROFILE_PATH		"/etc/Wireless/RT2860/RT2860AP.dat"
+#define FIRST_AP_SINGLE_SKU_PATH	"/etc/Wireless/RT2860/SingleSKU.dat"
 #define FIRST_CHIP_ID			xdef_to_str(CONFIG_RT_FIRST_CARD)
 
 #define SECOND_AP_PROFILE_PATH		"/etc/Wireless/iNIC/iNIC_ap.dat"
+#define SECOND_AP_SINGLE_SKU_PATH	"/etc/Wireless/iNIC/SingleSKU.dat"
 #define SECOND_CHIP_ID			xdef_to_str(CONFIG_RT_SECOND_CARD)
 
 static struct dev_type_name_map prefix_map[] =
@@ -83,6 +85,7 @@ struct dev_id_name_map{
 VOID get_dev_config_idx(RTMP_ADAPTER *pAd)
 {
 	INT idx = 0;
+
 #if (CONFIG_RT_FIRST_CARD == 7602 || CONFIG_RT_FIRST_CARD == 7612) && \
     (CONFIG_RT_SECOND_CARD == 7602 || CONFIG_RT_SECOND_CARD == 7612)
 	INT first_card = 0, second_card = 0;
@@ -90,17 +93,23 @@ VOID get_dev_config_idx(RTMP_ADAPTER *pAd)
 
 	A2Hex(first_card, FIRST_CHIP_ID);
 	A2Hex(second_card, SECOND_CHIP_ID);
-	DBGPRINT(RT_DEBUG_TRACE, ("chip_id1=0x%x, chip_id2=0x%x, pAd->MACVersion=0x%x\n", first_card, second_card, pAd->MACVersion));
 
-	if ((first_card == second_card) || IS_MT76x2(pAd)) {
+	if (first_card == second_card) {
 		idx = probe_cnt;
 		probe_cnt--;
+	} else if (IS_MT76x2(pAd)) {
+		UINT32 chip_id = (pAd->ChipID >> 16);
+		if (chip_id == second_card)
+			idx = 1;
 	} else {
 		if (IS_RT8592(pAd))
 			idx = 0;
 		else if (IS_RT5392(pAd) || IS_MT76x0(pAd))
 			idx = 1;
 	}
+
+	DBGPRINT(RT_DEBUG_OFF, ("chip_id1=0x%x, chip_id2=0x%x, pAd->MACVersion=0x%x, pAd->ChipID=0x%x, dev_idx=%d\n",
+		first_card, second_card, pAd->MACVersion, pAd->ChipID, idx));
 #endif
 
 	pAd->dev_idx = idx;
@@ -115,7 +124,7 @@ UCHAR *get_dev_name_prefix(RTMP_ADAPTER *pAd, INT dev_type)
 	do {
 		map = &prefix_map[type_idx];
 		if (map->type == dev_type) {
-			DBGPRINT(RT_DEBUG_TRACE, ("%s(): dev_idx = %d, dev_name_prefix=%s\n",
+			DBGPRINT(RT_DEBUG_OFF, ("%s(): dev_idx = %d, dev_name_prefix=%s\n",
 						__FUNCTION__, dev_idx, map->prefix[dev_idx]));
 			return map->prefix[dev_idx];
 		}
@@ -129,7 +138,19 @@ UCHAR *get_dev_name_prefix(RTMP_ADAPTER *pAd, INT dev_type)
 static UCHAR *get_dev_profile(RTMP_ADAPTER *pAd)
 {
 	UCHAR *src = NULL;
+#ifdef RTMP_RBUS_SUPPORT
+	if (pAd->infType == RTMP_DEV_INF_RBUS)
+	{
+#ifdef CONFIG_AP_SUPPORT
+		IF_DEV_CONFIG_OPMODE_ON_AP(pAd)
+		{
+			src = AP_PROFILE_PATH_RBUS;
+		}
+#endif /* CONFIG_AP_SUPPORT */
 
+	}
+	else
+#endif /* RTMP_RBUS_SUPPORT */
 	{
 #ifdef CONFIG_AP_SUPPORT
 		IF_DEV_CONFIG_OPMODE_ON_AP(pAd)
@@ -156,6 +177,24 @@ static UCHAR *get_dev_profile(RTMP_ADAPTER *pAd)
 	return src;
 }
 
+#ifdef SINGLE_SKU_V2
+static CHAR *get_sku_profile(RTMP_ADAPTER *pAd)
+{
+	CHAR *src = SINGLE_SKU_TABLE_FILE_NAME;
+
+#if (CONFIG_RT_FIRST_CARD == 7602 || CONFIG_RT_FIRST_CARD == 7612) && \
+    (CONFIG_RT_SECOND_CARD == 7602 || CONFIG_RT_SECOND_CARD == 7612)
+	INT card_idx = pAd->dev_idx;
+
+	if (card_idx == 0)
+		src = FIRST_AP_SINGLE_SKU_PATH;
+	else if (card_idx == 1)
+		src = SECOND_AP_SINGLE_SKU_PATH;
+#endif
+
+	return src;
+}
+#endif /* SINGLE_SKU_V2 */
 
 NDIS_STATUS	RTMPReadParametersHook(RTMP_ADAPTER *pAd)
 {
@@ -183,7 +222,11 @@ NDIS_STATUS	RTMPReadParametersHook(RTMP_ADAPTER *pAd)
 		{
 #ifndef OS_ABL_SUPPORT
 			// TODO: need to roll back when convert into OSABL code
-				 fsize = (ULONG)srcf->f_dentry->d_inode->i_size;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0)
+				fsize = (ULONG)file_inode(srcf)->i_size;
+#else
+				fsize = (ULONG)srcf->f_dentry->d_inode->i_size;
+#endif
 				if (buf_size < (fsize + 1))
 					buf_size = fsize + 1;
 #endif /* OS_ABL_SUPPORT */
@@ -221,7 +264,7 @@ NDIS_STATUS	RTMPReadParametersHook(RTMP_ADAPTER *pAd)
 #endif /*HOSTAPD_SUPPORT */
 
 #ifdef SINGLE_SKU_V2
-	RTMPSetSingleSKUParameters(pAd);
+	RTMPSetSingleSKUParameters(pAd, get_sku_profile(pAd));
 #endif /* SINGLE_SKU_V2 */
 
 	return (retval);
@@ -559,7 +602,7 @@ VOID RT28xx_Monitor_Init(VOID *pAd, PNET_DEV main_dev_p)
 	netDevOpHook.stop = Monitor_VirtualIF_Close;
 	netDevOpHook.xmit = rt28xx_send_packets;
 	netDevOpHook.ioctl = rt28xx_ioctl;
-	DBGPRINT(RT_DEBUG_OFF, ("%s: %d !!!!####!!!!!!\n",__FUNCTION__, __LINE__)); //Kyle
+	DBGPRINT(RT_DEBUG_OFF, ("%s: %d !!!!####!!!!!!\n",__FUNCTION__, __LINE__)); 
 	RTMP_COM_IoctlHandle(pAd, NULL, CMD_RTPRIV_IOCTL_SNIFF_INIT,	0, &netDevOpHook, 0);
 
 }
@@ -641,7 +684,10 @@ void STA_MonPktSend(RTMP_ADAPTER *pAd, RX_BLK *pRxBlk)
 	STBC = pRxBlk->rx_rate.field.STBC;
 	RSSI1 = pRxBlk->rssi[1];
 	//if(pRxBlk->pRxWI->RXWI_N.bbp_rxinfo[12] != 0)
+#ifdef RLT_MAC
 	NdisCopyMemory(&timestamp,&pRxBlk->pRxWI->RXWI_N.bbp_rxinfo[12],4);
+#endif
+
 	BssMonitorFlag11n = 0;
 #ifdef MONITOR_FLAG_11N_SNIFFER_SUPPORT
 	BssMonitorFlag11n = (pAd->StaCfg.BssMonitorFlag & MONITOR_FLAG_11N_SNIFFER);
@@ -702,7 +748,7 @@ VOID RTMPFreeAdapter(VOID *pAdSrc)
 
 #ifdef MULTIPLE_CARD_SUPPORT
 #ifdef RTMP_FLASH_SUPPORT
-	if (pAd->eebuf && (pAd->eebuf != pAd->chipCap.EEPROM_DEFAULT_BIN))
+	if (pAd->eebuf && (pAd->eebuf != pAd->EEPROMImage))
 	{
 		os_free_mem(NULL, pAd->eebuf);
 		pAd->eebuf = NULL;
@@ -737,10 +783,13 @@ VOID RTMPFreeAdapter(VOID *pAdSrc)
 #ifdef CONFIG_ANDES_SUPPORT
 	NdisFreeSpinLock(&pAd->CtrlRingLock);
 	NdisFreeSpinLock(&pAd->mcu_atomic);
-#endif
+#endif /* CONFIG_ANDES_SUPPORT */
 	NdisFreeSpinLock(&pAd->tssi_lock);
 #endif /* RTMP_MAC_PCI */
 
+#ifdef SPECIFIC_BCN_BUF_SUPPORT
+	NdisFreeSpinLock(&pAd->ShrMemLock);
+#endif /* SPECIFIC_BCN_BUF_SUPPORT */
 
 #ifdef UAPSD_SUPPORT
 	NdisFreeSpinLock(&pAd->UAPSDEOSPLock); /* OS_ABL_SUPPORT */
@@ -838,6 +887,17 @@ int RTMPSendPackets(
 		RTMP_SET_PACKET_5VT(pPacket, 1);
 	}
 #endif /* CONFIG_5VT_ENHANCE */
+
+#if defined (CONFIG_WIFI_PKT_FWD)
+	if (wf_fwd_tx_hook != NULL)
+	{
+		if (wf_fwd_tx_hook(pPacket) == 1)
+		{
+			RELEASE_NDIS_PACKET(pAd, pPacket, NDIS_STATUS_FAILURE);
+			return 0;
+		}
+	}
+#endif /* CONFIG_WIFI_PKT_FWD */
 
 	wdev_tx_pkts((NDIS_HANDLE)pAd, (PPNDIS_PACKET) &pPacket, 1, wdev);
 
@@ -1055,4 +1115,3 @@ VOID AP_WDS_KeyNameMakeUp(
 	snprintf(pKey, KeyMaxSize, "Wds%dKey", KeyId);
 }
 #endif /* WDS_SUPPORT */
-

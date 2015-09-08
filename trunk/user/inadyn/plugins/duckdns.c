@@ -43,7 +43,7 @@ static ddns_system_t plugin = {
 	.checkip_name = "ipv4.wtfismyip.com",
 	.checkip_url  = "/text",
 
-	.server_name  = "duckdns.org",
+	.server_name  = "www.duckdns.org",
 	.server_url   = "/update"
 };
 
@@ -77,7 +77,7 @@ static int response(http_trans_t *trans, ddns_info_t *UNUSED(info), ddns_alias_t
 
 	DO(http_status_valid(trans->status));
 
-	if (strstr(resp, "OK") || strstr(resp, "good"))
+	if (strstr(resp, "KO") || strstr(resp, "OK") || strstr(resp, "good"))
 		return RC_OK;
 
 	return RC_DYNDNS_RSP_NOTOK;

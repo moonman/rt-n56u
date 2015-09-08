@@ -416,13 +416,17 @@ int ip6_forward(struct sk_buff *skb)
 	if (skb->pkt_type != PACKET_HOST)
 		goto drop;
 
+#ifdef CONFIG_INET_LRO
 	if (skb_warn_if_lro(skb))
 		goto drop;
+#endif
 
+#ifdef CONFIG_XFRM
 	if (!xfrm6_policy_check(NULL, XFRM_POLICY_FWD, skb)) {
 		IP6_INC_STATS(net, ip6_dst_idev(dst), IPSTATS_MIB_INDISCARDS);
 		goto drop;
 	}
+#endif
 
 	skb_forward_csum(skb);
 
@@ -472,10 +476,12 @@ int ip6_forward(struct sk_buff *skb)
 		}
 	}
 
+#ifdef CONFIG_XFRM
 	if (!xfrm6_route_forward(skb)) {
 		IP6_INC_STATS(net, ip6_dst_idev(dst), IPSTATS_MIB_INDISCARDS);
 		goto drop;
 	}
+#endif
 	dst = skb_dst(skb);
 
 	/* IPv6 specs say nothing about it, but it is clear that we cannot
@@ -775,7 +781,7 @@ int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *))
 		if (err == 0) {
 			IP6_INC_STATS(net, ip6_dst_idev(&rt->dst),
 				      IPSTATS_MIB_FRAGOKS);
-			dst_release(&rt->dst);
+			ip6_rt_put(rt);
 			return 0;
 		}
 
@@ -787,7 +793,7 @@ int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *))
 
 		IP6_INC_STATS(net, ip6_dst_idev(&rt->dst),
 			      IPSTATS_MIB_FRAGFAILS);
-		dst_release(&rt->dst);
+		ip6_rt_put(rt);
 		return err;
 
 slow_path_clean:
@@ -1359,7 +1365,8 @@ int ip6_append_data(struct sock *sk, int getfrag(void *from, char *to,
 	if (((length > mtu) ||
 	     (skb && skb_has_frags(skb))) &&
 	    (sk->sk_protocol == IPPROTO_UDP) &&
-	    (rt->dst.dev->features & NETIF_F_UFO)) {
+	    (rt->dst.dev->features & NETIF_F_UFO) &&
+	    (sk->sk_type == SOCK_DGRAM)) {
 		err = ip6_ufo_append_data(sk, getfrag, from, length,
 					  hh_len, fragheaderlen,
 					  transhdrlen, mtu, flags, rt);
