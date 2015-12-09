@@ -25,8 +25,6 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-#include <linux/interrupt.h>
-#include <linux/netdevice.h>
 
 #include "ra_eth_reg.h"
 #include "ra_esw_reg.h"
@@ -1255,7 +1253,15 @@ static void esw_led_mode(u32 led_mode)
 
 	esw_reg_set(REG_ESW_GPC1, reg_gpc1);
 #else
-	// todo (mt7530 documentation needed)
+	u32 reg_ledc;
+
+	reg_ledc = esw_reg_get(0x7d00);
+	reg_ledc |= 0x77777;
+
+	if (led_mode == SWAPI_LED_OFF)
+		reg_ledc &= ~(0x77777);
+
+	esw_reg_set(0x7d00, reg_ledc);
 #endif
 }
 
@@ -1511,6 +1517,28 @@ static int change_bridge_mode(u32 wan_bwan_isolation, u32 wan_bridge_mode)
 
 	return 0;
 }
+
+#if defined (CONFIG_MT7530_GSW)
+static int override_port_matrix(u32 port_mask, u32 fwd_ports_mask)
+{
+	u32 fwd_mask;
+	u32 port_id = get_port_from_user(port_mask);
+
+	if (port_id > ESW_MAC_ID_MAX)
+		return -EINVAL;
+
+	fwd_ports_mask &= 0xFF;
+
+	fwd_mask = get_ports_mask_from_user(fwd_ports_mask, 0);
+
+	/* set port ingress to security mode (VLAN + fwd_mask) */
+	esw_port_matrix_set(port_id, fwd_mask, PVLAN_INGRESS_MODE_SECURITY);
+
+	printk("%s - port ID %d forward mask: %04X\n", MTK_ESW_DEVNAME, port_id, fwd_mask);
+
+	return 0;
+}
+#endif
 
 static void vlan_accept_port_mode(u32 accept_mode, u32 port_mask)
 {
@@ -2168,6 +2196,12 @@ long mtk_esw_ioctl(struct file *file, unsigned int req, unsigned long arg)
 		copy_from_user(&uint_value, (int __user *)arg, sizeof(int));
 		ioctl_result = change_bridge_mode(uint_param, uint_value);
 		break;
+#if defined (CONFIG_MT7530_GSW)
+	case MTK_ESW_IOCTL_PORT_FORWARD_MASK:
+		copy_from_user(&uint_value, (int __user *)arg, sizeof(int));
+		ioctl_result = override_port_matrix(uint_param, uint_value);
+		break;
+#endif
 
 	case MTK_ESW_IOCTL_VLAN_RESET_TABLE:
 		esw_vlan_reset_table();

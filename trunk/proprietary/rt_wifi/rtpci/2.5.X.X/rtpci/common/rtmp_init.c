@@ -4758,6 +4758,7 @@ VOID RTMP_IO_WRITE32(
 {
 	_RTMP_IO_WRITE32(pAd, Offset, Value);
 }
+#endif // VENDOR_FEATURE3_SUPPORT //
 
 VOID RTMP_BBP_IO_READ8_BY_REG_ID(
 	PRTMP_ADAPTER pAd,
@@ -4792,7 +4793,6 @@ VOID RTMP_BBP_IO_WRITE8(
 {
 	_RTMP_BBP_IO_WRITE8(pAd, Offset, Value, FlgValidMCR);
 }
-#endif // VENDOR_FEATURE3_SUPPORT //
 
 
 #ifdef RTMP_MAC_PCI
@@ -5359,12 +5359,10 @@ EXPORT_SYMBOL(MlmeEnqueueForWsc);
 #endif // WSC_INCLUDED //
 
 #ifdef CONFIG_AP_SUPPORT
-//#ifdef AUTO_CH_SELECT_ENHANCE
 EXPORT_SYMBOL(AutoChBssTableDestroy);
 EXPORT_SYMBOL(ChannelInfoDestroy);
 EXPORT_SYMBOL(AutoChBssTableInit);
 EXPORT_SYMBOL(ChannelInfoInit);
-//#endif // AUTO_CH_SELECT_ENHANCE //
 #endif // CONFIG_AP_SUPPORT //
 
 #ifdef DOT11_N_SUPPORT

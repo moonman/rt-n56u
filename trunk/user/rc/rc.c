@@ -151,13 +151,13 @@ init_gpio_leds_buttons(void)
 #if defined (BOARD_GPIO_LED_SW2G)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_SW2G, 1);
 	cpu_gpio_set_pin(BOARD_GPIO_LED_SW2G, LED_OFF);
-	cpu_gpio_led_set(BOARD_GPIO_LED_SW2G, 1);
+	cpu_gpio_led_set(BOARD_GPIO_LED_SW2G, LED_BLINK_STAY_SHOW);
 #endif
 	/* hide WiFi 5G soft-led  */
 #if defined (BOARD_GPIO_LED_SW5G) && (!defined (BOARD_GPIO_LED_SW2G) || (BOARD_GPIO_LED_SW5G != BOARD_GPIO_LED_SW2G))
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_SW5G, 1);
 	cpu_gpio_set_pin(BOARD_GPIO_LED_SW5G, LED_OFF);
-	cpu_gpio_led_set(BOARD_GPIO_LED_SW5G, 1);
+	cpu_gpio_led_set(BOARD_GPIO_LED_SW5G, LED_BLINK_STAY_SHOW);
 #endif
 	/* hide WAN soft-led  */
 #if defined (BOARD_GPIO_LED_WAN)
@@ -173,7 +173,12 @@ init_gpio_leds_buttons(void)
 #if defined (BOARD_GPIO_LED_USB)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_USB, 1);
 	cpu_gpio_set_pin(BOARD_GPIO_LED_USB, LED_OFF);
-	cpu_gpio_led_set(BOARD_GPIO_LED_USB, 0);
+	cpu_gpio_led_set(BOARD_GPIO_LED_USB, LED_BLINK_STAY_HIDE);
+#if defined (BOARD_GPIO_LED_USB2)
+	cpu_gpio_set_pin_direction(BOARD_GPIO_LED_USB2, 1);
+	cpu_gpio_set_pin(BOARD_GPIO_LED_USB2, LED_OFF);
+	cpu_gpio_led_set(BOARD_GPIO_LED_USB2, LED_BLINK_STAY_HIDE);
+#endif
 #endif
 	/* hide ROUTER soft-led  */
 #if defined (BOARD_GPIO_LED_ROUTER)
@@ -200,6 +205,10 @@ init_gpio_leds_buttons(void)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_PWR_USB, 1);
 	cpu_gpio_set_pin(BOARD_GPIO_PWR_USB, BOARD_GPIO_PWR_USB_ON);
 #endif
+#if defined (BOARD_GPIO_PWR_USB2)
+	cpu_gpio_set_pin_direction(BOARD_GPIO_PWR_USB2, 1);
+	cpu_gpio_set_pin(BOARD_GPIO_PWR_USB2, BOARD_GPIO_PWR_USB_ON);
+#endif
 
 	/* init BTN Reset  */
 #if defined (BOARD_GPIO_BTN_RESET)
@@ -209,13 +218,27 @@ init_gpio_leds_buttons(void)
 #if defined (BOARD_GPIO_BTN_WPS)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_WPS, 0);
 #endif
-	/* init BTN WLTOG  */
-#if defined (BOARD_GPIO_BTN_WLTOG)
-	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_WLTOG, 0);
+	/* init BTN FN1  */
+#if defined (BOARD_GPIO_BTN_FN1)
+	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_FN1, 0);
+#endif
+	/* init BTN FN2  */
+#if defined (BOARD_GPIO_BTN_FN2)
+	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_FN2, 0);
 #endif
 	/* init BTN ROUTER  */
 #if defined (BOARD_GPIO_BTN_ROUTER)
 	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_ROUTER, 0);
+#endif
+	/* init BTN POWER  */
+#if defined (BOARD_GPIO_BTN_PWR_CUT) && defined (BOARD_GPIO_BTN_PWR_INT)
+	/* Shortcut POWER button */
+	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_PWR_CUT, 1);
+	cpu_gpio_set_pin(BOARD_GPIO_BTN_PWR_CUT, 1);
+
+	/* IRQ on rising edge POWER, send SIGUSR2 to pid 1 */
+	cpu_gpio_set_pin_direction(BOARD_GPIO_BTN_PWR_INT, 0);
+	cpu_gpio_irq_set(BOARD_GPIO_BTN_PWR_INT, 1, 0, 1);
 #endif
 }
 
@@ -498,6 +521,7 @@ flash_firmware(void)
 static void
 storage_load_time(void)
 {
+#if !defined (USE_RTC_HCTOSYS)
 	FILE *fp;
 	char buf[32];
 	struct tm storage_tm;
@@ -518,11 +542,13 @@ storage_load_time(void)
 			stime(&storage_time);
 		}
 	}
+#endif
 }
 
 void
 storage_save_time(time_t delta)
 {
+#if !defined (USE_RTC_HCTOSYS)
 	FILE *fp;
 	time_t now_time;
 	struct tm now_tm;
@@ -539,6 +565,7 @@ storage_save_time(time_t delta)
 			fclose(fp);
 		}
 	}
+#endif
 }
 
 void 
@@ -627,6 +654,9 @@ LED_CONTROL(int gpio_led, int flag)
 #endif
 #if defined (BOARD_GPIO_LED_USB)
 	case BOARD_GPIO_LED_USB:
+#if defined (BOARD_GPIO_LED_USB2)
+	case BOARD_GPIO_LED_USB2:
+#endif
 #if (BOARD_NUM_USB_PORTS > 0)
 		front_led_x = nvram_get_int("front_led_usb");
 #else
@@ -757,25 +787,36 @@ init_router(void)
 	start_rwfs_optware();
 }
 
+/*
+ * level {0: reboot, 1: halt, 2: power-off}
+ */
 void
-shutdown_router(int use_reboot)
+shutdown_router(int level)
 {
+	int use_halt = (level == 1) ? 1 : 0;
 	int is_ap_mode = get_ap_mode();
 
 	stop_misc();
-	stop_services(1);
+
+	if (level < 2)
+		stop_services(use_halt);
 
 #if (BOARD_NUM_USB_PORTS > 0)
 	stop_usb_printer_spoolers();
-	safe_remove_usb_device(0, NULL, !use_reboot);
+	safe_remove_usb_device(0, NULL, use_halt);
 #endif
 #if defined (BOARD_GPIO_LED_USB)
 	LED_CONTROL(BOARD_GPIO_LED_USB, LED_OFF);
 #endif
+#if defined (BOARD_GPIO_LED_USB2)
+	LED_CONTROL(BOARD_GPIO_LED_USB2, LED_OFF);
+#endif
 
 	stop_wan();
-	stop_services_lan_wan();
-	set_ipv4_forward(0);
+	if (level < 2) {
+		stop_services_lan_wan();
+		set_ipv4_forward(0);
+	}
 #if defined (BOARD_GPIO_LED_WAN)
 	LED_CONTROL(BOARD_GPIO_LED_WAN, LED_OFF);
 #endif
@@ -786,10 +827,18 @@ shutdown_router(int use_reboot)
 	stop_8021x_all();
 	stop_wifi_all_wl();
 	stop_wifi_all_rt();
-	stop_logger();
-	stop_lan(is_ap_mode);
+
+	if (level < 2) {
+		stop_logger();
+		stop_lan(is_ap_mode);
+	}
 
 	umount_rwfs_partition();
+
+	if (use_halt) {
+		module_smart_unload("hw_nat", 0);
+		module_smart_unload("rt_timer_wdg", 0);
+	}
 
 #if defined (BOARD_GPIO_LED_LAN)
 	LED_CONTROL(BOARD_GPIO_LED_LAN, LED_OFF);
@@ -797,9 +846,6 @@ shutdown_router(int use_reboot)
 #if defined (BOARD_GPIO_LED_POWER)
 	LED_CONTROL(BOARD_GPIO_LED_POWER, LED_OFF);
 #endif
-
-	if (!use_reboot)
-		module_smart_unload("rt_timer_wdg", 0);
 }
 
 void 

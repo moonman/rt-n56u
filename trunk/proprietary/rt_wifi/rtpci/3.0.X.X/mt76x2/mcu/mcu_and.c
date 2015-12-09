@@ -119,7 +119,7 @@ loadfw_protect:
 			goto done;
 		}
 	}
-
+	
 #ifdef DBG
 	DBGPRINT(RT_DEBUG_OFF, ("\n"));
 
@@ -140,10 +140,10 @@ loadfw_protect:
 #endif
 
 	RTMP_IO_WRITE32(ad, PCIE_REMAP_BASE4, cap->rom_patch_offset - 10000);
-
+		
 	start_offset = PATCH_INFO_SIZE;
 	end_offset = cap->rom_patch_len;
-
+	
 	/* Load rom patch code */
 	for (idx = start_offset; idx < end_offset; idx += 4)
 	{
@@ -215,7 +215,7 @@ int andes_pci_erasefw(RTMP_ADAPTER *ad)
 	int ret = NDIS_STATUS_SUCCESS;
 	u32 ilm_len, dlm_len;
 	u16 fw_ver, build_ver;
-	u32 loop = 0, idx = 0, val = 0;
+	u32 loop = 0, idx = 0/*, val = 0*/;
 	u32 mac_value;
 	u32 start_offset, end_offset;
 	RTMP_CHIP_CAP *cap = &ad->chipCap;
@@ -233,7 +233,7 @@ int andes_pci_erasefw(RTMP_ADAPTER *ad)
 		fw_ver = (*(cap->FWImageName + 11) << 8) | (*(cap->FWImageName + 10));
 
 		build_ver = (*(cap->FWImageName + 9) << 8) | (*(cap->FWImageName + 8));
-
+	
 #ifdef DBG
 		DBGPRINT(RT_DEBUG_TRACE, ("FW Version:%d.%d.%02d ", (fw_ver & 0xf000) >> 8,
 							(fw_ver & 0x0f00) >> 8, fw_ver & 0x00ff));
@@ -276,11 +276,6 @@ int andes_pci_erasefw(RTMP_ADAPTER *ad)
 		if (!IS_MT76x2(ad)) {
 			/* erase ilm */
 			for (idx = start_offset; idx < end_offset; idx += 4) {
-				val = (*(cap->FWImageName + idx)) +
-				   (*(cap->FWImageName + idx + 3) << 24) +
-				   (*(cap->FWImageName + idx + 2) << 16) +
-				   (*(cap->FWImageName + idx + 1) << 8);
-
 				RTMP_IO_WRITE32(ad, 0x80000 + (idx - FW_INFO_SIZE), 0);
 			}
 
@@ -291,11 +286,6 @@ int andes_pci_erasefw(RTMP_ADAPTER *ad)
 	
 				for (idx = start_offset; idx < end_offset; idx += 4)
 				{
-					val = (*(cap->FWImageName + idx)) +
-						(*(cap->FWImageName + idx + 3) << 24) +
-						(*(cap->FWImageName + idx + 2) << 16) +
-						(*(cap->FWImageName + idx + 1) << 8);
-
 					RTMP_IO_WRITE32(ad, 0x80000 + (0x54000 - IV_SIZE) + (idx - FW_INFO_SIZE), 0);
 				}
 			}
@@ -307,11 +297,6 @@ int andes_pci_erasefw(RTMP_ADAPTER *ad)
 	
 			/* erase dlm */
 			for (idx = start_offset; idx < end_offset; idx += 4) {
-				val = (*(cap->FWImageName + idx)) +
-					(*(cap->FWImageName + idx + 3) << 24) +
-					(*(cap->FWImageName + idx + 2) << 16) +
-					(*(cap->FWImageName + idx + 1) << 8);
-
 				RTMP_IO_WRITE32(ad, 0x80000 + (0x54000 - IV_SIZE) + (idx - FW_INFO_SIZE), 0);
 			}
 		}
@@ -395,7 +380,7 @@ loadfw_protect:
 	fw_ver = (*(cap->FWImageName + 11) << 8) | (*(cap->FWImageName + 10));
 
 	build_ver = (*(cap->FWImageName + 9) << 8) | (*(cap->FWImageName + 8));
-
+	
 #ifdef DBG
 	DBGPRINT(RT_DEBUG_OFF, ("FW Version:%d.%d.%02d ", (fw_ver & 0xf000) >> 8,
 						(fw_ver & 0x0f00) >> 8, fw_ver & 0x00ff));
@@ -406,7 +391,7 @@ loadfw_protect:
 		DBGPRINT(RT_DEBUG_OFF, ("%c", *(cap->FWImageName + 16 + loop)));
 	DBGPRINT(RT_DEBUG_OFF, ("\n"));
 #endif
-
+	
 	if (IS_MT76x2(ad)) {
 		if (((strncmp(cap->FWImageName + 16, "20130811", 8) >= 0)) && (MT_REV_GTE(ad, MT76x2, REV_MT76x2E3))) {
 			DBGPRINT(RT_DEBUG_OFF, ("fw for E3 IC\n"));
@@ -423,7 +408,7 @@ loadfw_protect:
 
 	DBGPRINT(RT_DEBUG_TRACE, ("ILM Length = %d(bytes)\n", ilm_len));
 	DBGPRINT(RT_DEBUG_TRACE, ("DLM Length = %d(bytes)\n", dlm_len));
-
+	
 	RTMP_IO_WRITE32(ad, PCIE_REMAP_BASE4, cap->ilm_offset);
 
 	if (cap->ram_code_protect)
@@ -489,6 +474,7 @@ loadfw_protect:
 	RTMP_IO_WRITE32(ad, PCIE_REMAP_BASE4, 0x0);
 
 #ifdef RTMP_FLASH_SUPPORT
+#ifdef MT76x2
 	if (IS_MT76x2(ad))
 	{
 		USHORT ee_val = 0;
@@ -506,6 +492,7 @@ loadfw_protect:
 			RTMP_IO_WRITE32(ad, COM_REG0, mac_value);
 		}
 	}
+#endif /* MT76x2 */
 #endif /* RTMP_FLASH_SUPPORT */
 
 
@@ -796,20 +783,6 @@ static u32 andes_queue_len(struct MCU_CTRL *ctl, DL_LIST *list)
 	return qlen;
 }
 
-static int andes_queue_empty(struct MCU_CTRL *ctl, DL_LIST *list)
-{
-	unsigned long flags;
-	int is_empty;
-	NDIS_SPIN_LOCK *lock;
-	
-	lock = andes_get_spin_lock(ctl, list);
-
-	RTMP_SPIN_LOCK_IRQSAVE(lock, &flags);
-	is_empty = DlListEmpty(list);
-	RTMP_SPIN_UNLOCK_IRQRESTORE(lock, &flags);
-
-	return is_empty;
-}
 
 static void andes_queue_init(struct MCU_CTRL *ctl, DL_LIST *list)
 {
@@ -895,12 +868,12 @@ void andes_rx_process_cmd_msg(RTMP_ADAPTER *ad, struct cmd_msg *rx_msg)
 		return;
 	} 
 #ifdef DBG
-	#define LOG2HOST 3
-	if (rx_info->evt_type == LOG2HOST)
-	{
-	    PUCHAR pRxRspEvtPayload = GET_OS_PKT_DATAPTR(net_pkt) + sizeof(RXFCE_INFO_CMD);
-	    DBGPRINT(RT_DEBUG_WARN, ("[FW]%s\n", pRxRspEvtPayload));
-	}
+   #define LOG2HOST 3
+   if (rx_info->evt_type == LOG2HOST)
+   {
+       PUCHAR pRxRspEvtPayload = GET_OS_PKT_DATAPTR(net_pkt) + sizeof(RXFCE_INFO_CMD);
+       DBGPRINT(RT_DEBUG_WARN, ("[FW]%s\n", pRxRspEvtPayload));
+    }
 #endif
 	if (rx_info->self_gen) {
 		/* if have callback function */
@@ -984,6 +957,7 @@ void pci_rx_cmd_msg_complete(RTMP_ADAPTER *ad, RXFCE_INFO *fce_info, PUCHAR payl
 
 	andes_free_cmd_msg(msg);
 }
+
 #endif
 
 
@@ -1392,6 +1366,7 @@ int andes_send_cmd_msg(PRTMP_ADAPTER ad, struct cmd_msg *msg)
 #ifdef RTMP_PCI_SUPPORT
 	RTMP_SPIN_LOCK(&ad->mcu_atomic);
 #endif
+	
 
 
 	if (!RTMP_TEST_FLAG(ad, fRTMP_ADAPTER_MCU_SEND_IN_BAND_CMD) 
@@ -1401,6 +1376,8 @@ int andes_send_cmd_msg(PRTMP_ADAPTER ad, struct cmd_msg *msg)
 #ifdef RTMP_PCI_SUPPORT
 		RTMP_SPIN_UNLOCK(&ad->mcu_atomic);
 #endif
+		
+
 
 		return NDIS_STATUS_FAILURE;
 	}
@@ -1460,13 +1437,13 @@ retransmit:
 			andes_free_cmd_msg(msg);
 		}
 	}
-	
+
 
 #ifdef RTMP_PCI_SUPPORT
 	RTMP_SPIN_UNLOCK(&ad->mcu_atomic);
 	RtmpOsMsDelay(10);
 #endif
-
+	
 	return ret;
 }
 
@@ -2084,11 +2061,13 @@ int andes_pwr_saving(RTMP_ADAPTER *ad, u32 op, u32 level,
 	unsigned int var_len;
 	u32 value;
 	int ret = 0;
+	BOOLEAN need_wait = FALSE;
+
 
 	/* Power operation and Power Level */
 	var_len = 8;
 
-	if (op == RADIO_OFF_ADVANCE)
+	if (op == RADIO_OFF_ADVANCE_PWR_SAVING)
 	{
 		/* Listen interval, Pre-TBTT, TIM info */
 		var_len += 12;
@@ -2101,7 +2080,7 @@ int andes_pwr_saving(RTMP_ADAPTER *ad, u32 op, u32 level,
 		goto error;
 	}
 
-	andes_init_cmd_msg(msg, CMD_POWER_SAVING_OP, FALSE, 0, FALSE, FALSE, 0, NULL, NULL);
+	andes_init_cmd_msg(msg, CMD_POWER_SAVING_OP, need_wait, 0, FALSE, FALSE, 0, NULL, NULL);
 	
 	/* Power operation */
 	value = cpu2le32(op);
@@ -2112,7 +2091,7 @@ int andes_pwr_saving(RTMP_ADAPTER *ad, u32 op, u32 level,
 
 	andes_append_cmd_msg(msg, (char *)&value, 4);
 
-	if (op == RADIO_OFF_ADVANCE)
+	if (op == RADIO_OFF_ADVANCE_PWR_SAVING)
 	{
 		/* Listen interval */
 		value = cpu2le32(listen_interval);
@@ -2426,6 +2405,9 @@ int andes_dynamic_vga(RTMP_ADAPTER *ad, UINT8 channel, BOOLEAN mode, BOOLEAN ext
 
 	if (ext == TRUE)
 		value |= 0x40000000;
+
+	if (ad->ed_chk == TRUE)
+		value |= 0x20000000;
 		
 	value |= channel;
 	value = cpu2le32(value);
@@ -2493,7 +2475,7 @@ void andes_pci_fw_init(RTMP_ADAPTER *ad)
 	/* clear garbage interrupts*/
 	RTMP_IO_READ32(ad, 0x1300, &value);
 	if (value) {
-		DBGPRINT(RT_DEBUG_OFF, ("0x1300 = %08x\n", value));
+	DBGPRINT(RT_DEBUG_OFF, ("0x1300 = %08x\n", value));
 	}
 
 #ifdef HDR_TRANS_SUPPORT

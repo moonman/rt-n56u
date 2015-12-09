@@ -58,15 +58,12 @@ void
 mlme_radio_wl(int is_on)
 {
 #if BOARD_HAS_5G_RADIO
-	int i_val;
-	const char *ifname_ap = IFNAME_5G_MAIN;
+	const char *wifname = find_wlan_if_up(1);
 
-	doSystem("iwpriv %s set %s=%d", ifname_ap, "RadioOn", (is_on) ? 1 : 0);
-	if (is_on) {
-		i_val = nvram_wlan_get_int(1, "TxPower");
-		doSystem("iwpriv %s set %s=%d", ifname_ap, "TxPower", i_val);
-	}
+	if (!wifname)
+		return;
 
+	doSystem("iwpriv %s set %s=%d", wifname, "RadioOn", (is_on) ? 1 : 0);
 #endif
 	mlme_state_wl(is_on);
 
@@ -78,14 +75,12 @@ mlme_radio_wl(int is_on)
 void
 mlme_radio_rt(int is_on)
 {
-	int i_val;
-	const char *ifname_ap = IFNAME_2G_MAIN;
+	const char *wifname = find_wlan_if_up(0);
 
-	doSystem("iwpriv %s set %s=%d", ifname_ap, "RadioOn", (is_on) ? 1 : 0);
-	if (is_on) {
-		i_val = nvram_wlan_get_int(0, "TxPower");
-		doSystem("iwpriv %s set %s=%d", ifname_ap, "TxPower", i_val);
-	}
+	if (!wifname)
+		return;
+
+	doSystem("iwpriv %s set %s=%d", wifname, "RadioOn", (is_on) ? 1 : 0);
 
 	mlme_state_rt(is_on);
 
@@ -94,6 +89,11 @@ mlme_radio_rt(int is_on)
 #endif
 
 #if defined(USE_RT3352_MII)
+	if (is_on) {
+		int i_val = nvram_wlan_get_int(0, "TxPower");
+		doSystem("iwpriv %s set %s=%d", wifname, "TxPower", i_val);
+	}
+
 	// isolation iNIC port from all LAN ports
 	phy_isolate_inic((is_on) ? 0 : 1);
 #endif
@@ -308,14 +308,35 @@ check_inic_mii_rebooted(void)
 	rt_mode_x = get_mode_radio_rt();
 	if (rt_mode_x != 1 && rt_mode_x != 3) {
 		/* check guest AP */
-		if (!is_interface_up(IFNAME_INIC_GUEST) && is_guest_allowed_rt()) {
+		if (!is_interface_up(IFNAME_INIC_GUEST) && is_guest_allowed_rt())
 			wif_control(IFNAME_INIC_GUEST, 1);
-			if (is_interface_up(IFNAME_INIC_GUEST))
-				restart_guest_lan_isolation();
-		}
 	}
 }
 #endif
+
+void
+update_vga_clamp_rt(int first_call)
+{
+#if (BOARD_NUM_UPHY_USB3 > 0)
+#if !defined(USE_RT3352_MII)
+	int i_val;
+	const char *wifname;
+
+	if (nvram_get_int("usb3_disable"))
+		return;
+
+	wifname = find_wlan_if_up(0);
+	if (!wifname)
+		return;
+
+	i_val = nvram_wlan_get_int(0, "VgaClamp");
+	if (i_val == 0 && first_call)
+		return;
+
+	doSystem("iwpriv %s set %s=%d", wifname, "VgaClamp", i_val);
+#endif
+#endif
+}
 
 void 
 stop_wifi_all_wl(void)
@@ -406,13 +427,16 @@ start_wifi_ap_rt(int radio_on)
 	int i_mode_x = get_mode_radio_rt();
 #if !defined(USE_RT3352_MII)
 	int i_m2u = nvram_wlan_get_int(0, "IgmpSnEnable");
+#else
+	int is_ap_mode = get_ap_mode();
 #endif
 
 	// check WDS only, ApCli only or Radio disabled
 	if (i_mode_x == 1 || i_mode_x == 3 || !radio_on)
 	{
 #if defined(USE_RT3352_MII)
-		wif_bridge(IFNAME_INIC_GUEST_VLAN, 0);
+		if (!is_ap_mode)
+			wif_bridge(IFNAME_INIC_GUEST_VLAN, 0);
 #else
 		wif_bridge(IFNAME_2G_GUEST, 0);
 		wif_bridge(IFNAME_2G_MAIN, 0);
@@ -429,7 +453,8 @@ start_wifi_ap_rt(int radio_on)
 	if (radio_on && i_mode_x != 1 && i_mode_x != 3 && is_guest_allowed_rt())
 	{
 		wif_control(IFNAME_INIC_GUEST, 1);
-		wif_bridge(IFNAME_INIC_GUEST_VLAN, 1);
+		if (!is_ap_mode)
+			wif_bridge(IFNAME_INIC_GUEST_VLAN, 1);
 	}
 
 	// start iNIC_mii checking daemon
@@ -553,7 +578,7 @@ start_wifi_apcli_wl(int radio_on)
 	if (radio_on && (i_mode_x == 3 || i_mode_x == 4) && (strlen(nvram_wlan_get(1, "sta_ssid")) > 0))
 	{
 		wif_control(ifname_apcli, 1);
-		wif_bridge(ifname_apcli, !is_apcli_wisp_wl());
+		wif_bridge(ifname_apcli, !is_apcli_wisp_wl() || get_ap_mode());
 		if (i_mode_x == 3 && nvram_wlan_get_int(1, "sta_auto"))
 			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 1);
 	}
@@ -574,7 +599,7 @@ start_wifi_apcli_rt(int radio_on)
 	{
 		wif_control(ifname_apcli, 1);
 #if !defined(USE_RT3352_MII)
-		wif_bridge(ifname_apcli, !is_apcli_wisp_rt());
+		wif_bridge(ifname_apcli, !is_apcli_wisp_rt() || get_ap_mode());
 		if (i_mode_x == 3 && nvram_wlan_get_int(0, "sta_auto"))
 			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 1);
 #endif
@@ -674,6 +699,9 @@ restart_wifi_rt(int radio_on, int need_reload_conf)
 	restart_guest_lan_isolation();
 
 	check_apcli_wan(0, radio_on);
+
+	if (radio_on)
+		update_vga_clamp_rt(0);
 
 #if defined (BOARD_GPIO_LED_SW2G)
 	if (radio_on)
@@ -924,6 +952,8 @@ control_guest_rt(int guest_on, int manual)
 	int i_mode_x = get_mode_radio_rt();
 #if !defined(USE_RT3352_MII)
 	int i_m2u = nvram_wlan_get_int(0, "IgmpSnEnable");
+#else
+	int is_ap_mode = get_ap_mode();
 #endif
 
 	// check WDS only, ApCli only or Radio disabled (force or by schedule)
@@ -939,7 +969,8 @@ control_guest_rt(int guest_on, int manual)
 			is_ap_changed = 1;
 		}
 #if defined(USE_RT3352_MII)
-		wif_bridge(IFNAME_INIC_GUEST_VLAN, 1);
+		if (!is_ap_mode)
+			wif_bridge(IFNAME_INIC_GUEST_VLAN, 1);
 #else
 		wif_bridge(ifname_ap, 1);
 		brport_set_m2u(ifname_ap, i_m2u);
@@ -952,7 +983,8 @@ control_guest_rt(int guest_on, int manual)
 			is_ap_changed = 1;
 		}
 #if defined(USE_RT3352_MII)
-		wif_bridge(IFNAME_INIC_GUEST_VLAN, 0);
+		if (!is_ap_mode)
+			wif_bridge(IFNAME_INIC_GUEST_VLAN, 0);
 #else
 		wif_bridge(ifname_ap, 0);
 #endif
@@ -1026,6 +1058,8 @@ restart_guest_lan_isolation(void)
 
 #if defined(USE_RT3352_MII)
 	rt_ifname_guest = IFNAME_INIC_GUEST_VLAN;
+	if (is_ap_mode)
+		is_need_ebtables &= ~0x01;
 #endif
 
 	brport_set_param_int(rt_ifname_guest, "isolate_mode", bp_isolate);

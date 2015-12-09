@@ -336,11 +336,10 @@ static void save_speed_json(long next_time)
 					tmax = tnow;
 				fprintf(fp, "%s%u", k ? "," : "", tnow);
 			}
-			total *= RSTATS_INTERVAL;
 			fprintf(fp, "],\n");
 			ch = j ? 't' : 'r';
 			fprintf(fp, " %cx_avg: %llu,\n %cx_max: %u,\n %cx_total: %llu\n",
-				ch, total / MAX_NSPEED, ch, tmax, ch, total);
+				ch, total / MAX_NSPEED, ch, tmax, ch, total * RSTATS_INTERVAL);
 		}
 	}
 	fprintf(fp, "%s\n};\n", (i > 0) ? " }" : "");
@@ -431,9 +430,11 @@ static int is_system_time_valid(struct tm *tms)
 	if (tms->tm_year <= (SYS_START_YEAR - 1900))
 		return 0;
 
+#if !defined (USE_RTC_HCTOSYS)
 	/* NTP client updated at least one time */
 	if (!is_ntpc_updated())
 		return 0;
+#endif
 
 	return 1;
 }

@@ -484,6 +484,9 @@ void __udp6_lib_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 	if (sk == NULL)
 		return;
 
+	if (type == ICMPV6_PKT_TOOBIG)
+		ip6_sk_update_pmtu(skb, sk, info);
+
 	np = inet6_sk(sk);
 
 	if (!icmpv6_err_convert(type, code, &err) && !np->recverr)
@@ -1357,6 +1360,10 @@ static struct sk_buff *udp6_ufo_fragment(struct sk_buff *skb,
 
 		skb_shinfo(skb)->gso_segs = DIV_ROUND_UP(skb->len, mss);
 
+		/* Set the IPv6 fragment id if not set yet */
+		if (!skb_shinfo(skb)->ip6_frag_id)
+			ipv6_proxy_select_ident(skb);
+
 		segs = NULL;
 		goto out;
 	}
@@ -1365,7 +1372,7 @@ static struct sk_buff *udp6_ufo_fragment(struct sk_buff *skb,
 	 * do checksum of UDP packets sent as multiple IP fragments.
 	 */
 	offset = skb_checksum_start_offset(skb);
-	csum = skb_checksum(skb, offset, skb->len- offset, 0);
+	csum = skb_checksum(skb, offset, skb->len - offset, 0);
 	offset += skb->csum_offset;
 	*(__sum16 *)(skb->data + offset) = csum_fold(csum);
 	skb->ip_summed = CHECKSUM_NONE;
@@ -1392,6 +1399,8 @@ static struct sk_buff *udp6_ufo_fragment(struct sk_buff *skb,
 	fptr = (struct frag_hdr *)(skb_network_header(skb) + unfrag_ip6hlen);
 	fptr->nexthdr = nexthdr;
 	fptr->reserved = 0;
+	if (!skb_shinfo(skb)->ip6_frag_id)
+		ipv6_proxy_select_ident(skb);
 	fptr->identification = skb_shinfo(skb)->ip6_frag_id;
 
 	/* Fragment the skb. ipv6 header and the remaining fields of the

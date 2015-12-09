@@ -104,18 +104,26 @@
 #define LOGNAME				BOARD_NAME
 
 #if BOARD_RAM_SIZE > 128
- #define KERNEL_MIN_FREE_KBYTES		16384
+ #define KERNEL_NET_CORE_RMEM		1310720
+ #define KERNEL_NET_CORE_WMEM		1310720
+ #define KERNEL_MIN_FREE_KBYTES		12288
  #define DNS_RELAY_CACHE_MAX		1536
  #define LOG_ROTATE_SIZE_MAX		1024
 #elif BOARD_RAM_SIZE > 64
+ #define KERNEL_NET_CORE_RMEM		983040
+ #define KERNEL_NET_CORE_WMEM		983040
  #define KERNEL_MIN_FREE_KBYTES		8192
  #define DNS_RELAY_CACHE_MAX		1024
  #define LOG_ROTATE_SIZE_MAX		512
 #elif BOARD_RAM_SIZE > 32
+ #define KERNEL_NET_CORE_RMEM		655360
+ #define KERNEL_NET_CORE_WMEM		655360
  #define KERNEL_MIN_FREE_KBYTES		4096
  #define DNS_RELAY_CACHE_MAX		512
  #define LOG_ROTATE_SIZE_MAX		256
 #else
+ #define KERNEL_NET_CORE_RMEM		327680
+ #define KERNEL_NET_CORE_WMEM		327680
  #define KERNEL_MIN_FREE_KBYTES		2048
  #define DNS_RELAY_CACHE_MAX		256
  #define LOG_ROTATE_SIZE_MAX		128
@@ -125,7 +133,7 @@
 void setenv_tz(void);
 void setkernel_tz(void);
 void init_router(void);
-void shutdown_router(int use_reboot);
+void shutdown_router(int level);
 void handle_notifications(void);
 void LED_CONTROL(int gpio_led, int flag);
 void storage_save_time(time_t delta);
@@ -197,12 +205,7 @@ void restart_iptv(int is_ap_mode);
 void flush_conntrack_table(char *ip);
 void flush_route_caches(void);
 void clear_if_route4(char *ifname);
-int  is_hwnat_allow(void);
-int  is_hwnat_loaded(void);
-int  is_fastnat_allow(void);
 int  is_ftp_conntrack_loaded(int ftp_port0, int ftp_port1);
-void hwnat_load(void);
-void hwnat_configure(void);
 void hw_vlan_tx_map(int idx, int vid);
 void reload_nat_modules(void);
 void restart_firewall(void);
@@ -415,6 +418,7 @@ char* get_apcli_wisp_ifname(void);
 #if defined(USE_RT3352_MII)
 void check_inic_mii_rebooted(void);
 #endif
+void update_vga_clamp_rt(int first_call);
 void start_wifi_ap_wl(int radio_on);
 void start_wifi_ap_rt(int radio_on);
 void start_wifi_wds_wl(int radio_on);
@@ -531,6 +535,7 @@ void start_p910nd(char *devlp);
 void stop_p910nd(void);
 #if defined(APP_SMBD)
 int write_smb_conf(void);
+void config_smb_fastpath(int check_pid);
 void stop_samba(int force_stop);
 void run_samba(void);
 void restart_smbd(void);
@@ -612,13 +617,11 @@ int gen_ralink_config_5g(int disable_autoscan);
 int getPIN(void);
 int setPIN(const char *pin);
 int getBootVer(void);
-int getCountryRegion(const char *str);
-int getCountryRegionABand(const char *str);
 int get_apcli_connected(const char *ifname);
-
+int check_regspec_code(const char *spec);
 
 /* watchdog.c */
-#if defined (BOARD_GPIO_BTN_WPS) || defined (BOARD_GPIO_BTN_WLTOG)
+#if defined (BOARD_GPIO_BTN_WPS) || defined (BOARD_GPIO_BTN_FN1) || defined (BOARD_GPIO_BTN_FN2)
 void ez_event_short(int btn_id);
 void ez_event_long(int btn_id);
 #endif

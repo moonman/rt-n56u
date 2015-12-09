@@ -312,6 +312,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_HT_MpduDensity", "5" },
 	{ "rt_HT_BAWinSize", "64" },
 	{ "rt_HT_AutoBA", "1" },
+	{ "rt_VgaClamp", "0" },
 
 	// guest AP 2.4Ghz
 	{ "rt_guest_enable", "0" },
@@ -342,12 +343,13 @@ struct nvram_pair router_defaults[] = {
 	{ "acc_num", "0" },
 	{ "enable_ftp", "0" },
 	{ "enable_samba", "1" },
+	{ "st_samba_fp", "1" },
 	{ "st_samba_mode", "1" },
 	{ "st_samba_lmb", "1" },
+	{ "st_samba_workgroup", DEF_SMB_WORKGROUP },
 	{ "st_ftp_mode", "1" },
 	{ "st_ftp_log", "0" },
 	{ "st_max_user", "10" },
-	{ "st_samba_workgroup", DEF_SMB_WORKGROUP },
 	{ "apps_dms", "0" },
 	{ "apps_itunes", "0"},
 	{ "sh_num", "0" },
@@ -585,11 +587,13 @@ struct nvram_pair router_defaults[] = {
 #else
 	{ "ez_action_long", "0" },
 #endif
-	{ "wlt_action_short", "1" },
-#if BOARD_HAS_5G_RADIO
-	{ "wlt_action_long", "3" },
-#else
-	{ "wlt_action_long", "1" },
+#if defined (BOARD_GPIO_BTN_FN1)
+	{ "fn1_action_short", "0" },
+	{ "fn1_action_long", "0" },
+#endif
+#if defined (BOARD_GPIO_BTN_FN2)
+	{ "fn2_action_short", "0" },
+	{ "fn2_action_long", "0" },
 #endif
 	{ "watchdog_cpu", "0" },
 	{ "front_led_all", "1" },

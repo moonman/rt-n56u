@@ -31,6 +31,7 @@
 #include	"rt_config.h"
 
 
+#ifdef DBG
 VOID dump_txd(RTMP_ADAPTER *pAd, TXD_STRUC *pTxD)
 {
 	DBGPRINT(RT_DEBUG_OFF, ("TxD:\n"));
@@ -85,6 +86,24 @@ VOID dumpTxRing(RTMP_ADAPTER *pAd, INT ring_idx)
 #endif /* defined(RTMP_MAC) || defined(RLT_MAC) */
 	}
 }
+
+
+VOID dumpRxRing(RTMP_ADAPTER *pAd, INT ring_idx)
+{
+	RTMP_RX_RING *pRxRing;
+	RXD_STRUC *pRxD;
+	int index;
+	int RxRingSize = (ring_idx == 0) ? RX_RING_SIZE : RX1_RING_SIZE;
+
+	pRxRing = &pAd->RxRing[ring_idx];
+	for (index = 0; index < RxRingSize; index++)
+	{
+		pRxD = (RXD_STRUC *)pRxRing->Cell[index].AllocVa;
+		hex_dump("Dump RxDesc", (UCHAR *)pRxD, sizeof(RXD_STRUC));
+		dump_rxd(pAd, pRxD);
+	}
+}
+#endif
 
 
 BOOLEAN MonitorTxRing(RTMP_ADAPTER *pAd)
@@ -211,26 +230,6 @@ BOOLEAN MonitorRxPse(RTMP_ADAPTER *pAd)
 	{
 		pAd->RxPseCheckTimes = 0;
 		return TRUE;
-	}
-}
-
-
-VOID dumpRxRing(RTMP_ADAPTER *pAd, INT ring_idx)
-{
-	//RTMP_DMABUF *pDescRing;
-	RTMP_RX_RING *pRxRing;
-	RXD_STRUC *pRxD;
-	int index;
-
-
-	//pDescRing = (RTMP_DMABUF *)pAd->RxDescRing[0].AllocVa;
-
-	pRxRing = &pAd->RxRing[0];
-	for (index = 0; index < RX_RING_SIZE; index++)
-	{
-		pRxD = (RXD_STRUC *)pRxRing->Cell[index].AllocVa;
-		hex_dump("Dump RxDesc", (UCHAR *)pRxD, sizeof(RXD_STRUC));
-		dump_rxd(pAd, pRxD);
 	}
 }
 
@@ -1355,14 +1354,6 @@ VOID RTMPHandleMgmtRingDmaDoneInterrupt(RTMP_ADAPTER *pAd)
 #ifdef CONFIG_AP_SUPPORT
 #endif /* CONFIG_AP_SUPPORT */
 
-#ifdef RT_CFG80211_SUPPORT
-		if (pPacket)
-		{
-			HEADER_802_11  *pHeader;
-			pHeader = (HEADER_802_11 *)(GET_OS_PKT_DATAPTR(pPacket)+ TXINFO_SIZE + pAd->chipCap.TXWISize);
-			CFG80211_SendMgmtFrameDone(pAd, pHeader->Sequence);
-		}
-#endif
 
 		if (pPacket)
 		{
@@ -1490,22 +1481,11 @@ VOID RTMPHandleTTTTInterrupt(RTMP_ADAPTER *pAd)
 VOID RTMPHandlePreTBTTInterrupt(RTMP_ADAPTER *pAd)
 {
 #ifdef CONFIG_AP_SUPPORT
-#ifdef RT_CFG80211_SUPPORT
-	struct wifi_dev *wdev;
-	wdev = &pAd->ApCfg.MBSSID[0].wdev;
-#endif /*RT_CFG80211_SUPPORT*/
 	
 	if (pAd->OpMode == OPMODE_AP
-#ifdef RT_CFG80211_SUPPORT
-		&& (wdev->Hostapd == Hostapd_CFG)
-#endif /*RT_CFG80211_SUPPORT*/
 	)
 	{
-#ifdef RT_CFG80211_SUPPORT
-			RT_CFG80211_BEACON_TIM_UPDATE(pAd);
-#else
 			APUpdateAllBeaconFrame(pAd);
-#endif /* RT_CFG80211_SUPPORT  */
 	}
 	else
 #endif /* CONFIG_AP_SUPPORT */
@@ -1522,21 +1502,6 @@ VOID RTMPHandlePreTBTTInterrupt(RTMP_ADAPTER *pAd)
 	if (pAd->chipCap.hif_type == HIF_MT) {
 		POS_COOKIE pObj = (POS_COOKIE) pAd->OS_Cookie;
 		RTMP_OS_TASKLET_SCHE(&pObj->tbtt_task);
-#ifdef CUSTOMER_DCC_FEATURE
-	if(pAd->CommonCfg.channelSwitch.CHSWMode == CHANNEL_SWITCHING_MODE && (pAd->ApCfg.DtimCount == 0))
-	{
-		DBGPRINT(RT_DEBUG_OFF, ("RTMPHandlePreTBTTInterrupt::Channel Switching...(%d/%d)\n", pAd->CommonCfg.channelSwitch.CHSWCount, pAd->CommonCfg.channelSwitch.CHSWPeriod));
-					
-		pAd->CommonCfg.channelSwitch.CHSWCount++;
-		if(pAd->CommonCfg.channelSwitch.CHSWCount >= pAd->CommonCfg.channelSwitch.CHSWPeriod)
-		{
-			pAd->CommonCfg.channelSwitch.CHSWMode = NORMAL_MODE;
-			MlmeEnqueue(pAd, AP_SYNC_STATE_MACHINE, APMT2_CHANNEL_SWITCH, 0, NULL, 0);
-			RTMP_MLME_HANDLER(pAd);
-			
-		}
-	}
-#endif
 	}
 //#endif
 #endif /*MT_MAC */
@@ -1595,7 +1560,7 @@ VOID RTMPHandleMcuInterrupt(RTMP_ADAPTER *pAd)
 
 	// TODO: shiang-7603
 	if (pAd->chipCap.hif_type == HIF_MT) {
-		DBGPRINT(RT_DEBUG_OFF, ("%s(): Not support for HIF_MT yet!\n",
+		DBGPRINT(RT_DEBUG_TRACE, ("%s(): Not support for HIF_MT yet!\n",
 					__FUNCTION__));
 		return;
 	}
@@ -1738,6 +1703,14 @@ PNDIS_PACKET GetPacketFromRxRing(
 	RTMP_DMACB *pRxCell;
 	//UINT8 RXWISize = pAd->chipCap.RXWISize;
 	UINT8 rx_hw_hdr_len = pAd->chipCap.RXWISize;
+	UINT16 RxRingSize = RX_RING_SIZE;
+	UINT16 RxBufferSize = RX_BUFFER_AGGRESIZE;
+
+	if (RxRingNo != 0)
+	{
+		RxRingSize = RX1_RING_SIZE;
+		RxBufferSize = RX1_BUFFER_SIZE;
+	}
 
 	pRxRing = &pAd->RxRing[RxRingNo];
 	pRxRingLock = &pAd->RxRingLock[RxRingNo];
@@ -1757,7 +1730,7 @@ PNDIS_PACKET GetPacketFromRxRing(
 		if (pRxRing->RxDmaIdx > pRxRing->RxSwReadIdx)
 			*pRxPending = pRxRing->RxDmaIdx - pRxRing->RxSwReadIdx;
 		else
-			*pRxPending = pRxRing->RxDmaIdx + RX_RING_SIZE - pRxRing->RxSwReadIdx;
+			*pRxPending = pRxRing->RxDmaIdx + RxRingSize - pRxRing->RxSwReadIdx;
 	}
 
 	pRxCell = &pRxRing->Cell[pRxRing->RxSwReadIdx];
@@ -1806,7 +1779,7 @@ PNDIS_PACKET GetPacketFromRxRing(
 			hex_dump("Invalid Pkt content", GET_OS_PKT_DATAPTR(pRxPacket), 32);
 		}
 
-		pRxD->SDL0 = RX_BUFFER_AGGRESIZE;
+		pRxD->SDL0 = RxBufferSize;
 		pRxD->LS0 = 0;
 		pRxD->DDONE = 0;
 		bReschedule = TRUE;
@@ -1819,9 +1792,9 @@ PNDIS_PACKET GetPacketFromRxRing(
 		WriteBackToDescriptor((PUCHAR)pDestRxD, (PUCHAR)pRxD, FALSE, TYPE_RXD);
 #endif
 
-		INC_RING_INDEX(pRxRing->RxSwReadIdx, RX_RING_SIZE);
+		INC_RING_INDEX(pRxRing->RxSwReadIdx, RxRingSize);
 
-		pRxRing->RxCpuIdx = (pRxRing->RxSwReadIdx == 0) ? (RX_RING_SIZE-1) : (pRxRing->RxSwReadIdx-1);
+		pRxRing->RxCpuIdx = (pRxRing->RxSwReadIdx == 0) ? (RxRingSize-1) : (pRxRing->RxSwReadIdx-1);
 		RTMP_IO_WRITE32(pAd, pRxRing->hw_cidx_addr, pRxRing->RxCpuIdx);
 
 		goto done;
@@ -1837,16 +1810,16 @@ PNDIS_PACKET GetPacketFromRxRing(
 		struct sk_buff *skb = __skb_dequeue_tail(&pAd->rx0_recycle);
 
 		if (unlikely(skb==NULL))
-			pNewPacket = RTMP_AllocateRxPacketBuffer(pAd, ((POS_COOKIE)(pAd->OS_Cookie))->pci_dev, RX_BUFFER_AGGRESIZE, FALSE, &AllocVa, &AllocPa);
+			pNewPacket = RTMP_AllocateRxPacketBuffer(pAd, ((POS_COOKIE)(pAd->OS_Cookie))->pci_dev, RxBufferSize, FALSE, &AllocVa, &AllocPa);
 		else
 		{
 			pNewPacket = OSPKT_TO_RTPKT(skb);
 			AllocVa = GET_OS_PKT_DATAPTR(pNewPacket);
-			AllocPa = PCI_MAP_SINGLE_DEV(((POS_COOKIE)(pAd->OS_Cookie))->pci_dev, AllocVa, RX_BUFFER_AGGRESIZE,  -1, RTMP_PCI_DMA_FROMDEVICE);
+			AllocPa = PCI_MAP_SINGLE_DEV(((POS_COOKIE)(pAd->OS_Cookie))->pci_dev, AllocVa, RxBufferSize,  -1, RTMP_PCI_DMA_FROMDEVICE);
 		}
 	}
 #else
-	pNewPacket = RTMP_AllocateRxPacketBuffer(pAd, ((POS_COOKIE)(pAd->OS_Cookie))->pci_dev, RX_BUFFER_AGGRESIZE, FALSE, &AllocVa, &AllocPa);
+	pNewPacket = RTMP_AllocateRxPacketBuffer(pAd, ((POS_COOKIE)(pAd->OS_Cookie))->pci_dev, RxBufferSize, FALSE, &AllocVa, &AllocPa);
 #endif /* WLAN_SKB_RECYCLE */
 
 	if (pNewPacket && !pAd->RxReset)
@@ -1887,7 +1860,7 @@ PNDIS_PACKET GetPacketFromRxRing(
 			pRxBlk->pHeader = (HEADER_802_11 *)(pRxBlk->pData);
 		}
 
-		pRxCell->DmaBuf.AllocSize = RX_BUFFER_AGGRESIZE;
+		pRxCell->DmaBuf.AllocSize = RxBufferSize;
 		pRxCell->pNdisPacket = (PNDIS_PACKET)pNewPacket;
 		pRxCell->DmaBuf.AllocVa = AllocVa;
 		pRxCell->DmaBuf.AllocPa = AllocPa;
@@ -1897,7 +1870,7 @@ PNDIS_PACKET GetPacketFromRxRing(
 
 		/* update SDP0 to new buffer of rx packet */
 		pRxD->SDP0 = AllocPa;
-		pRxD->SDL0 = RX_BUFFER_AGGRESIZE;
+		pRxD->SDL0 = RxBufferSize;
 	}
 	else
 	{
@@ -1917,7 +1890,7 @@ PNDIS_PACKET GetPacketFromRxRing(
 #endif /* MT_PS */
 		}
 
-		pRxD->SDL0 = RX_BUFFER_AGGRESIZE;
+		pRxD->SDL0 = RxBufferSize;
 		pRxPacket = NULL;
 		bReschedule = TRUE;
 	}
@@ -1933,9 +1906,9 @@ PNDIS_PACKET GetPacketFromRxRing(
 	WriteBackToDescriptor((PUCHAR)pDestRxD, (PUCHAR)pRxD, FALSE, TYPE_RXD);
 #endif
 
-	INC_RING_INDEX(pRxRing->RxSwReadIdx, RX_RING_SIZE);
+	INC_RING_INDEX(pRxRing->RxSwReadIdx, RxRingSize);
 
-	pRxRing->RxCpuIdx = (pRxRing->RxSwReadIdx == 0) ? (RX_RING_SIZE-1) : (pRxRing->RxSwReadIdx-1);
+	pRxRing->RxCpuIdx = (pRxRing->RxSwReadIdx == 0) ? (RxRingSize-1) : (pRxRing->RxSwReadIdx-1);
 	RTMP_IO_WRITE32(pAd, pRxRing->hw_cidx_addr, pRxRing->RxCpuIdx);
 
 #else /* CACHE_LINE_32B */
@@ -1982,15 +1955,15 @@ PNDIS_PACKET GetPacketFromRxRing(
 		RTMP_DCACHE_FLUSH(pRxCellLast->AllocPa, 32); /* use RXD_SIZE should be OK */
 
 		/* update SW read and CPU index */
-		INC_RING_INDEX(pRxRing->RxSwReadIdx, RX_RING_SIZE);
-		pRxRing->RxCpuIdx = (pRxRing->RxSwReadIdx == 0) ? (RX_RING_SIZE-1) : (pRxRing->RxSwReadIdx-1);
+		INC_RING_INDEX(pRxRing->RxSwReadIdx, RxRingSize);
+		pRxRing->RxCpuIdx = (pRxRing->RxSwReadIdx == 0) ? (RxRingSize-1) : (pRxRing->RxSwReadIdx-1);
 		RTMP_IO_WRITE32(pAd, pRxRing->hw_cidx_addr, pRxRing->RxCpuIdx);
 	}
 	else
 	{
 		/* 32B-align */
 		/* do not set DDONE bit and backup it */
-		if (pRxRing->RxSwReadIdx >= (RX_RING_SIZE-1))
+		if (pRxRing->RxSwReadIdx >= (RxRingSize-1))
 		{
 			DBGPRINT(RT_DEBUG_ERROR,
 					("Please change RX_RING_SIZE to mutiple of 2!\n"));
@@ -1999,8 +1972,8 @@ PNDIS_PACKET GetPacketFromRxRing(
 			RTMP_DCACHE_FLUSH(pRxCell->AllocPa, RXD_SIZE);
 
 			/* update SW read and CPU index */
-			INC_RING_INDEX(pRxRing->RxSwReadIdx, RX_RING_SIZE);
-			pRxRing->RxCpuIdx = (pRxRing->RxSwReadIdx == 0) ? (RX_RING_SIZE-1) : (pRxRing->RxSwReadIdx-1);
+			INC_RING_INDEX(pRxRing->RxSwReadIdx, RxRingSize);
+			pRxRing->RxCpuIdx = (pRxRing->RxSwReadIdx == 0) ? (RxRingSize-1) : (pRxRing->RxSwReadIdx-1);
 			RTMP_IO_WRITE32(pAd, pRxRing->hw_cidx_addr, pRxRing->RxCpuIdx);
 		}
 		else
@@ -2010,7 +1983,7 @@ PNDIS_PACKET GetPacketFromRxRing(
 			pRxCell->LastBDInfo = *pRxD;
 
 			/* update CPU index */
-			INC_RING_INDEX(pRxRing->RxSwReadIdx, RX_RING_SIZE);
+			INC_RING_INDEX(pRxRing->RxSwReadIdx, RxRingSize);
 		}
 	}
 #endif /* CACHE_LINE_32B */
@@ -2103,6 +2076,21 @@ NDIS_STATUS MlmeHardTransmitTxRing(RTMP_ADAPTER *pAd, UCHAR QueIdx, PNDIS_PACKET
 		(pHeader_802_11->FC.SubType == SUBTYPE_BLOCK_ACK_REQ)))
 	{
 		pMacEntry = MacTableLookup(pAd, pHeader_802_11->Addr1);
+#ifdef MAC_REPEATER_SUPPORT
+		if (pMacEntry != NULL &&  pAd->ApCfg.bMACRepeaterEn && IS_ENTRY_APCLI(pMacEntry)) 
+		{
+			REPEATER_CLIENT_ENTRY *pReptEntry = NULL;
+			UCHAR MacTabWCID=0;
+
+			pReptEntry = RTMPLookupRepeaterCliEntry(pAd, FALSE, pHeader_802_11->Addr2);
+			if (pReptEntry && pReptEntry->CliValid)
+			{
+				MacTabWCID = pReptEntry->MacTabWCID;
+				pMacEntry = &pAd->MacTab.Content[MacTabWCID];
+			}
+
+		}
+#endif
 	}
 
 #ifdef DOT11W_PMF_SUPPORT
@@ -2112,6 +2100,20 @@ NDIS_STATUS MlmeHardTransmitTxRing(RTMP_ADAPTER *pAd, UCHAR QueIdx, PNDIS_PACKET
 		MAC_TABLE_ENTRY *pEntry = NULL;
 
 		pEntry = MacTableLookup(pAd, pHeader_802_11->Addr1);
+#ifdef MAC_REPEATER_SUPPORT
+		if (pEntry != NULL &&  pAd->ApCfg.bMACRepeaterEn && IS_ENTRY_APCLI(pEntry)) 
+		{
+			REPEATER_CLIENT_ENTRY *pReptEntry = NULL;
+			UCHAR MacTabWCID=0;
+
+			pReptEntry = RTMPLookupRepeaterCliEntry(pAd, FALSE, pHeader_802_11->Addr2);
+			if (pReptEntry && pReptEntry->CliValid)
+			{
+				MacTabWCID = pReptEntry->MacTabWCID;
+				pEntry = &pAd->MacTab.Content[MacTabWCID];
+			}
+		}
+#endif
 		ret = PMF_RobustFrameClassify(
 					(PHEADER_802_11)pHeader_802_11,
 					(PUCHAR)(((PUCHAR)pHeader_802_11)+LENGTH_802_11),
@@ -2240,6 +2242,21 @@ NDIS_STATUS MlmeHardTransmitTxRing(RTMP_ADAPTER *pAd, UCHAR QueIdx, PNDIS_PACKET
 				MAC_TABLE_ENTRY *pEntry = NULL;
 				
 				pEntry = MacTableLookup(pAd, pHeader_802_11->Addr1);
+#ifdef MAC_REPEATER_SUPPORT
+				if (pEntry != NULL &&  pAd->ApCfg.bMACRepeaterEn && IS_ENTRY_APCLI(pEntry)) 
+				{
+					REPEATER_CLIENT_ENTRY *pReptEntry = NULL;
+					UCHAR MacTabWCID=0;
+
+					pReptEntry = RTMPLookupRepeaterCliEntry(pAd, FALSE, pHeader_802_11->Addr2);
+					if (pReptEntry && pReptEntry->CliValid)
+					{
+						MacTabWCID = pReptEntry->MacTabWCID;
+						pEntry = &pAd->MacTab.Content[MacTabWCID];
+					}
+
+				}
+#endif
 
 				if (pEntry)
 					wcid = pEntry->Aid;
@@ -2415,37 +2432,6 @@ NDIS_STATUS MlmeHardTransmitTxRing(RTMP_ADAPTER *pAd, UCHAR QueIdx, PNDIS_PACKET
 	WriteBackToDescriptor((PUCHAR)pDestTxD, (PUCHAR)pTxD, FALSE, TYPE_TXD);
 #endif
 
-#ifdef CUSTOMER_DCC_FEATURE
-	if(!(ApScanRunning(pAd)))
-	{
-		UINT32 Index, Length;
-		BSS_STRUCT *pMbss = NULL;
-						
-		Length = frm_len;
-		if (pMacEntry != NULL && (pMacEntry->pMbss->mbss_idx < pAd->ApCfg.BssidNum))
-			pMbss = &pAd->ApCfg.MBSSID[pMacEntry->pMbss->mbss_idx];
-		else
-		{
-			UCHAR apidx;
-			for(apidx=0; apidx<pAd->ApCfg.BssidNum; apidx++)
-			{
-				if ((pAd->ApCfg.MBSSID[apidx].wdev.if_dev != NULL) &&
-					!(RTMP_OS_NETDEV_STATE_RUNNING(pAd->ApCfg.MBSSID[apidx].wdev.if_dev)))
-				{
-					/* the interface is down */
-					continue;
-				}
-				if(RTMPEqualMemory(pAd->ApCfg.MBSSID[apidx].wdev.bssid, pHeader_802_11->Addr2,MAC_ADDR_LEN))
-				{
-					pMbss = &pAd->ApCfg.MBSSID[apidx];
-				}
-					
-			}
-		}
-		GetMultShiftFactorIndex(*transmit, &Index);
-		RTMPCalculateAPTxRxActivityTime(pAd, Index, Length, pMbss, pMacEntry);
-	}
-#endif	
 	pAd->RalinkCounters.KickTxCount++;
 	pAd->RalinkCounters.OneSecTxDoneCount++;
 

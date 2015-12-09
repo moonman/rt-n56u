@@ -267,9 +267,10 @@ static void prom_init_usb(void)
 
 static void prom_init_sysclk(void)
 {
-	char asic_id[8], *ram_type = "SDRAM";
+	const char *vendor_name, *ram_type = "SDRAM";
+	char asic_id[8];
 	int xtal = 40;
-	u32 reg;
+	u32 reg, ocp_freq;
 	u8  clk_sel;
 #if defined (CONFIG_RT5350_ASIC) || defined (CONFIG_MT7620_ASIC) || \
     defined (CONFIG_MT7621_ASIC) || defined (CONFIG_MT7628_ASIC)
@@ -286,30 +287,33 @@ static void prom_init_sysclk(void)
 	reg = (*(volatile u32 *)(RALINK_SYSCTL_BASE + 0x04));
 	memcpy(asic_id+4, &reg, 4);
 	asic_id[6] = '\0';
+	asic_id[7] = '\0';
 
 	ralink_asic_rev_id = (*(volatile u32 *)(RALINK_SYSCTL_BASE + 0x0c));
 
 #if defined (CONFIG_RALINK_MT7620)
-	/* PKG_ID [16:16], 0: DRQFN-148 (N/H), 1: TFBGA-269 (A)  */
+	/* PKG_ID [16:16], 0: DRQFN-148 (N/H), 1: TFBGA-269 (A) */
 	if (ralink_asic_rev_id & (1UL<<16))
 		asic_id[6] = 'A';
 	else
 		asic_id[6] = 'N';
-	asic_id[7] = '\0';
 #elif defined (CONFIG_RALINK_MT7621)
-	/* CORE_NUM [17:17], 0: Single Core (S), 1: Dual Core (A)  */
+	/* CORE_NUM [17:17], 0: Single Core (S), 1: Dual Core (A) */
 	if (ralink_asic_rev_id & (1UL<<17))
 		asic_id[6] = 'A';
 	else
 		asic_id[6] = 'S';
-	asic_id[7] = '\0';
 #elif defined (CONFIG_RALINK_MT7628)
-	/* PKG_ID [16:16], 0: DRQFN-120 (KN), 1: DRQFN-156 (AN)  */
+	/* Detect MT7688 via FUSE EE_CFG bit 20 */
+	reg = (*(volatile u32 *)(RALINK_SYSCTL_BASE + 0x08));
+	if (reg & (1UL<<20))
+		asic_id[4] = '8';
+
+	/* PKG_ID [16:16], 0: DRQFN-120 (KN), 1: DRQFN-156 (AN) */
 	if (ralink_asic_rev_id & (1UL<<16))
 		asic_id[6] = 'A';
 	else
 		asic_id[6] = 'K';
-	asic_id[7] = '\0';
 #endif
 
 	reg = (*((volatile u32 *)(RALINK_SYSCTL_BASE + 0x10)));
@@ -348,10 +352,13 @@ static void prom_init_sysclk(void)
 	if (reg & (0x1UL << 30))
 		clk_sel = 1;	/* CPU PLL */
 #elif defined (CONFIG_MT7628_ASIC)
-	clk_sel = 0;		/* clock from CPU PLL (600MHz) */
-	clk_sel2 = (reg>>4) & 0x01;
+	clk_sel = 0;		/* CPU PLL (580/575MHz) */
+	clk_sel2 = reg & 0x01;
 	if (!(reg & (1UL<<6)))
 		xtal = 25;
+	reg = (*((volatile u32 *)(RALINK_SYSCTL_BASE + 0x2C)));
+	if (reg & (0x1UL << 1))
+		clk_sel = 1;	/* BBP PLL (480MHz) */
 #else
 #error Please Choice System Type
 #endif
@@ -470,12 +477,10 @@ static void prom_init_sysclk(void)
 		}
 #endif
 		fbdiv = ((reg >> 4) & 0x7F) + 1;
-		if (xtal == 20)
-			;						/* 20Mhz Xtal: TODO */
-		else if (xtal == 25)
+		if (xtal == 25)
 			mips_cpu_feq = 25 * fbdiv * 1000 * 1000;	/* 25Mhz Xtal */
 		else
-			mips_cpu_feq = 20 * fbdiv * 1000 * 1000;	/* 40Mhz Xtal */
+			mips_cpu_feq = 20 * fbdiv * 1000 * 1000;	/* 20/40Mhz Xtal */
 		break;
 #elif defined (CONFIG_RALINK_MT7628)
 	case 0:
@@ -483,6 +488,9 @@ static void prom_init_sysclk(void)
 			mips_cpu_feq = 575 * 1000 * 1000;	/* 25MHZ Xtal */
 		else
 			mips_cpu_feq = 580 * 1000 * 1000;	/* 40MHz Xtal */
+		break;
+	case 1:
+		mips_cpu_feq = (480*1000*1000);
 		break;
 #else
 #error Please Choice Chip Type
@@ -571,9 +579,10 @@ static void prom_init_sysclk(void)
 	else
 		ram_type = "DDR3";
 	if (clk_sel2 & 0x02)
-		surfboard_sysclk = mips_cpu_feq/4;	/* OCP_RATIO 1:4 */
+		ocp_freq = mips_cpu_feq/4;	/* OCP_RATIO 1:4 */
 	else
-		surfboard_sysclk = mips_cpu_feq/3;	/* OCP_RATIO 1:3 */
+		ocp_freq = mips_cpu_feq/3;	/* OCP_RATIO 1:3 */
+	surfboard_sysclk = mips_cpu_feq/4;
 #elif defined (CONFIG_RALINK_MT7628)
 	surfboard_sysclk = mips_cpu_feq/3;
 	if (clk_sel2)
@@ -600,8 +609,30 @@ static void prom_init_sysclk(void)
 	surfboard_sysclk = mips_cpu_feq/3;
 #endif
 
-	printk("\nRalink SoC: %s, RevID: %04X, RAM: %s, XTAL: %dMHz\n", asic_id, (ralink_asic_rev_id & 0xffff), ram_type, xtal);
-	printk("CPU/SYS frequency: %d/%d MHz\n", mips_cpu_feq / 1000 / 1000, surfboard_sysclk / 1000 / 1000);
+#if !defined (CONFIG_RALINK_MT7621)
+	ocp_freq = surfboard_sysclk;
+#endif
+
+#if defined (CONFIG_RALINK_MT7620) || defined (CONFIG_RALINK_MT7621) || \
+    defined (CONFIG_RALINK_MT7628)
+	vendor_name = "MediaTek";
+#else
+	vendor_name = "Ralink";
+#endif
+
+	printk("\n%s SoC: %s, RevID: %04X, RAM: %s, XTAL: %dMHz\n",
+		vendor_name,
+		asic_id,
+		ralink_asic_rev_id & 0xffff,
+		ram_type,
+		xtal
+	);
+
+	printk("CPU/OCP/SYS frequency: %d/%d/%d MHz\n",
+		mips_cpu_feq / 1000 / 1000,
+		ocp_freq / 1000 / 1000,
+		surfboard_sysclk / 1000 / 1000
+	);
 
 	/* enable cpu sleep mode for power saving */
 #if defined (CONFIG_RALINK_SYSTICK_COUNTER) && defined (CONFIG_RALINK_CPUSLEEP)

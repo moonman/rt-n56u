@@ -311,6 +311,11 @@ static void __init bootmem_init(void)
 			min_low_pfn = start;
 		if (end <= reserved_end)
 			continue;
+#ifdef CONFIG_BLK_DEV_INITRD
+		/* Skip zones before initrd and initrd itself */
+		if (initrd_end && end <= (unsigned long)PFN_UP(__pa(initrd_end)))
+			continue;
+#endif
 		if (start >= mapstart)
 			continue;
 		mapstart = max(reserved_end, start);
@@ -545,10 +550,6 @@ static void __init arch_mem_init(char **cmdline_p)
 	}
 
 	bootmem_init();
-
-#if defined (CONFIG_RALINK_MT7621) && defined (CONFIG_RT2880_DRAM_512M)
-	reserve_bootmem(0x1C000000, 64*1024*1024, BOOTMEM_DEFAULT);
-#endif
 
 	device_tree_init();
 	sparse_init();

@@ -413,6 +413,8 @@ static void tcp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 		} else
 			dst_hold(dst);
 
+		dst->ops->update_pmtu(dst, ntohl(info));
+
 		if (inet_csk(sk)->icsk_pmtu_cookie > dst_mtu(dst)) {
 			tcp_sync_mss(sk, dst_mtu(dst));
 			tcp_simple_retransmit(sk);
@@ -1724,6 +1726,7 @@ static const struct inet_connection_sock_af_ops ipv6_specific = {
 	.syn_recv_sock	   = tcp_v6_syn_recv_sock,
 	.get_peer	   = tcp_v6_get_peer,
 	.net_header_len	   = sizeof(struct ipv6hdr),
+	.net_frag_header_len = sizeof(struct frag_hdr),
 	.setsockopt	   = ipv6_setsockopt,
 	.getsockopt	   = ipv6_getsockopt,
 	.addr2sockaddr	   = inet6_csk_addr2sockaddr,

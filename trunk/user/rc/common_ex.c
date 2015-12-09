@@ -24,6 +24,7 @@
 #include <sys/time.h>
 #include <sys/sysinfo.h>
 #include <sys/stat.h>
+#include <sys/mount.h>
 #include <syslog.h>
 #include <stdarg.h>
 #include <unistd.h>
@@ -241,11 +242,8 @@ get_eeprom_params(void)
 			if ((unsigned char)regspec_code[i] > 0x7f)
 				regspec_code[i] = 0;
 		}
-		if (strcasecmp(regspec_code, "CE") &&
-		    strcasecmp(regspec_code, "SG") &&
-		    strcasecmp(regspec_code, "AU") &&
-		    strcasecmp(regspec_code, "FCC") &&
-		    strcasecmp(regspec_code, "NCC"))
+		
+		if (!check_regspec_code(regspec_code))
 			strcpy(regspec_code, "CE");
 	}
 #else
@@ -320,6 +318,7 @@ get_eeprom_params(void)
 	nvram_set_temp("firmver", trim_r(fwver));
 	nvram_set_temp("firmver_sub", trim_r(fwver_sub));
 
+#if 0
 #if defined (VENDOR_ASUS)
 	memset(buffer, 0, 4);
 	i_ret = flash_mtd_read(MTD_PART_NAME_FACTORY, OFFSET_BOOT_VER, buffer, 4);
@@ -328,6 +327,7 @@ get_eeprom_params(void)
 		snprintf(blver, sizeof(blver), "%s-0%c-0%c-0%c-0%c", trim_r(productid), buffer[0], buffer[1], buffer[2], buffer[3]);
 		nvram_set_temp("blver", trim_r(blver));
 	}
+#endif
 #endif
 
 #if 0
@@ -386,6 +386,10 @@ restart_all_sysctl(void)
 		set_igmp_mld_version();
 		set_passthrough_pppoe(1);
 	}
+
+#if defined(APP_SMBD)
+	config_smb_fastpath(1);
+#endif
 }
 
 void

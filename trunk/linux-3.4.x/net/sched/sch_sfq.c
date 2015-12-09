@@ -237,10 +237,12 @@ static inline void sfq_link(struct sfq_sched_data *q, sfq_index x)
 }
 
 #define sfq_unlink(q, x, n, p)			\
-	n = q->slots[x].dep.next;		\
-	p = q->slots[x].dep.prev;		\
-	sfq_dep_head(q, p)->next = n;		\
-	sfq_dep_head(q, n)->prev = p
+	do {					\
+		n = q->slots[x].dep.next;	\
+		p = q->slots[x].dep.prev;	\
+		sfq_dep_head(q, p)->next = n;	\
+		sfq_dep_head(q, n)->prev = p;	\
+	} while (0)
 
 
 static inline void sfq_dec(struct sfq_sched_data *q, sfq_index x)
@@ -307,11 +309,6 @@ static inline void slot_queue_add(struct sfq_slot *slot, struct sk_buff *skb)
 	slot->skblist_prev->next = skb;
 	slot->skblist_prev = skb;
 }
-
-#define	slot_queue_walk(slot, skb)		\
-	for (skb = slot->skblist_next;		\
-	     skb != (struct sk_buff *)slot;	\
-	     skb = skb->next)
 
 static unsigned int sfq_drop(struct Qdisc *sch)
 {

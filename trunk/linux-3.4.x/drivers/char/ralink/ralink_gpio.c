@@ -622,15 +622,24 @@ void
 ralink_gpio_mode_set_bit(u32 idx, u32 value)
 {
 	u32 tmp;
+	u32 reg = RALINK_REG_GPIOMODE;
 
-	if (idx > 31) idx = 31;
+#if defined (CONFIG_RALINK_MT7628)
+	if (idx > 31) {
+		idx -= 32;
+		reg = RALINK_REG_GPIOMODE2;
+	}
+#endif
 
-	tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_GPIOMODE));
+	if (idx > 31)
+		idx = 31;
+
+	tmp = le32_to_cpu(*(volatile u32 *)(reg));
 	if (value)
 		tmp |=  (1u << idx);
 	else
 		tmp &= ~(1u << idx);
-	*(volatile u32 *)(RALINK_REG_GPIOMODE) = cpu_to_le32(tmp);
+	*(volatile u32 *)(reg) = cpu_to_le32(tmp);
 }
 EXPORT_SYMBOL(ralink_gpio_mode_set_bit);
 
@@ -640,10 +649,19 @@ u32
 ralink_gpio_mode_get_bit(u32 idx)
 {
 	u32 tmp = 0;
+	u32 reg = RALINK_REG_GPIOMODE;
 
-	if (idx > 31) idx = 31;
+#if defined (CONFIG_RALINK_MT7628)
+	if (idx > 31) {
+		idx -= 32;
+		reg = RALINK_REG_GPIOMODE2;
+	}
+#endif
 
-	tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_GPIOMODE));
+	if (idx > 31)
+		idx = 31;
+
+	tmp = le32_to_cpu(*(volatile u32 *)(reg));
 	tmp = (tmp >> idx) & 1u;
 
 	return tmp;
@@ -1138,8 +1156,8 @@ ralink_gpio_notify_user(u32 irq_gpio, u32 rise_edge)
 	if (irq_gpio >= RALINK_GPIO_NUMBER)
 		return 0;
 
-	// don't send any signal if pid is 0 or 1
-	if (ralink_gpio_irq_data[irq_gpio].pid < 2)
+	// don't send any signal if pid < 1
+	if (ralink_gpio_irq_data[irq_gpio].pid < 1)
 		return 0;
 
 	if (!(ralink_gpio_irq_data[irq_gpio].rise && rise_edge) &&

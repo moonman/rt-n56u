@@ -77,6 +77,38 @@ static const char *const environment[] = {
 static void
 reset_signals(void);
 
+static void
+notify_shutdown(void)
+{
+#if defined (BOARD_GPIO_BTN_PWR_CUT) && defined (BOARD_GPIO_BTN_PWR_INT)
+	unsigned int i_button_value = BTN_PRESSED;
+
+	if (cpu_gpio_get_pin(BOARD_GPIO_BTN_PWR_INT, &i_button_value) < 0)
+		return;
+
+	if (i_button_value == BTN_PRESSED)
+		return;
+
+	/* POWER button is released, shutdown now */
+	cpu_gpio_irq_set(BOARD_GPIO_BTN_PWR_INT, 0, 0, 0);
+
+	reset_signals();
+
+	printf("Button POWER is released, shutdown system...\n");
+
+	shutdown_router(2);
+
+	printf("\nShutdown!\n\n");
+
+	usleep(10000);
+
+	sync();
+
+	/* Power OFF */
+	cpu_gpio_set_pin(BOARD_GPIO_BTN_PWR_CUT, 0);
+#endif
+}
+
 /* signals handling */
 static void
 catch_sig_fatal(int sig)
@@ -86,13 +118,13 @@ catch_sig_fatal(int sig)
 	printf("%s signal: %s\n", "fatal", strsignal(sig));
 
 	if (sig == SIGQUIT) {
-		shutdown_router(0);
+		shutdown_router(1);
 		return;
 	}
 
 	reset_signals();
 
-	shutdown_router(1);
+	shutdown_router(0);
 
 	kill(-1, SIGTERM);
 	sleep(1);
@@ -121,6 +153,7 @@ catch_sig_event(int sig)
 		sig_usr1_received = 1;
 		break;
 	case SIGUSR2:
+		notify_shutdown();
 		break;
 	case SIGALRM:
 		sig_alrm_received = 1;
@@ -328,6 +361,11 @@ init_time(void)
 
 	time(&st);
 	localtime_r(&st, &stm);
+#if defined (USE_RTC_HCTOSYS)
+	/* check RTC is valid */
+	if (stm.tm_year >= (SYS_START_YEAR - 1900))
+		return;
+#endif
 	stm.tm_year = (SYS_START_YEAR - 1900);
 	st = mktime(&stm);
 	stime(&st);
@@ -341,12 +379,13 @@ init_nodes(void)
 	mknod("/dev/nvram",  S_IFCHR | 0666, makedev(228, 0));
 	mknod("/dev/gpio",   S_IFCHR | 0666, makedev(252, 0));
 	mknod("/dev/rdm0",   S_IFCHR | 0666, makedev(253, 0));
-
+#if defined (USE_HW_NAT)
 	mknod("/dev/hwnat0", S_IFCHR | 0666, makedev(220, 0));
 #if !defined (USE_HW_NAT_V2)
 	mknod("/dev/acl0",   S_IFCHR | 0666, makedev(230, 0));
 	mknod("/dev/ac0",    S_IFCHR | 0666, makedev(240, 0));
 	mknod("/dev/mtr0",   S_IFCHR | 0666, makedev(250, 0));
+#endif
 #endif
 #if defined(APP_OPENVPN)
 	/* if kernel CONFIG_HOTPLUG is not set, mdev create /dev/tun instead of /dev/net/tun */
@@ -388,6 +427,9 @@ static void
 init_sysctl(void)
 {
 	fput_int("/proc/sys/kernel/panic", 1);
+
+	fput_int("/proc/sys/net/core/rmem_max", KERNEL_NET_CORE_RMEM);
+	fput_int("/proc/sys/net/core/wmem_max", KERNEL_NET_CORE_WMEM);
 
 	fput_int("/proc/sys/net/ipv4/conf/all/rp_filter", 0); // new logic for new kernels
 
@@ -440,6 +482,9 @@ init_main_loop(void)
 
 	/* block SIGUSR1 during init_router() */
 	control_signal(SIGUSR1, SIG_BLOCK);
+
+	/* block SIGUSR2 during notify_shutdown() */
+	control_signal(SIGUSR2, SIG_BLOCK);
 
 	/* Router init and start */
 	init_router();

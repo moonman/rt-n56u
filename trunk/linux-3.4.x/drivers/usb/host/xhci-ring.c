@@ -85,7 +85,7 @@ dma_addr_t xhci_trb_virt_to_dma(struct xhci_segment *seg,
 		return 0;
 	/* offset in TRBs */
 	segment_offset = trb - seg->trbs;
-	if (segment_offset > TRBS_PER_SEGMENT)
+	if (segment_offset >= TRBS_PER_SEGMENT)
 		return 0;
 	return seg->dma + (segment_offset * sizeof(*trb));
 }
@@ -242,9 +242,13 @@ static void inc_enq(struct xhci_hcd *xhci, struct xhci_ring *ring,
 			 * carry over the chain bit of the previous TRB
 			 * (which may mean the chain bit is cleared).
 			 */
+#if defined (CONFIG_MTK_XHCI)
+			if (!xhci_link_trb_quirk(xhci)) {
+#else
 			if (!(ring->type == TYPE_ISOC &&
 					(xhci->quirks & XHCI_AMD_0x96_HOST))
 						&& !xhci_link_trb_quirk(xhci)) {
+#endif
 				next->link.control &=
 					cpu_to_le32(~TRB_CHAIN);
 				next->link.control |=
@@ -332,9 +336,18 @@ static int xhci_abort_cmd_ring(struct xhci_hcd *xhci)
 	 * seconds), then it should assume that the there are
 	 * larger problems with the xHC and assert HCRST.
 	 */
-	ret = handshake(xhci, &xhci->op_regs->cmd_ring,
+	ret = xhci_handshake(xhci, &xhci->op_regs->cmd_ring,
 			CMD_RING_RUNNING, 0, 5 * 1000 * 1000);
 	if (ret < 0) {
+		/* we are about to kill xhci, give it one more chance */
+		xhci_write_64(xhci, temp_64 | CMD_RING_ABORT,
+			      &xhci->op_regs->cmd_ring);
+		udelay(1000);
+		ret = xhci_handshake(xhci, &xhci->op_regs->cmd_ring,
+				CMD_RING_RUNNING, 0, 3 * 1000 * 1000);
+		if (ret == 0)
+			return 0;
+
 		xhci_err(xhci, "Stopped the command ring failed, "
 				"maybe the host is dead\n");
 		xhci->xhc_state |= XHCI_STATE_DYING;
@@ -749,10 +762,12 @@ static void xhci_giveback_urb_in_irq(struct xhci_hcd *xhci,
 	if (urb_priv->td_cnt == urb_priv->length) {
 		if (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS) {
 			xhci_to_hcd(xhci)->self.bandwidth_isoc_reqs--;
+#if !defined (CONFIG_MTK_XHCI)
 			if (xhci_to_hcd(xhci)->self.bandwidth_isoc_reqs	== 0) {
 				if (xhci->quirks & XHCI_AMD_PLL_FIX)
 					usb_amd_quirk_pll_enable();
 			}
+#endif
 		}
 		usb_hcd_unlink_urb_from_ep(hcd, urb);
 
@@ -1634,14 +1649,20 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	max_ports = HCS_MAX_PORTS(xhci->hcs_params1);
 	if ((port_id <= 0) || (port_id > max_ports)) {
 		xhci_warn(xhci, "Invalid port id %d\n", port_id);
-		bogus_port_status = true;
-		goto cleanup;
+		inc_deq(xhci, xhci->event_ring);
+		return;
 	}
 
 	/* Figure out which usb_hcd this port is attached to:
 	 * is it a USB 3.0 port or a USB 2.0/1.1 port?
 	 */
 	major_revision = xhci->port_array[port_id - 1];
+
+	/* Find the right roothub. */
+	hcd = xhci_to_hcd(xhci);
+	if ((major_revision == 0x03) != (hcd->speed == HCD_USB3))
+		hcd = xhci->shared_hcd;
+
 	if (major_revision == 0) {
 		xhci_warn(xhci, "Event for port %u not in "
 				"Extended Capabilities, ignoring.\n",
@@ -1664,10 +1685,6 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	 * into the index into the ports on the correct split roothub, and the
 	 * correct bus_state structure.
 	 */
-	/* Find the right roothub. */
-	hcd = xhci_to_hcd(xhci);
-	if ((major_revision == 0x03) != (hcd->speed == HCD_USB3))
-		hcd = xhci->shared_hcd;
 	bus_state = &xhci->bus_state[hcd_index(hcd)];
 	if (hcd->speed == HCD_USB3)
 		port_array = xhci->usb3_ports;
@@ -1682,6 +1699,9 @@ static void handle_port_status(struct xhci_hcd *xhci,
 		xhci_dbg(xhci, "resume root hub\n");
 		usb_hcd_resume_root_hub(hcd);
 	}
+
+	if (hcd->speed == HCD_USB3 && (temp & PORT_PLS_MASK) == XDEV_INACTIVE)
+		bus_state->port_remote_wakeup &= ~(1 << faked_port_index);
 
 	if ((temp & PORT_PLC) && (temp & PORT_PLS_MASK) == XDEV_RESUME) {
 		xhci_dbg(xhci, "port resume event for port %d\n", port_id);
@@ -1931,7 +1951,8 @@ static int finish_td(struct xhci_hcd *xhci, struct xhci_td *td,
 		if (trb_comp_code == COMP_STALL ||
 		    xhci_requires_manual_halt_cleanup(xhci, ep_ctx,
 						      trb_comp_code)) {
-			/* Issue a reset endpoint command to clear the host side			 * halt, followed by a set dequeue command to move the
+			/* Issue a reset endpoint command to clear the host side
+			 * halt, followed by a set dequeue command to move the
 			 * dequeue pointer past the TD.
 			 * The class driver clears the device side halt later.
 			 */
@@ -1979,11 +2000,13 @@ td_cleanup:
 			ret = 1;
 			if (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS) {
 				xhci_to_hcd(xhci)->self.bandwidth_isoc_reqs--;
+#if !defined (CONFIG_MTK_XHCI)
 				if (xhci_to_hcd(xhci)->self.bandwidth_isoc_reqs
 					== 0) {
 					if (xhci->quirks & XHCI_AMD_PLL_FIX)
 						usb_amd_quirk_pll_enable();
 				}
+#endif
 			}
 		}
 	}
@@ -2142,8 +2165,13 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_td *td,
 		break;
 	case COMP_DEV_ERR:
 	case COMP_STALL:
+		frame->status = -EPROTO;
+		skip_td = true;
+		break;
 	case COMP_TX_ERR:
 		frame->status = -EPROTO;
+		if (event_trb != td->last_trb)
+			return 0;
 		skip_td = true;
 		break;
 	case COMP_STOP:
@@ -2318,6 +2346,8 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_td *td,
  */
 static int handle_tx_event(struct xhci_hcd *xhci,
 		struct xhci_transfer_event *event)
+	__releases(&xhci->lock)
+	__acquires(&xhci->lock)
 {
 	struct xhci_virt_device *xdev;
 	struct xhci_virt_ep *ep;
@@ -2621,7 +2651,7 @@ cleanup:
 					(status != 0 &&
 					 !usb_endpoint_xfer_isoc(&urb->ep->desc)))
 				xhci_dbg(xhci, "Giveback URB %p, len = %d, "
-						"expected = %x, status = %d\n",
+						"expected = %d, status = %d\n",
 						urb, urb->actual_length,
 						urb->transfer_buffer_length,
 						status);
@@ -2730,13 +2760,11 @@ irqreturn_t xhci_irq(struct usb_hcd *hcd)
 {
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
 	u32 status;
-	union xhci_trb *trb;
 	u64 temp_64;
 	union xhci_trb *event_ring_deq;
 	dma_addr_t deq;
 
 	spin_lock(&xhci->lock);
-	trb = xhci->event_ring->dequeue;
 	/* Check if the xHC generated the interrupt, or the irq is shared */
 	status = xhci_readl(xhci, &xhci->op_regs->status);
 	if (status == 0xffffffff)
@@ -2751,7 +2779,7 @@ irqreturn_t xhci_irq(struct usb_hcd *hcd)
 		xhci_halt(xhci);
 hw_died:
 		spin_unlock(&xhci->lock);
-		return -ESHUTDOWN;
+		return IRQ_HANDLED;
 	}
 
 	/*
@@ -2896,7 +2924,7 @@ static int prepare_ring(struct xhci_hcd *xhci, struct xhci_ring *ep_ring,
 			xhci_err(xhci, "Ring expansion failed\n");
 			return -ENOMEM;
 		}
-	};
+	}
 
 	if (enqueue_is_link_trb(ep_ring)) {
 		struct xhci_ring *ring = ep_ring;
@@ -3556,11 +3584,11 @@ int xhci_queue_ctrl_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 	if (start_cycle == 0)
 		field |= 0x1;
 
-	/* xHCI 1.0 6.4.1.2.1: Transfer Type field */
+	/* xHCI 1.0/1.1 6.4.1.2.1: Transfer Type field */
 #if defined (CONFIG_MTK_XHCI)
 	if (1) {
 #else
-	if (xhci->hci_version == 0x100) {
+	if (xhci->hci_version >= 0x100) {
 #endif
 		if (urb->transfer_buffer_length > 0) {
 			if (setup->bRequestType & USB_DIR_IN)
@@ -3588,7 +3616,7 @@ int xhci_queue_ctrl_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 #if !defined (CONFIG_MTK_XHCI)
 		xhci_td_remainder(urb->transfer_buffer_length) |
 #else
-		// MTK style, no scatter-gather for control transfer
+		/* MTK style, no scatter-gather for control transfer */
 		0 |
 #endif
 		TRB_INTR_TARGET(0);
@@ -3874,10 +3902,12 @@ static int xhci_queue_isoc_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 		}
 	}
 
+#if !defined (CONFIG_MTK_XHCI)
 	if (xhci_to_hcd(xhci)->self.bandwidth_isoc_reqs == 0) {
 		if (xhci->quirks & XHCI_AMD_PLL_FIX)
 			usb_amd_quirk_pll_disable();
 	}
+#endif
 	xhci_to_hcd(xhci)->self.bandwidth_isoc_reqs++;
 
 	giveback_first_trb(xhci, slot_id, ep_index, urb->stream_id,

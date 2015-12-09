@@ -18,56 +18,10 @@
 #include <linux/ip.h>
 #include <linux/ipv6.h>
 
-#define HW_NAT_MODULE_VER "v2.51.9"
+#define HW_NAT_MODULE_VER "v2.52.0"
 
-/* ra0-15, wds0-4, apcli0, mesh0 interfaces */
-#if defined (CONFIG_RT2860V2_AP_MBSS)
-#define HWNAT_DP_RA_MBSS
-#endif
-
-#if defined (CONFIG_RT2860V2_AP_WDS)
-#define HWNAT_DP_RA_WDS
-#endif
-
-#if defined (CONFIG_RT2860V2_AP_APCLI)
-#define HWNAT_DP_RA_APCLI
-#endif
-
-#if defined (CONFIG_RT2860V2_AP_MESH)
-#define HWNAT_DP_RA_MESH
-#endif
-
-/* rai0-15, wdsi0-4, apclii0, meshi0 interfaces */
-#if defined (CONFIG_RTDEV_USB) || defined (CONFIG_RTDEV_PCI)
-#define HWNAT_DP_RAI_AP
-
-#if defined (CONFIG_RT3090_AP_MBSS) || defined (CONFIG_RT5392_AP_MBSS) || \
-    defined (CONFIG_RT3572_AP_MBSS) || defined (CONFIG_RT5572_AP_MBSS) || \
-    defined (CONFIG_RT5592_AP_MBSS) || defined (CONFIG_RT3593_AP_MBSS) || \
-    defined (CONFIG_MT7610_AP_MBSS)
-#define HWNAT_DP_RAI_MBSS
-#endif
-
-#if defined (CONFIG_RT3090_AP_WDS) || defined (CONFIG_RT5392_AP_WDS) || \
-    defined (CONFIG_RT3572_AP_WDS) || defined (CONFIG_RT5572_AP_WDS) || \
-    defined (CONFIG_RT5592_AP_WDS) || defined (CONFIG_RT3593_AP_WDS) || \
-    defined (CONFIG_MT7610_AP_WDS)
-#define HWNAT_DP_RAI_WDS
-#endif
-
-#if defined (CONFIG_RT3090_AP_APCLI) || defined (CONFIG_RT5392_AP_APCLI) || \
-    defined (CONFIG_RT3572_AP_APCLI) || defined (CONFIG_RT5572_AP_APCLI) || \
-    defined (CONFIG_RT5592_AP_APCLI) || defined (CONFIG_RT3593_AP_APCLI) || \
-    defined (CONFIG_MT7610_AP_APCLI)
-#define HWNAT_DP_RAI_APCLI
-#endif
-
-#if defined (CONFIG_RT3090_AP_MESH) || defined (CONFIG_RT5392_AP_MESH) || \
-    defined (CONFIG_RT3572_AP_MESH) || defined (CONFIG_RT5572_AP_MESH) || \
-    defined (CONFIG_RT5592_AP_MESH) || defined (CONFIG_RT3593_AP_MESH) || \
-    defined (CONFIG_MT7610_AP_MESH)
-#define HWNAT_DP_RAI_MESH
-#endif
+#if !defined (CONFIG_RT_SECOND_IF_NONE) && !defined (CONFIG_RT_SECOND_IF_RT3352_INIC)
+#define HWNAT_USE_SECOND_IF
 #endif
 
 /*
@@ -96,7 +50,7 @@ enum DstPort {
 	DP_WDS3 = 30,
 	DP_APCLI0 = 31,
 	DP_MESH0 = 32,
-#if defined (HWNAT_DP_RAI_AP)
+#if defined (HWNAT_USE_SECOND_IF)
 	DP_RAI0 = 33,
 	DP_RAI1 = 34,
 	DP_RAI2 = 35,
@@ -261,7 +215,8 @@ int PpeSetRuleSize(uint16_t pre_acl, uint16_t pre_meter, uint16_t pre_ac,
 int PpeSetKaInterval(uint8_t tcp_ka, uint8_t udp_ka);
 int PpeSetUnbindLifeTime(uint8_t lifetime);
 int PpeSetBindLifetime(uint16_t tcp_fin, uint16_t udp_life, uint16_t fin_life);
-int PpeSetAllowIPv6(uint8_t allow_ipv6);
+
+struct FoeEntry *get_foe_entry(uint32_t foe_entry_num);
 
 extern struct FoeEntry *get_foe_table(dma_addr_t *dma_handle, uint32_t *FoeTblSize);
 

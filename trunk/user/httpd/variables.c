@@ -164,9 +164,13 @@
 			{"di_port5", "", NULL, EVM_RESTART_DI},
 			{"ez_action_short", "", NULL, FALSE},
 			{"ez_action_long", "", NULL, FALSE},
-#if defined (BOARD_GPIO_BTN_WLTOG)
-			{"wlt_action_short", "", NULL, FALSE},
-			{"wlt_action_long", "", NULL, FALSE},
+#if defined (BOARD_GPIO_BTN_FN1)
+			{"fn1_action_short", "", NULL, FALSE},
+			{"fn1_action_long", "", NULL, FALSE},
+#endif
+#if defined (BOARD_GPIO_BTN_FN2)
+			{"fn2_action_short", "", NULL, FALSE},
+			{"fn2_action_long", "", NULL, FALSE},
 #endif
 			{"front_led_all", "", NULL, EVM_RESTART_TWEAKS},
 			{"front_led_wan", "", NULL, EVM_RESTART_TWEAKS},
@@ -189,22 +193,34 @@
 		};
 
 	struct variable variables_Storage[] = {
+			{"computer_name", "", NULL, EVM_RESTART_DHCPD|EVM_RESTART_FTPD|EVM_RESTART_NMBD|EVM_RESTART_DMS|EVM_RESTART_ITUNES},
+#if defined(APP_SMBD)
 			{"enable_samba", "", NULL, EVM_RESTART_SMBD},
+			{"st_samba_fp", "", NULL, EVM_RESTART_SYSCTL},
 			{"st_samba_mode", "", NULL, EVM_RESTART_SMBD},
+#endif
+#if defined(APP_SMBD) || defined(APP_NMBD)
 			{"st_samba_lmb", "", NULL, EVM_RESTART_NMBD},
 			{"st_samba_workgroup", "", NULL, EVM_RESTART_NMBD},
-			{"computer_name", "", NULL, EVM_RESTART_DHCPD|EVM_RESTART_FTPD|EVM_RESTART_NMBD|EVM_RESTART_DMS|EVM_RESTART_ITUNES},
+#endif
+#if defined(APP_SMBD) || defined(APP_FTPD)
+			{"st_max_user", "", NULL, EVM_RESTART_FTPD|EVM_RESTART_SMBD},
+			{"acc_num", "", NULL, EVM_RESTART_FTPD|EVM_RESTART_SMBD},
+#endif
+#if defined(APP_FTPD)
 			{"enable_ftp", "", NULL, EVM_RESTART_FTPD},
 			{"st_ftp_mode", "", NULL, EVM_RESTART_FTPD},
 			{"st_ftp_log", "", NULL, EVM_RESTART_FTPD},
-			{"st_max_user", "", NULL, EVM_RESTART_FTPD|EVM_RESTART_SMBD},
-			{"acc_num", "", NULL, EVM_RESTART_FTPD|EVM_RESTART_SMBD},
+#endif
 			{"achk_enable", "", NULL, FALSE},
 			{"optw_enable", "", NULL, FALSE},
 			{"hdd_spindt", "", NULL, EVM_RESTART_HDDTUNE},
 			{"hdd_apmoff", "", NULL, EVM_RESTART_HDDTUNE},
 			{"pcache_reclaim", "", NULL, EVM_RESTART_HDDTUNE},
+#if defined(APP_NFSD)
 			{"nfsd_enable", "", NULL, EVM_RESTART_NFSD},
+#endif
+#if defined(APP_MINIDLNA)
 			{"apps_dms", "", NULL, EVM_RESTART_DMS},
 			{"dlna_disc", "", NULL, EVM_RESTART_DMS},
 			{"dlna_root", "", NULL, EVM_RESTART_DMS},
@@ -213,13 +229,20 @@
 			{"dlna_src2", "", NULL, EVM_RESTART_DMS},
 			{"dlna_src3", "", NULL, EVM_RESTART_DMS},
 			{"dlna_rescan", "", NULL, EVM_RESTART_DMS},
+#endif
+#if defined(APP_FIREFLY)
 			{"apps_itunes", "", NULL, EVM_RESTART_ITUNES},
+#endif
+#if defined(APP_TRMD)
 			{"trmd_enable", "", NULL,EVM_RESTART_TRMD},
 			{"trmd_pport", "", NULL, EVM_RESTART_TRMD},
 			{"trmd_rport", "", NULL, EVM_RESTART_TRMD},
+#endif
+#if defined(APP_ARIA)
 			{"aria_enable", "", NULL,EVM_RESTART_ARIA},
 			{"aria_pport", "", NULL, EVM_RESTART_ARIA},
 			{"aria_rport", "", NULL, EVM_RESTART_ARIA},
+#endif
 #if (BOARD_NUM_UPHY_USB3 > 0)
 			{"usb3_disable", "", NULL, EVM_RESTART_REBOOT},
 #endif
@@ -758,6 +781,9 @@
 			{"rt_HT_MpduDensity", "", NULL, EVM_RESTART_WIFI2 },
 			{"rt_HT_BAWinSize", "", NULL, EVM_RESTART_WIFI2 },
 			{"rt_HT_AutoBA", "", NULL, EVM_RESTART_WIFI2},
+#if (BOARD_NUM_UPHY_USB3 > 0)
+			{"rt_VgaClamp", "", NULL, EVM_RESTART_WIFI2},
+#endif
 			{"rt_country_code", "", NULL, EVM_RESTART_WIFI2},
 			{"rt_stream_tx", "", NULL, EVM_RESTART_WIFI2},
 			{"rt_stream_rx", "", NULL, EVM_RESTART_WIFI2},

@@ -31,6 +31,10 @@
 #ifndef	__RT_CONFIG_H__
 #define	__RT_CONFIG_H__
 
+#if (CONFIG_RT_FIRST_CARD == 7602 || CONFIG_RT_FIRST_CARD == 7612 || CONFIG_RT_FIRST_CARD == 7620) && \
+    (CONFIG_RT_SECOND_CARD == 7602 || CONFIG_RT_SECOND_CARD == 7612)
+#define DRIVER_HAS_MULTI_DEV
+#endif
 
 #include "rtmp_comm.h"
 
@@ -115,6 +119,12 @@
 #endif /* MAT_SUPPORT */
 
 
+#ifdef CONFIG_STA_SUPPORT
+#include "sta.h"
+#ifdef WSC_STA_SUPPORT
+#define STA_WSC_INCLUDED
+#endif /* WSC_STA_SUPPORT */
+#endif /* CONFIG_STA_SUPPORT */
 
 #ifdef BLOCK_NET_IF
 #include "netif_block.h"
@@ -149,7 +159,14 @@
 #include "wapi.h"
 #endif /* WAPI_SUPPORT */
 
+#ifdef DOT11K_RRM_SUPPORT
+#include "rrm.h"
+#endif /* DOT11K_RRM_SUPPORT */
 
+#ifdef DOT11Z_TDLS_SUPPORT
+#include "tdls.h"
+#include "tdls_uapsd.h"
+#endif /* DOT11Z_TDLS_SUPPORT */
 
 #if defined(AP_WSC_INCLUDED) || defined(STA_WSC_INCLUDED)
 #define WSC_INCLUDED
@@ -170,6 +187,14 @@
 #endif /* APCLI_WPA_SUPPLICANT_SUPPORT */
 
 
+#ifdef CONFIG_STA_SUPPORT
+#ifdef NATIVE_WPA_SUPPLICANT_SUPPORT
+#ifndef WPA_SUPPLICANT_SUPPORT
+#error "Build for being controlled by NetworkManager or wext, please set HAS_WPA_SUPPLICANT=y and HAS_NATIVE_WPA_SUPPLICANT_SUPPORT=y"
+#endif /* WPA_SUPPLICANT_SUPPORT */
+#endif /* NATIVE_WPA_SUPPLICANT_SUPPORT */
+
+#endif /* CONFIG_STA_SUPPORT */
 
 #ifdef WSC_INCLUDED
 #include "crypt_biginteger.h"
@@ -186,22 +211,37 @@
 #include "vr_ikans.h"
 #endif /* IKANOS_VX_1X0 */
 
+#ifdef DOT11R_FT_SUPPORT
+#include	"ft.h"
+#endif /* DOT11R_FT_SUPPORT */
 
+#ifdef DOT11K_RRM_SUPPORT
+#include "rrm.h"
+#endif /* DOT11K_RRM_SUPPORT */
 
 #ifdef DOT11W_PMF_SUPPORT
 #include "pmf.h"
 #endif /* DOT11W_PMF_SUPPORT */
 
+#ifdef DOT11V_WNM_SUPPORT
+#include "wnm.h"
+#endif /* DOT11V_WNM_SUPPORT */
 
 #ifdef WAPI_SUPPORT
 #include "wapi.h"
 #endif /* WAPI_SUPPORT */
 
 
+#ifdef WFD_SUPPORT
+#include "wfd.h"
+#endif /* WFD_SUPPORT */
 
 #ifdef DOT11_VHT_AC
 #include "vht.h"
 #endif /* DOT11_VHT_AC */
+#ifdef CONFIG_STA_SUPPORT
+#include "sta_cfg.h"
+#endif /* CONFIG_STA_SUPPORT */
 
 
 
@@ -239,6 +279,20 @@
 #include "cfg80211_cmm.h"
 #endif /* RT_CFG80211_SUPPORT */
 #endif /* LINUX */
+
+#ifdef CONFIG_DOT11U_INTERWORKING
+#include "dot11u_interworking.h"
+#include "gas.h"
+#endif
+
+#ifdef CONFIG_DOT11V_WNM
+#include "dot11v_wnm.h"
+#include "wnm.h"
+#endif
+
+#ifdef CONFIG_HOTSPOT
+#include "hotspot.h"
+#endif
 
 #endif	/* __RT_CONFIG_H__ */
 

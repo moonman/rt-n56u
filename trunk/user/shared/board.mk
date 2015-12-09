@@ -1,8 +1,8 @@
 ##################################################################
 # Board PID # Board Name       # PRODUCT # Note
 ##################################################################
-# RT-N14U   # ASUS RT-N14U     # MT7620  #
+# RT-N65U   # ASUS RT-N65U     # RT3883  #
 ##################################################################
 
-CFLAGS += -DBOARD_N14U -DVENDOR_ASUS
-BOARD_NUM_USB_PORTS=1
+CFLAGS += -DBOARD_N65U -DVENDOR_ASUS
+BOARD_NUM_USB_PORTS=2

@@ -1943,9 +1943,9 @@ typedef struct _MAC_TABLE_ENTRY {
 
 #ifdef DROP_MASK_SUPPORT
 	BOOLEAN 		tx_fail_drop_mask_enabled;
-	NDIS_SPIN_LOCK		drop_mask_lock;
 	BOOLEAN 		ps_drop_mask_enabled;
-	RALINK_TIMER_STRUCT dropmask_timer;
+	NDIS_SPIN_LOCK		drop_mask_lock;
+	RALINK_TIMER_STRUCT	dropmask_timer;
 #endif /* DROP_MASK_SUPPORT */
 #ifdef PS_ENTRY_MAITENANCE
 	UINT8	continuous_ps_count;
@@ -8051,7 +8051,6 @@ INT	Set_BurstMode_Proc(
 
 #ifdef DOT11_VHT_AC
 INT Set_VhtBw_Proc(RTMP_ADAPTER *pAd, PSTRING arg);
-INT	Set_VhtGi_Proc(RTMP_ADAPTER *pAd, PSTRING arg);
 INT Set_VhtStbc_Proc(RTMP_ADAPTER *pAd, PSTRING arg);
 INT Set_VhtBwSignal_Proc(RTMP_ADAPTER *pAd, PSTRING arg);
 INT	Set_VhtDisallowNonVHT_Proc(
@@ -8686,7 +8685,6 @@ VOID RTMP_BBP_IO_WRITE8(
 	UINT8 Value,
 	BOOLEAN FlgValidMCR);
 #endif /* VENDOR_FEATURE3_SUPPORT */
-
 
 INT AsicGetMacVersion(
 	IN RTMP_ADAPTER *pAd);

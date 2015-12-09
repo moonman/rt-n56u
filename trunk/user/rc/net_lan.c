@@ -33,6 +33,12 @@
 #include "rc.h"
 #include "switch.h"
 
+#if BOARD_RAM_SIZE < 32
+#define SHRINK_TX_QUEUE_LEN	(300)
+#elif BOARD_RAM_SIZE < 64
+#define SHRINK_TX_QUEUE_LEN	(600)
+#endif
+
 static char udhcpc_lan_state[16] = {0};
 
 in_addr_t get_lan_ip4(void)
@@ -104,6 +110,9 @@ init_bridge(int is_ap_mode)
 		phy_bridge_mode(SWAPI_WAN_BRIDGE_DISABLE_WAN, SWAPI_WAN_BWAN_ISOLATION_NONE);
 	}
 
+#if BOARD_RAM_SIZE < 64
+	doSystem("ifconfig %s txqueuelen %d", IFNAME_MAC, SHRINK_TX_QUEUE_LEN);
+#endif
 	doSystem("ifconfig %s hw ether %s", IFNAME_MAC, lan_hwaddr);
 	ifconfig(IFNAME_MAC, IFUP, NULL, NULL);
 
@@ -201,6 +210,7 @@ init_bridge(int is_ap_mode)
 	doSystem("modprobe iNIC_mii miimaster=%s mode=%s syncmiimac=%d bridge=%d max_fw_upload=%d", IFNAME_MAC, "ap", 0, 1, 10);
 #endif
 
+
 #if BOARD_2G_IN_SOC
 	start_wifi_ap_rt(rt_radio_on);
 	start_wifi_wds_rt(rt_radio_on);
@@ -232,6 +242,16 @@ init_bridge(int is_ap_mode)
 
 	sleep(1);
 
+#if BOARD_RAM_SIZE < 64
+	doSystem("ifconfig %s txqueuelen %d", IFNAME_2G_MAIN, SHRINK_TX_QUEUE_LEN);
+	doSystem("ifconfig %s txqueuelen %d", IFNAME_2G_GUEST, SHRINK_TX_QUEUE_LEN);
+	doSystem("ifconfig %s txqueuelen %d", IFNAME_2G_APCLI, SHRINK_TX_QUEUE_LEN);
+	doSystem("ifconfig %s txqueuelen %d", IFNAME_2G_WDS0, SHRINK_TX_QUEUE_LEN);
+	doSystem("ifconfig %s txqueuelen %d", IFNAME_2G_WDS1, SHRINK_TX_QUEUE_LEN);
+	doSystem("ifconfig %s txqueuelen %d", IFNAME_2G_WDS2, SHRINK_TX_QUEUE_LEN);
+	doSystem("ifconfig %s txqueuelen %d", IFNAME_2G_WDS3, SHRINK_TX_QUEUE_LEN);
+#endif
+
 	ifconfig(IFNAME_BR, IFUP, NULL, NULL);
 
 #if BOARD_HAS_5G_RADIO
@@ -248,6 +268,9 @@ init_bridge(int is_ap_mode)
 		doSystem("ifconfig %s %s", IFNAME_2G_MAIN, "down");
 		gen_ralink_config_2g(0);
 	}
+
+	if (rt_radio_on)
+		update_vga_clamp_rt(1);
 #endif
 
 	restart_guest_lan_isolation();
@@ -380,7 +403,7 @@ switch_config_storm(void)
 	controlrate_unknown_unicast = nvram_get_int("controlrate_unknown_unicast");
 	if (controlrate_unknown_unicast <= 0 || controlrate_unknown_unicast > 1024)
 		controlrate_unknown_unicast = 1024;
-	
+
 	/* unknown multicast storm control */
 	controlrate_unknown_multicast = nvram_get_int("controlrate_unknown_multicast");
 	if (controlrate_unknown_multicast <= 0 || controlrate_unknown_multicast > 1024)
@@ -644,7 +667,7 @@ full_restart_lan(void)
 		is_lan_stp = nvram_get_int("lan_stp");
 	}
 
-	// Stop logger if remote
+	/* stop logger if remote */
 	if (log_remote)
 		stop_logger();
 
@@ -670,9 +693,14 @@ full_restart_lan(void)
 
 	start_lan(is_ap_mode, 1);
 
-	/* Start logger if remote */
+	/* start logger if remote */
 	if (log_remote)
 		start_logger(0);
+
+#if defined(APP_SMBD)
+	/* update SMB fastpath owner address */
+	config_smb_fastpath(1);
+#endif
 
 	/* restart dns relay and dhcp server */
 	start_dns_dhcpd(is_ap_mode);
@@ -697,7 +725,7 @@ full_restart_lan(void)
 		restart_iptv(is_ap_mode);
 
 #if defined(APP_NFSD)
-	// reload NFS server exports
+	/* reload NFS server exports */
 	reload_nfsd();
 #endif
 
@@ -814,6 +842,11 @@ lan_up_auto(char *lan_ifname, char *lan_gateway, char *lan_dname)
 	/* fill XXX_t fields */
 	update_lan_status(1);
 
+#if defined(APP_SMBD)
+	/* update SMB fastpath owner address */
+	config_smb_fastpath(1);
+#endif
+
 	/* di wakeup after 2 secs */
 	notify_run_detect_internet(2);
 }
@@ -837,6 +870,11 @@ lan_down_auto(char *lan_ifname)
 
 	/* fill XXX_t fields */
 	update_lan_status(0);
+
+#if defined(APP_SMBD)
+	/* update SMB fastpath owner address */
+	config_smb_fastpath(1);
+#endif
 }
 
 void 

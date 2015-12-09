@@ -791,7 +791,6 @@ VOID APMlmeSetTxRate(
 			tx_bw = pAdaptTbEntry->BW;
 
 		if ((CLIENT_STATUS_TEST_FLAG(pEntry, fCLIENT_STATUS_SGI80_CAPABLE)) && 
-			(pAd->CommonCfg.vht_sgi_80) &&
 			(pTxRate->ShortGI
 #ifdef WFA_VHT_PF
 			|| pAd->vht_force_sgi
@@ -1905,9 +1904,13 @@ INT rtmp_get_rate_from_rate_tb(UCHAR *table, INT idx, RTMP_TX_RATE *tx_rate)
 VOID MlmeNewTxRate(RTMP_ADAPTER *pAd, MAC_TABLE_ENTRY *pEntry)
 {
 	RTMP_RA_LEGACY_TB *pNextTxRate;
-	UCHAR *pTable = pEntry->pTable;
 	RTMP_TX_RATE tx_rate;
+	UCHAR *pTable;
 
+	if ((pEntry == NULL) || (pEntry->pTable == NULL))
+		return;
+	else
+		pTable = pEntry->pTable;
 
 	rtmp_get_rate_from_rate_tb(pEntry->pTable, pEntry->CurrTxRateIndex, &tx_rate);
 	/*  Get pointer to CurrTxRate entry */

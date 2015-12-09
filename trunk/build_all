@@ -8,7 +8,7 @@
 ################## CONFIG ######################
 MY_VERSION=$1
 
-BUILD_TOOLCHAIN="NO"
+BUILD_TOOLCHAIN="YES"
 
 BUILD_FIRMWARE="YES"
 ## Only used if BUILD_FIRMWARE="YES"##
