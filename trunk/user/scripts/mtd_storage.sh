@@ -9,6 +9,7 @@ slk="/tmp/.storage_locked"
 tmp="/tmp/storage.tar"
 tbz="${tmp}.bz2"
 hsh="/tmp/hashes/storage_md5"
+config_qos="${dir_storage}/qos.conf"
 
 func_get_mtd()
 {

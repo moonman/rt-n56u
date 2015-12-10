@@ -71,11 +71,9 @@ static int udp_offload __read_mostly = DEFAULT_UDP_OFFLOAD;
 module_param(udp_offload, int, S_IRUGO);
 MODULE_PARM_DESC(udp_offload, "PPE IPv4 NAT offload for UDP proto");
 
-#if defined (CONFIG_RA_HW_NAT_IPV6)
 int ipv6_offload __read_mostly = 0;
 module_param(ipv6_offload, int, S_IRUGO);
 MODULE_PARM_DESC(ipv6_offload, "PPE IPv6 routes offload");
-#endif
 
 static int ttl_regen __read_mostly = DFL_FOE_TTL_REGEN;
 module_param(ttl_regen, int, S_IRUGO|S_IWUSR);
@@ -99,15 +97,27 @@ extern int (*ra_sw_nat_hook_rs) (struct net_device *dev, int hold);
 extern int (*ra_sw_nat_hook_ec) (int engine_init);
 
 #if !defined (CONFIG_RALINK_MT7621)
-static int		ppe_udp_bug = 0;
+static int			ppe_udp_bug = 0;
 #endif
 
-struct FoeEntry		*PpeFoeBase = NULL;
-dma_addr_t		PpeFoeBasePhy = 0;
-uint32_t		PpeFoeTblSize = FOE_4TB_SIZ;
-struct net_device	*DstPort[MAX_IF_NUM];
-uint8_t			DstPortHash[MAX_IF_HASH_NUM];
+static struct FoeEntry		*PpeFoeBase = NULL;
+static dma_addr_t		PpeFoeBasePhy = 0;
+uint32_t			PpeFoeTblSize = FOE_4TB_SIZ;
+static struct net_device	*DstPort[MAX_IF_NUM];
+static uint8_t			DstPortHash[MAX_IF_HASH_NUM];
 DEFINE_SPINLOCK(ppe_foe_lock);
+
+struct FoeEntry *get_foe_entry(uint32_t foe_entry_num)
+{
+#if defined (CONFIG_HNAT_V2) && defined (CONFIG_RA_HW_NAT_IPV6)
+	if (!ipv6_offload) {
+		uint8_t *pEntry = (uint8_t *)PpeFoeBase + foe_entry_num * sizeof(struct FoeEntry64);
+		return (struct FoeEntry *)pEntry;
+	}
+#endif
+
+	return &PpeFoeBase[foe_entry_num];
+}
 
 #if defined (CONFIG_RA_HW_NAT_DEBUG)
 static uint8_t *ShowCpuReason(struct sk_buff *skb)
@@ -227,7 +237,7 @@ static uint32_t FoeDumpPkt(struct sk_buff *skb)
 	if (foe_entry_num >= FOE_4TB_SIZ)
 		return 1;
 
-	foe_entry = &PpeFoeBase[foe_entry_num];
+	foe_entry = get_foe_entry(foe_entry_num);
 
 	NAT_PRINT("\nRx===<FOE_Entry=%d>=====\n", foe_entry_num);
 	NAT_PRINT("RcvIF=%s\n", skb->dev->name);
@@ -318,7 +328,7 @@ static inline int RemoveVlanTag(struct sk_buff * skb)
 
 #if defined  (CONFIG_RA_HW_NAT_WIFI) || defined (CONFIG_RA_HW_NAT_PCI)
 /* push different VID for WiFi pseudo interface or USB external NIC */
-uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
+static uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
 {
 	uint16_t VirIfIdx;
 #if defined (CONFIG_RAETH_HW_VLAN_TX)
@@ -357,7 +367,7 @@ uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
 	switch (VirIfIdx) {
 	case DP_RA0:
 	case DP_RA1:
-#if defined (HWNAT_DP_RAI_AP)
+#if defined (HWNAT_USE_SECOND_IF)
 	case DP_RAI0:
 	case DP_RAI1:
 #endif
@@ -398,7 +408,7 @@ uint32_t PpeExtIfRxHandler(struct sk_buff * skb)
 	return 0;
 }
 
-uint32_t PpeExtIfPingPongHandler(struct sk_buff * skb)
+static uint32_t PpeExtIfPingPongHandler(struct sk_buff * skb)
 {
 	struct net_device *dev;
 	uint16_t VirIfIdx;
@@ -477,7 +487,7 @@ static void PpeKeepAliveHandler(struct sk_buff *skb, int recover_header)
 	eth = (struct ethhdr *)(skb->data - ETH_HLEN);
 	eth_type = ntohs(skb->protocol);
 
-	foe_entry = &PpeFoeBase[foe_entry_num];
+	foe_entry = get_foe_entry(foe_entry_num);
 
 	/*
 	 * try to recover to original SMAC/DMAC, but we don't have such information.
@@ -584,7 +594,7 @@ static int PpeHitBindForceToCpuHandler(struct sk_buff *skb, uint32_t foe_entry_n
 		return 1;
 	}
 
-	foe_entry = &PpeFoeBase[foe_entry_num];
+	foe_entry = get_foe_entry(foe_entry_num);
 
 #if !defined (CONFIG_HNAT_V2)
 	act_dp = foe_entry->ipv4_hnapt.act_dp;			// act_dp: offset 13 dword for IPv4/IPv6
@@ -595,7 +605,7 @@ static int PpeHitBindForceToCpuHandler(struct sk_buff *skb, uint32_t foe_entry_n
 		dev = DstPort[act_dp];
 	}
 #if defined (CONFIG_RA_HW_NAT_IPV6)
-	else if (IS_IPV6_GRP(foe_entry)) {
+	else if (ipv6_offload && IS_IPV6_GRP(foe_entry)) {
 		act_dp = foe_entry->ipv6_5t_route.act_dp;	// act_dp: offset 14 dword for IPv6
 		dev = DstPort[act_dp];
 	}
@@ -633,8 +643,9 @@ static int PpeHitBindForceToCpuHandler(struct sk_buff *skb, uint32_t foe_entry_n
 }
 
 #if defined (CONFIG_HNAT_V2)
-int PpeHitBindForceMcastToWiFiHandler(struct sk_buff *skb)
+static int PpeHitBindForceMcastToWiFiHandler(struct sk_buff *skb)
 {
+#if defined (CONFIG_RA_HW_NAT_MCAST)
 #if defined (CONFIG_RA_HW_NAT_WIFI) || defined (CONFIG_RA_HW_NAT_PCI)
 	int i;
 	struct sk_buff *skb2;
@@ -683,6 +694,7 @@ int PpeHitBindForceMcastToWiFiHandler(struct sk_buff *skb)
 	}
 #endif
 #endif
+#endif /* CONFIG_RA_HW_NAT_MCAST */
 
 	dev_kfree_skb(skb);
 
@@ -691,7 +703,7 @@ int PpeHitBindForceMcastToWiFiHandler(struct sk_buff *skb)
 #endif
 
 #if defined (CONFIG_RA_HW_NAT_ACL2UP_HELPER)
-void PpeGetUpFromACLRule(struct sk_buff *skb)
+static void PpeGetUpFromACLRule(struct sk_buff *skb)
 {
 	struct ethhdr *eth = NULL;
 	uint16_t eth_type = ntohs(skb->protocol);
@@ -805,58 +817,49 @@ int32_t PpeRxHandler(struct sk_buff * skb)
 
 	if (foe_ai == HIT_BIND_FORCE_TO_CPU) {
 		/* It means the flow is already in binding state, just transfer to output interface */
-		if (!FOE_ENTRY_VALID(skb))
-			return 1;
-		return PpeHitBindForceToCpuHandler(skb, FOE_ENTRY_NUM(skb));
+		if (FOE_ENTRY_VALID(skb))
+			return PpeHitBindForceToCpuHandler(skb, FOE_ENTRY_NUM(skb));
 #if defined (CONFIG_HNAT_V2)
-#if defined (CONFIG_RALINK_MT7621)
-	} else if ((foe_sp == 0 || foe_sp == 5) &&
-#else
-	} else if ((foe_sp == 6) &&
-#endif
-				(foe_ai != HIT_BIND_KEEPALIVE_UC_OLD_HDR) &&
-				(foe_ai != HIT_BIND_KEEPALIVE_MC_NEW_HDR) &&
-				(foe_ai != HIT_BIND_KEEPALIVE_DUP_OLD_HDR)) {
-		/* handle the incoming packet which came back from PPE */
-#if defined (CONFIG_RA_HW_NAT_WIFI) || defined (CONFIG_RA_HW_NAT_PCI)
-		if (wifi_offload)
-			return PpeExtIfPingPongHandler(skb);
-		else
-#endif
-			return 1;
 #if defined (CONFIG_RALINK_MT7621)
 	} else if (foe_ai == HIT_BIND_MULTICAST_TO_CPU || foe_ai == HIT_BIND_MULTICAST_TO_GMAC_CPU) {
 #else
 	} else if (foe_ai == HIT_BIND_MULTICAST_TO_CPU) {
 #endif
-		return PpeHitBindForceMcastToWiFiHandler(skb);
-	} else if (foe_ai == HIT_BIND_KEEPALIVE_UC_OLD_HDR) {
-		return 1;
-	} else if (foe_ai == HIT_BIND_KEEPALIVE_MC_NEW_HDR) {
-		PpeKeepAliveHandler(skb, 1);
-		return 1;
+		if (FOE_ENTRY_VALID(skb))
+			return PpeHitBindForceMcastToWiFiHandler(skb);
 	} else if (foe_ai == HIT_BIND_KEEPALIVE_DUP_OLD_HDR) {
 		PpeKeepAliveHandler(skb, 0);
-		return 1;
-#else /* !CONFIG_HNAT_V2 */
-	} else if (foe_sp == 0 && foe_ai != HIT_BIND_KEEPALIVE) {
+	} else if (foe_ai == HIT_BIND_KEEPALIVE_MC_NEW_HDR) {
+		PpeKeepAliveHandler(skb, 1);
+	} else if (foe_ai == HIT_BIND_KEEPALIVE_UC_OLD_HDR) {
+		;
+#if defined (CONFIG_RALINK_MT7621)
+	} else if (foe_sp == 0 || foe_sp == 5) {
+#else
+	} else if (foe_sp == 6) {
+#endif
 		/* handle the incoming packet which came back from PPE */
 #if defined (CONFIG_RA_HW_NAT_WIFI) || defined (CONFIG_RA_HW_NAT_PCI)
 		if (wifi_offload)
 			return PpeExtIfPingPongHandler(skb);
-		else
 #endif
-			return 1;
-	} else if (foe_ai == HIT_BIND_KEEPALIVE && DFL_FOE_KA == 0) {
+#else /* !CONFIG_HNAT_V2 */
+	} else if (foe_ai == HIT_BIND_KEEPALIVE) {
+#if (DFL_FOE_KA == 0)
 		PpeKeepAliveHandler(skb, 1);
-		return 1;
+#endif
+	} else if (foe_sp == 0) {
+		/* handle the incoming packet which came back from PPE */
+#if defined (CONFIG_RA_HW_NAT_WIFI) || defined (CONFIG_RA_HW_NAT_PCI)
+		if (wifi_offload)
+			return PpeExtIfPingPongHandler(skb);
+#endif
+#if defined (CONFIG_RA_HW_NAT_ACL2UP_HELPER)
+	} else if (foe_ai == HIT_UNBIND_RATE_REACH) {
+		PpeGetUpFromACLRule(skb);
+#endif
 #endif /* CONFIG_HNAT_V2 */
 	}
-#if defined (CONFIG_RA_HW_NAT_ACL2UP_HELPER)
-	else if (foe_ai == HIT_UNBIND_RATE_REACH) {
-		PpeGetUpFromACLRule(skb);
-	}
-#endif
 
 	return 1;
 }
@@ -875,41 +878,45 @@ uint32_t PpeSetExtIfNum(struct sk_buff *skb, struct FoeEntry* foe_entry)
 #define MIN_NET_DEVICE_FOR_APCLI	0x20
 #define MIN_NET_DEVICE_FOR_MESH		0x30
 
-#if defined (HWNAT_DP_RAI_AP)
+#if defined (HWNAT_USE_SECOND_IF)
 	if (offset == DP_RAI0) {
-#if defined (HWNAT_DP_RAI_MESH)
+#if defined (HWNAT_USE_SECOND_IF_CBOFF)
+#if defined (HWNAT_USE_IF_MESH)
 		if (RTMP_GET_PACKET_IF(skb) >= MIN_NET_DEVICE_FOR_MESH)
 			offset = (RTMP_GET_PACKET_IF(skb) - MIN_NET_DEVICE_FOR_MESH + DP_MESHI0);
 		else
 #endif
-#if defined (HWNAT_DP_RAI_APCLI)
+#if defined (HWNAT_USE_IF_APCLI)
 		if (RTMP_GET_PACKET_IF(skb) >= MIN_NET_DEVICE_FOR_APCLI)
 			offset = (RTMP_GET_PACKET_IF(skb) - MIN_NET_DEVICE_FOR_APCLI + DP_APCLII0);
 		else
 #endif
-#if defined (HWNAT_DP_RAI_WDS)
+#if defined (HWNAT_USE_IF_WDS)
 		if (RTMP_GET_PACKET_IF(skb) >= MIN_NET_DEVICE_FOR_WDS)
 			offset = (RTMP_GET_PACKET_IF(skb) - MIN_NET_DEVICE_FOR_WDS + DP_WDSI0);
 		else
+#endif
 #endif
 			;
 	} else
 #endif
 	if (offset == DP_RA0) {
-#if defined (HWNAT_DP_RA_MESH)
+#if defined (HWNAT_USE_FIRST_IF_CBOFF)
+#if defined (HWNAT_USE_IF_MESH)
 		if (RTMP_GET_PACKET_IF(skb) >= MIN_NET_DEVICE_FOR_MESH)
 			offset = (RTMP_GET_PACKET_IF(skb) - MIN_NET_DEVICE_FOR_MESH + DP_MESH0);
 		else
 #endif
-#if defined (HWNAT_DP_RA_APCLI)
+#if defined (HWNAT_USE_IF_APCLI)
 		if (RTMP_GET_PACKET_IF(skb) >= MIN_NET_DEVICE_FOR_APCLI)
 			offset = (RTMP_GET_PACKET_IF(skb) - MIN_NET_DEVICE_FOR_APCLI + DP_APCLI0);
 		else
 #endif
-#if defined (HWNAT_DP_RA_WDS)
+#if defined (HWNAT_USE_IF_WDS)
 		if (RTMP_GET_PACKET_IF(skb) >= MIN_NET_DEVICE_FOR_WDS)
 			offset = (RTMP_GET_PACKET_IF(skb) - MIN_NET_DEVICE_FOR_WDS + DP_WDS0);
 		else
+#endif
 #endif
 			;
 	}
@@ -927,7 +934,7 @@ uint32_t PpeSetExtIfNum(struct sk_buff *skb, struct FoeEntry* foe_entry)
 		foe_entry->ipv4_hnapt.act_dp = offset;		// act_dp: offset 11 dword for IPv4
 	}
 #if defined (CONFIG_RA_HW_NAT_IPV6)
-	else if (IS_IPV6_GRP(foe_entry)) {
+	else if (ipv6_offload && IS_IPV6_GRP(foe_entry)) {
 		foe_entry->ipv6_5t_route.act_dp = offset;	// act_dp: offset 14 dword for IPv6
 	}
 #endif
@@ -1369,7 +1376,7 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry, int gmac_n
 			PpeSetInfoBlk2(&foe_entry->ipv4_hnapt.iblk2, fpidx, 0x3f, 0x3f);
 		}
 #if defined (CONFIG_RA_HW_NAT_IPV6)
-		else if (IS_IPV6_GRP(foe_entry)) {
+		else if (ipv6_offload && IS_IPV6_GRP(foe_entry)) {
 #if defined (CONFIG_RA_HW_NAT_QDMA)
 			u32 QID = get_qid_ipv6(skb, 0);
 			
@@ -1430,7 +1437,7 @@ int32_t FoeBindToPpe(struct sk_buff *skb, struct FoeEntry* foe_entry, int gmac_n
 			foe_entry->ipv4_hnapt.act_dp = 0;	/* clear destination port for CPU */
 		}
 #if defined (CONFIG_RA_HW_NAT_IPV6)
-		else if (IS_IPV6_GRP(foe_entry)) {
+		else if (ipv6_offload && IS_IPV6_GRP(foe_entry)) {
 #if defined (CONFIG_RA_HW_NAT_QDMA)
 			if (FOE_SP(skb) != 5) {
 				u32 QID = get_qid_ipv6(skb, (port_ag == 2));
@@ -1736,7 +1743,7 @@ int32_t PpeTxHandler(struct sk_buff *skb, int gmac_no)
 	if (foe_entry_num >= FOE_4TB_SIZ || !FOE_ENTRY_VALID(skb))
 		return 1;
 
-	foe_entry = &PpeFoeBase[foe_entry_num];
+	foe_entry = get_foe_entry(foe_entry_num);
 
 	/*
 	 * Packet is interested by ALG?
@@ -1907,22 +1914,22 @@ void PpeSetFoeEbl(uint32_t FoeEbl)
 
 static void PpeSetFoeHashMode(uint32_t HashMode)
 {
-#if defined (CONFIG_RA_HW_NAT_IPV6) && defined (CONFIG_HNAT_V2)
-	/* these entries are bad every 128 entries */
-	int boundary_entry_offset[7] = {12, 25, 38, 51, 76, 89, 102};
-	int entry_base = 0, bad_entry, i, j;
-#endif
-
 	memset(PpeFoeBase, 0, PpeFoeTblSize * sizeof(struct FoeEntry));
 
 #if defined (CONFIG_RA_HW_NAT_IPV6) && defined (CONFIG_HNAT_V2)
-	for (i = 0; entry_base < FOE_4TB_SIZ; i++) {
-		/* set bad entries as static */
-		for (j = 0; j < 7; j++) {
-			bad_entry = entry_base + boundary_entry_offset[j];
-			PpeFoeBase[bad_entry].udib1.sta = 1;
+	if (ipv6_offload) {
+		/* these entries are bad every 128 entries */
+		int boundary_entry_offset[7] = {12, 25, 38, 51, 76, 89, 102};
+		int entry_base = 0, bad_entry, i, j;
+		
+		for (i = 0; entry_base < FOE_4TB_SIZ; i++) {
+			/* set bad entries as static */
+			for (j = 0; j < 7; j++) {
+				bad_entry = entry_base + boundary_entry_offset[j];
+				PpeFoeBase[bad_entry].udib1.sta = 1;
+			}
+			entry_base = (i+1)*128;
 		}
-		entry_base = (i+1)*128;
 	}
 #endif
 
@@ -1953,10 +1960,12 @@ static void PpeSetFoeHashMode(uint32_t HashMode)
 	RegModifyBits(PPE_FOE_CFG, HashMode, 14, 2);
 	RegWrite(PPE_HASH_SEED, HASH_SEED);
 #if defined (CONFIG_RA_HW_NAT_IPV6)
-	RegModifyBits(PPE_FOE_CFG, 1, 3, 1);	// entry size = 80bytes
-#else
-	RegModifyBits(PPE_FOE_CFG, 0, 3, 1);	// entry size = 64bytes
+	if (ipv6_offload)
+		RegModifyBits(PPE_FOE_CFG, 1, 3, 1);	// entry size = 80bytes
+	else
 #endif
+		RegModifyBits(PPE_FOE_CFG, 0, 3, 1);	// entry size = 64bytes
+
 #if defined (CONFIG_RA_HW_NAT_PREBIND)
 	RegModifyBits(PPE_FOE_CFG, 1, 6, 1);	// pre-bind age enable
 #endif
@@ -2079,12 +2088,14 @@ static void PpeSetFoeGloCfgEbl(uint32_t Ebl)
 		/* TO_PPE Forwarding Register (exclude broadcast) */
 		tpf = IPV4_PPE_MYUC | IPV4_PPE_UC | IPV4_PPE_UN;
 #if defined (CONFIG_RA_HW_NAT_IPV6)
-		tpf |= (IPV6_PPE_MYUC | IPV6_PPE_UC | IPV6_PPE_UN);
+		if (ipv6_offload)
+			tpf |= (IPV6_PPE_MYUC | IPV6_PPE_UC | IPV6_PPE_UN);
 #endif
 #if defined (CONFIG_RA_HW_NAT_MCAST)
 		tpf |= (IPV4_PPE_MC | IPV4_PPE_IPM);
 #if defined (CONFIG_RA_HW_NAT_IPV6)
-		tpf |= (IPV6_PPE_MC | IPV6_PPE_IPM);
+		if (ipv6_offload)
+			tpf |= (IPV6_PPE_MC | IPV6_PPE_IPM);
 #endif
 #endif
 
@@ -2377,7 +2388,7 @@ void PpeSetDstPort(uint32_t Ebl)
 
 	if (Ebl) {
 		DstPort[DP_RA0] = ra_dev_get_by_name("ra0");
-#if defined (HWNAT_DP_RA_MBSS) || defined (CONFIG_MT76X2_AP_MBSS) || defined (CONFIG_MT76X3_AP_MBSS)
+#if defined (HWNAT_USE_IF_MBSS)
 		DstPort[DP_RA1] = ra_dev_get_by_name("ra1");
 		DstPort[DP_RA2] = ra_dev_get_by_name("ra2");
 		DstPort[DP_RA3] = ra_dev_get_by_name("ra3");
@@ -2386,21 +2397,22 @@ void PpeSetDstPort(uint32_t Ebl)
 		DstPort[DP_RA6] = ra_dev_get_by_name("ra6");
 		DstPort[DP_RA7] = ra_dev_get_by_name("ra7");
 #endif
-#if defined (HWNAT_DP_RA_WDS) || defined (CONFIG_MT76X2_AP_WDS) || defined (CONFIG_MT76X3_AP_WDS)
+#if defined (HWNAT_USE_IF_WDS)
 		DstPort[DP_WDS0] = ra_dev_get_by_name("wds0");
 		DstPort[DP_WDS1] = ra_dev_get_by_name("wds1");
 		DstPort[DP_WDS2] = ra_dev_get_by_name("wds2");
 		DstPort[DP_WDS3] = ra_dev_get_by_name("wds3");
 #endif
-#if defined (HWNAT_DP_RA_APCLI) || defined (CONFIG_MT76X2_AP_APCLI) || defined (CONFIG_MT76X3_AP_APCLI)
+#if defined (HWNAT_USE_IF_APCLI)
 		DstPort[DP_APCLI0] = ra_dev_get_by_name("apcli0");
 #endif
-#if defined (HWNAT_DP_RA_MESH) || defined (CONFIG_MT76X2_AP_MESH) || defined (CONFIG_MT76X3_AP_MESH)
+#if defined (HWNAT_USE_IF_MESH)
 		DstPort[DP_MESH0] = ra_dev_get_by_name("mesh0");
 #endif
-#if defined (HWNAT_DP_RAI_AP)
+
+#if defined (HWNAT_USE_SECOND_IF)
 		DstPort[DP_RAI0] = ra_dev_get_by_name("rai0");
-#if defined (HWNAT_DP_RAI_MBSS) || defined (CONFIG_MT76X2_AP_MBSS)
+#if defined (HWNAT_USE_IF_MBSS)
 		DstPort[DP_RAI1] = ra_dev_get_by_name("rai1");
 		DstPort[DP_RAI2] = ra_dev_get_by_name("rai2");
 		DstPort[DP_RAI3] = ra_dev_get_by_name("rai3");
@@ -2409,19 +2421,20 @@ void PpeSetDstPort(uint32_t Ebl)
 		DstPort[DP_RAI6] = ra_dev_get_by_name("rai6");
 		DstPort[DP_RAI7] = ra_dev_get_by_name("rai7");
 #endif
-#if defined (HWNAT_DP_RAI_WDS) || defined (CONFIG_MT76X2_AP_WDS)
+#if defined (HWNAT_USE_IF_WDS)
 		DstPort[DP_WDSI0] = ra_dev_get_by_name("wdsi0");
 		DstPort[DP_WDSI1] = ra_dev_get_by_name("wdsi1");
 		DstPort[DP_WDSI2] = ra_dev_get_by_name("wdsi2");
 		DstPort[DP_WDSI3] = ra_dev_get_by_name("wdsi3");
 #endif
-#if defined (HWNAT_DP_RAI_APCLI) || defined (CONFIG_MT76X2_AP_APCLI)
+#if defined (HWNAT_USE_IF_APCLI)
 		DstPort[DP_APCLII0] = ra_dev_get_by_name("apclii0");
 #endif
-#if defined (HWNAT_DP_RAI_MESH) || defined (CONFIG_MT76X2_AP_MESH)
+#if defined (HWNAT_USE_IF_MESH)
 		DstPort[DP_MESHI0] = ra_dev_get_by_name("meshi0");
 #endif
-#endif /* HWNAT_DP_RAI_AP */
+#endif
+
 		DstPort[DP_GMAC1] = ra_dev_get_by_name("eth2");
 #if defined (CONFIG_RAETH_GMAC2)
 		DstPort[DP_GMAC2] = ra_dev_get_by_name("eth3");

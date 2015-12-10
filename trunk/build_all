@@ -8,13 +8,13 @@
 ################## CONFIG ######################
 MY_VERSION=$1
 
-BUILD_TOOLCHAIN="YES"
+BUILD_TOOLCHAIN="NO"
 
 BUILD_FIRMWARE="YES"
 ## Only used if BUILD_FIRMWARE="YES"##
 ## Comment out the lines containing configs you don't want to build.
 BUILD_FIRMWARE_CF=(\
-#		   n56u_qos.config \
+		   n56u_qos.config \
 		   n65u_qos_full.config \
 		   n14u_qos_full.config \
 		   )
@@ -50,7 +50,7 @@ evaluate_path()
   echo "$_path"
 }
 
-if [ $BUILD_TOOLCHAIN = "YES" ]
+if [ $BUILD_TOOLCHAIN = "NO" ]
 then
   cd ../toolchain-mipsel
 
@@ -58,17 +58,18 @@ then
   ./clean_toolchain_3.4.x
 
   ./clean_sources
-  ./build_toolchain || exit 1
+  ./build_toolchain_3.0.x
 
   ./clean_sources
-  ./build_toolchain_3.4.x || exit 1
-   ./clean_sources
+  ./build_toolchain_3.4.x
+  ./clean_sources
+
+  cd ../trunk
 fi
 
 if [ $BUILD_FIRMWARE = "YES" ]
 then
 
-  cd ../trunk
   ./clear_tree
   #Replace version number to new
   change_version ./versions.inc
@@ -76,7 +77,7 @@ then
   for fw in ${BUILD_FIRMWARE_CF[@]}; do
     cp ./configs/templates/$fw ./.config
 
-    ./build_firmware || exit 1
+    ./build_firmware
 
     _path=$(evaluate_path $fw)
 
@@ -89,7 +90,7 @@ then
       cp ./images/RT-N* ../images/$_path/
     fi
 
-    ./clear_tree
+#    ./clear_tree
   done
 
   cp ./configs/templates/n56u_qos.config ./.config
